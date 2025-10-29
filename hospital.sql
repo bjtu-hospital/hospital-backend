@@ -1,17 +1,17 @@
 /*
  Navicat Premium Dump SQL
 
- Source Server         : dbstudy
+ Source Server         : SchoolWork
  Source Server Type    : MySQL
- Source Server Version : 80041 (8.0.41)
+ Source Server Version : 90400 (9.4.0)
  Source Host           : localhost:3306
- Source Schema         : hospital
+ Source Schema         : hospitalsys
 
  Target Server Type    : MySQL
- Target Server Version : 80041 (8.0.41)
+ Target Server Version : 90400 (9.4.0)
  File Encoding         : 65001
 
- Date: 23/10/2025 16:57:03
+ Date: 29/10/2025 11:10:11
 */
 
 SET NAMES utf8mb4;
@@ -30,7 +30,7 @@ CREATE TABLE `administrator`  (
   PRIMARY KEY (`admin_id`) USING BTREE,
   UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `fk_admin_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '管理员详细信息表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '管理员详细信息表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of administrator
@@ -51,7 +51,7 @@ CREATE TABLE `clinic`  (
   PRIMARY KEY (`clinic_id`) USING BTREE,
   INDEX `fk_clinic_area`(`area_id` ASC) USING BTREE,
   CONSTRAINT `fk_clinic_area` FOREIGN KEY (`area_id`) REFERENCES `hospital_area` (`area_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 219 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '门诊地点信息表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 219 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '门诊地点信息表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of clinic
@@ -295,7 +295,7 @@ CREATE TABLE `doctor`  (
   INDEX `fk_doctor_minor_dept`(`dept_id` ASC) USING BTREE,
   CONSTRAINT `fk_doctor_minor_dept` FOREIGN KEY (`dept_id`) REFERENCES `minor_department` (`minor_dept_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_doctor_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 876 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院医生基本信息表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 876 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院医生基本信息表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of doctor
@@ -1160,7 +1160,7 @@ CREATE TABLE `hospital_area`  (
   `destination` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '院区物理地址',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`area_id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院院区信息表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 7 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院院区信息表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of hospital_area
@@ -1183,14 +1183,14 @@ CREATE TABLE `major_department`  (
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`major_dept_id`) USING BTREE,
   UNIQUE INDEX `name`(`name` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of major_department
 -- ----------------------------
-INSERT INTO `major_department` VALUES (1, '内科系统', NULL, '2025-10-16 08:24:36');
-INSERT INTO `major_department` VALUES (2, '医技科室', NULL, '2025-10-16 08:24:36');
-INSERT INTO `major_department` VALUES (3, '外科系统', NULL, '2025-10-16 08:24:36');
+INSERT INTO `major_department` VALUES (1, '内科系统', '负责对内科系统相关疾病的门急诊、住院诊疗与慢病管理。', '2025-10-16 08:24:36');
+INSERT INTO `major_department` VALUES (2, '医技科室', '提供影像、检验、病理、输血、药学等医技支持与质量控制。', '2025-10-16 08:24:36');
+INSERT INTO `major_department` VALUES (3, '外科系统', '负责各类外科疾病的手术与围手术期综合治疗及危重症救治。', '2025-10-16 08:24:36');
 
 -- ----------------------------
 -- Table structure for minor_department
@@ -1206,58 +1206,58 @@ CREATE TABLE `minor_department`  (
   UNIQUE INDEX `name`(`name` ASC) USING BTREE,
   INDEX `major_dept_id`(`major_dept_id` ASC) USING BTREE,
   CONSTRAINT `minor_department_ibfk_1` FOREIGN KEY (`major_dept_id`) REFERENCES `major_department` (`major_dept_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 49 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 49 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of minor_department
 -- ----------------------------
-INSERT INTO `minor_department` VALUES (1, 1, '心血管内科', NULL, '2025-10-16 08:24:36');
-INSERT INTO `minor_department` VALUES (2, 1, '呼吸与危重医学科', NULL, '2025-10-16 08:24:36');
-INSERT INTO `minor_department` VALUES (3, 1, '内分泌科', NULL, '2025-10-16 08:24:36');
-INSERT INTO `minor_department` VALUES (4, 1, '肾内科', NULL, '2025-10-16 08:24:36');
-INSERT INTO `minor_department` VALUES (5, 1, '血液内科', NULL, '2025-10-16 08:24:36');
-INSERT INTO `minor_department` VALUES (6, 1, '消化科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (7, 1, '风湿免疫科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (8, 1, '老年内科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (9, 1, '神经内科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (10, 1, '感染疾病科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (11, 1, '急诊科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (12, 1, '皮肤科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (13, 1, '中医科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (14, 1, '职业病科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (15, 1, '肿瘤放疗科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (16, 1, '肿瘤化疗与放射病科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (17, 1, '儿科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (18, 3, '普通外科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (19, 3, '骨科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (20, 3, '泌尿外科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (21, 3, '胸外科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (22, 3, '心脏外科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (23, 3, '神经外科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (24, 3, '成形科(整形外科)', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (25, 3, '介入血管科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (26, 3, '危重医学科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (27, 3, '运动医学科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (28, 3, '康复医学科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (29, 3, '妇产科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (30, 3, '生殖医学中心', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (31, 3, '眼科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (32, 3, '耳鼻喉科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (33, 3, '口腔科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (34, 3, '麻醉科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (35, 3, '体检中心', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (36, 3, '疼痛医学中心', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (37, 3, '全科医学', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (38, 2, '放射科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (39, 2, '超声医学科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (40, 2, '核医学科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (41, 2, '检验科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (42, 2, '输血科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (43, 2, '药剂科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (44, 2, '手术室', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (45, 2, '病理科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (46, 2, '病案科', NULL, '2025-10-16 08:24:37');
-INSERT INTO `minor_department` VALUES (47, 2, '临床营养科', NULL, '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (1, 1, '心血管内科', '负责高血压、冠心病、心力衰竭、心律失常等心血管疾病的诊疗与随访。', '2025-10-16 08:24:36');
+INSERT INTO `minor_department` VALUES (2, 1, '呼吸与危重医学科', '负责肺炎、哮喘、慢阻肺等呼吸系统疾病诊治及重症监护。', '2025-10-16 08:24:36');
+INSERT INTO `minor_department` VALUES (3, 1, '内分泌科', '负责糖尿病、甲状腺/肾上腺等内分泌与代谢性疾病的综合管理。', '2025-10-16 08:24:36');
+INSERT INTO `minor_department` VALUES (4, 1, '肾内科', '负责急慢性肾炎、肾衰竭、电解质紊乱等肾脏相关疾病的诊治。', '2025-10-16 08:24:36');
+INSERT INTO `minor_department` VALUES (5, 1, '血液内科', '负责贫血、白血病、淋巴瘤、出凝血障碍等血液系统疾病诊疗。', '2025-10-16 08:24:36');
+INSERT INTO `minor_department` VALUES (6, 1, '消化科', '负责胃肠、肝胆胰脾等消化系统疾病的诊治与内镜相关操作。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (7, 1, '风湿免疫科', '负责类风湿、系统性红斑狼疮等风湿免疫性疾病的规范化治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (8, 1, '老年内科', '面向老年多病共存与功能评估，提供综合诊疗与慢病管理。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (9, 1, '神经内科', '负责脑血管病、癫痫、帕金森病等神经系统疾病的诊疗与康复。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (10, 1, '感染疾病科', '负责各类传染病的诊断、隔离与规范治疗及院感防控指导。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (11, 1, '急诊科', '24小时接诊各类急危重症，开展初期救治与分诊转运。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (12, 1, '皮肤科', '负责常见皮肤病、性病以及美容皮科相关疾病的诊疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (13, 1, '中医科', '提供中医辨证论治、针灸推拿及中药治疗等综合服务。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (14, 1, '职业病科', '负责职业相关疾病的诊断、评估及职业健康管理。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (15, 1, '肿瘤放疗科', '承担肿瘤的体外放射治疗与计划制定及放疗并发症管理。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (16, 1, '肿瘤化疗与放射病科', '进行肿瘤化疗、综合治疗与放射病的评估与救治。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (17, 1, '儿科', '负责新生儿与儿童各系统常见病、多发病的诊疗与保健。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (18, 3, '普通外科', '开展腹部、甲状腺、乳腺等普通外科手术与围手术管理。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (19, 3, '骨科', '开展创伤、关节、脊柱等骨科疾病的保守与手术治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (20, 3, '泌尿外科', '负责泌尿系结石、前列腺、肾脏与泌尿肿瘤等的微创与开放手术。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (21, 3, '胸外科', '开展肺、纵隔等胸外科疾病的微创及开放手术治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (22, 3, '心脏外科', '负责先心病、冠心病外科、心脏瓣膜等心外科治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (23, 3, '神经外科', '开展颅脑肿瘤、脑血管病、颅脑外伤等神经外科手术。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (24, 3, '成形科(整形外科)', '提供整形重建与美容外科诊疗，含创面修复与畸形矫治。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (25, 3, '介入血管科', '实施血管介入与腔内治疗，如栓塞、支架置入等微创技术。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (26, 3, '危重医学科', '重症医学救治与监护，提供器官功能支持与多学科协作。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (27, 3, '运动医学科', '运动创伤与运动功能障碍的诊疗及术后康复指导。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (28, 3, '康复医学科', '开展康复评定与物理、作业、语言治疗，促进功能恢复。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (29, 3, '妇产科', '负责妊娠分娩与妇科良恶性疾病的规范化诊疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (30, 3, '生殖医学中心', '开展不孕不育诊疗、辅助生殖技术与孕前咨询。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (31, 3, '眼科', '负责白内障、青光眼、视网膜等眼科疾病的诊治与手术。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (32, 3, '耳鼻喉科', '开展耳鼻咽喉常见疾病与听力嗅觉障碍的微创与手术治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (33, 3, '口腔科', '负责龋病、牙周、口腔颌面外科与修复正畸等综合诊疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (34, 3, '麻醉科', '提供临床麻醉、围术期管理与疼痛治疗相关技术支持。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (35, 3, '体检中心', '提供健康体检、慢病筛查与健康管理服务。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (36, 3, '疼痛医学中心', '多学科联合镇痛与慢性疼痛的规范化诊疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (37, 3, '全科医学', '提供基层与全生命周期的常见病诊疗与转诊管理。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (38, 2, '放射科', '开展X线、CT、MRI等影像检查与影像介入治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (39, 2, '超声医学科', '开展超声诊断与超声介入治疗，提供床旁超声支持。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (40, 2, '核医学科', '负责核素显像、PET/CT 等核医学诊断与治疗。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (41, 2, '检验科', '承担临床检验、微生物与分子检测，提供检验质量控制。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (42, 2, '输血科', '负责临床用血供应管理与输血相关技术支持。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (43, 2, '药剂科', '药事管理、临床药学与用药咨询，保障药品质量与安全。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (44, 2, '手术室', '手术间管理与无菌控制，保障手术流程与安全。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (45, 2, '病理科', '开展组织细胞病理与术中冰冻快速诊断。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (46, 2, '病案科', '负责病案归档、编码与病历质量管理。', '2025-10-16 08:24:37');
+INSERT INTO `minor_department` VALUES (47, 2, '临床营养科', '提供住院/门诊膳食评估、营养治疗与随访管理。', '2025-10-16 08:24:37');
 
 -- ----------------------------
 -- Table structure for patient
@@ -1277,7 +1277,7 @@ CREATE TABLE `patient`  (
   UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
   UNIQUE INDEX `student_id`(`student_id` ASC) USING BTREE,
   CONSTRAINT `fk_patient_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of patient
@@ -1311,7 +1311,7 @@ CREATE TABLE `registration_order`  (
   CONSTRAINT `registration_order_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_4` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of registration_order
@@ -1339,7 +1339,7 @@ CREATE TABLE `schedule`  (
   INDEX `fk_schedule_clinic_v3`(`clinic_id` ASC) USING BTREE,
   CONSTRAINT `fk_schedule_clinic_v3` FOREIGN KEY (`clinic_id`) REFERENCES `clinic` (`clinic_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_schedule_doctor_v3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 2944 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医生出诊排班及号源管理表 (含号源类型)' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 2944 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医生出诊排班及号源管理表 (含号源类型)' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of schedule
@@ -4316,7 +4316,7 @@ CREATE TABLE `user`  (
   UNIQUE INDEX `email_3`(`email` ASC) USING BTREE,
   UNIQUE INDEX `phonenumber`(`phonenumber` ASC) USING BTREE,
   UNIQUE INDEX `identifier_2`(`identifier` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user
@@ -4343,7 +4343,7 @@ CREATE TABLE `user_access_log`  (
   PRIMARY KEY (`user_access_log_id`) USING BTREE,
   INDEX `user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `user_access_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 81 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 81 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_access_log
@@ -4454,7 +4454,7 @@ CREATE TABLE `visit_history`  (
   CONSTRAINT `visit_history_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_3` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of visit_history
