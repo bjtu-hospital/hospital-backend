@@ -62,10 +62,10 @@ class MinorDepartmentResponse(BaseModel):
 
 # 医生管理
 class DoctorCreate(BaseModel):
-    identifier: str = Field(max_length=50, description="工号")
-    password: str = Field(max_length=18, description="密码")
     dept_id: int = Field(description="小科室ID")
     name: str = Field(max_length=50, description="医生姓名")
+    identifier: Optional[str] = Field(None, max_length=50, description="工号")
+    password: Optional[str] = Field(None, max_length=18, description="密码")
     title: Optional[str] = Field(None, max_length=100, description="职称")
     specialty: Optional[str] = Field(None, description="擅长领域")
     introduction: Optional[str] = Field(None, description="个人简介")
@@ -103,7 +103,7 @@ class DoctorResponse(BaseModel):
 
 # 医生账号创建
 class DoctorAccountCreate(BaseModel):
-    doctor_id: int = Field(description="医生ID")
+    # doctor_id: int = Field(description="医生ID")
     identifier: str = Field(max_length=50, description="工号")
     password: str = Field(max_length=18, description="密码")
     email: Optional[EmailStr] = Field(None, description="邮箱")
@@ -112,6 +112,6 @@ class DoctorAccountCreate(BaseModel):
 
 # 医生调科室
 class DoctorTransferDepartment(BaseModel):
-    doctor_id: int = Field(description="医生ID")
+    # doctor_id: int = Field(description="医生ID")
     new_dept_id: int = Field(description="新科室ID")
 
