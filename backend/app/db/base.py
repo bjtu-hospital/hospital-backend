@@ -29,6 +29,8 @@ from app.models.clinic import Clinic # noqa
 from app.models.doctor import Doctor # noqa
 from app.models.patient import Patient # noqa
 from app.models.schedule import Schedule # noqa
+from app.models.registration_order import RegistrationOrder # noqa
+from app.models.visit_history import VisitHistory # noqa
 
 #异步获取事务函数
 async def get_db():
