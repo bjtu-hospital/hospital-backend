@@ -9,6 +9,7 @@ import sys
 from redis.asyncio import Redis
 
 from app.api import auth,statistics
+from app.api import admin
 from app.core.exception_handler import register_exception_handlers
 from app.core.log_middleware import LogMiddleware
 from app.core.config import settings
@@ -118,6 +119,7 @@ app.add_middleware(
 #引用子路由
 app.include_router(router=auth.router, prefix="/auth", tags="authentication")
 app.include_router(router=statistics.router, prefix="/statistics", tags="statistics")
+app.include_router(router=admin.router, prefix="/admin", tags="admin")
 
 #默认
 @app.get("/")

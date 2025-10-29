@@ -70,12 +70,31 @@ def register_exception_handlers(app):
     #验证异常
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        logger.info(f"Validation Error: {exc.errors()}")
+        errors = exc.errors()
+        logger.info(f"Validation Error: {errors}")
+
+        # 如果包含 json 解析错误，给出更友好的提示
+        for e in errors:
+            if e.get("type") == "json_invalid":
+                # 用更易懂的提示替换原始错误信息
+                ctx = e.get("ctx") or {}
+                json_err = ctx.get("error") if isinstance(ctx, dict) else str(ctx)
+                friendly = {
+                    "type": "json_invalid",
+                    "loc": e.get("loc"),
+                    "msg": "请求体不是有效的 JSON，请检查是否使用了正确的双引号(\")并确保 JSON 格式正确",
+                    "input": e.get("input"),
+                    "ctx": {"error": json_err}
+                }
+                # 将该条错误替换为更友好的版本
+                errors = [friendly if x is e else x for x in errors]
+                break
+
         return JSONResponse(
             status_code=200,
             content=ResponseModel(
                 code=settings.REQ_ERROR_CODE,
-                message=RequestValidationErrorResponse(error="请求参数验证失败", detail=exc.errors())
+                message=RequestValidationErrorResponse(error="请求参数验证失败", detail=errors)
             ).dict(),
         )
 
