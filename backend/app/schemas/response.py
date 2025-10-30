@@ -352,8 +352,22 @@ class MajorDepartmentListResponse(BaseModel):
 class MinorDepartmentListResponse(BaseModel):
     departments: List[dict]
 
+class DoctorItem(BaseModel):
+    doctor_id: int
+    user_id: Optional[int] = None
+    is_registered: bool
+    dept_id: int
+    name: str
+    title: Optional[str] = None
+    specialty: Optional[str] = None
+    introduction: Optional[str] = None
+    photo_path: Optional[str] = None
+    original_photo_url: Optional[str] = None
+    create_time: Optional[str] = None
+
+
 class DoctorListResponse(BaseModel):
-    doctors: List[dict]
+    doctors: List[DoctorItem]
 
 class DoctorAccountCreateResponse(BaseModel):
     detail: str
