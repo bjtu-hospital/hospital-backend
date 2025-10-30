@@ -804,7 +804,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-响应：
+响应示例：
 ```json
 {
     "code": 0,
@@ -815,6 +815,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
         "new_dept_id": 2
     }
 }
+```
 
 ### 2.7 医生照片上传
 - POST `/doctors/{doctor_id}/photo`
@@ -851,14 +852,12 @@ curl -X POST http://127.0.0.1:8000/doctors \
 ```
 
 注意：若文件不存在或删除期间发生 IO 错误，会抛出 `ResourceHTTPException` 并由全局异常处理器返回语义化错误信息。
-```
 
-# 二、管理员 API 接口
+---
 
-以下接口均需管理员权限和有效的 Token。
+# 三、认证 API 接口详情
 
-
-
+## 1. 注册接口 Post: `/auth/register`
 
 ### 输入：JSON格式的注册数据
 
