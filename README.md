@@ -1,20 +1,22 @@
 
 # BJTU 校医院挂号系统（后端）
 
-此仓库为后端服务（FastAPI + 异步 SQLAlchemy + Redis）。本 README 以中文编写，涵盖：如何本地运行、主要配置、认证/Token 流程、统一返回格式与错误码、以及目前实现的 API 列表与示例。
+此仓库为后端服务（FastAPI + 异步 SQLAlchemy + Redis）。本 README 以中文编写，涵盖：统一错误码与格式、主要 API 参考，以及如何部署和维护。
 
-> 备注：README 以仓库当前实现为准（包含 `app/api/auth.py` 与 `app/api/admin.py` 中的路由）。如果你需要额外生成 API 文档（OpenAPI/Swagger），可以通过运行服务后访问 `/docs` 或 `/redoc`。
+> 备注：README 以仓库当前实现为准（包含 `app/api/auth.py` 与 `app/api/admin.py` 中的路由）。如果你需要额外生成 API 文档（OpenAPI/Swagger），可以通过运行服务后访问 `/docs`。
 
 ## 目录（快速导航）
-- 环境与依赖
-- 运行（开发 / Docker）
-- 环境变量（.env）
-- 认证与 Token（行为说明）
-- 统一返回格式与常用错误码
-- 主要 API 列表（示例请求与返回）
+- 环境准备与依赖
+- 部署指南（本地/Docker）
 - 常见问题与排查
+- 统一错误码与格式
+- API 权限与标准响应
+- 认证 API 接口（`/auth`）
+- 管理员 API 接口（`/admin`）
 
 ---
+
+# 开发环境与部署
 
 ## 一、环境与依赖
 
@@ -29,7 +31,156 @@ cd backend
 pip install -r requirements.txt
 ```
 
+## 二、配置（.env）
+
+在 `backend/` 下将 `.env.example` 复制为 `.env` 并填写：
+
+目前邮箱相关无实际作用
+
+- DATABASE_URL：SQLAlchemy 异步连接字符串（例如 postgresql+asyncpg://user:pass@host:5432/dbname）
+- REDIS_HOST / REDIS_PORT / REDIS_PASSWORD
+- SECRET_KEY：JWT 签名密钥
+- TOKEN_EXPIRE_TIME：token 到期时间（分钟）
+- 邮件发送相关：EMAIL_FROM、SMTP_SERVER、SMTP_PORT、SMTP_USER、SMTP_PASSWORD、YUN_URL（用于邮箱验证链接）
+
+示例：
+
+```
+DATABASE_URL=postgresql+asyncpg://postgres:password@127.0.0.1:5432/hospital
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=
+SECRET_KEY=your-secret-here
+TOKEN_EXPIRE_TIME=60
+EMAIL_FROM=no-reply@example.com
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=smtp_user
+SMTP_PASSWORD=smtp_password
+YUN_URL=https://yun.example.com/verify?token=
+```
+
+## 三、本地运行（开发）
+
+在 `backend/` 目录下：
+
+```pwsh
+# 在 backend 根目录下
+pip install -r requirements.txt
+# 启动（带热重载）
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+启动后：
+- Swagger UI: http://127.0.0.1:8000/docs
+- Redoc: http://127.0.0.1:8000/redoc
+
+注意：应用在 Lifespan 阶段会尝试连接 Redis（若不可达，应用会在启动时报错并退出），请确保 Redis 可用，且 `DATABASE_URL` 指向可用数据库。
+
+## 四、容器运行（Docker）
+
+项目含 `backend/Dockerfile`。若想构建镜像并运行，可在 `backend/` 下执行构建与运行（示例）：
+
+```pwsh
+# 构建镜像
+docker build -t bjtu-hospital-backend:latest -f backend/Dockerfile backend
+# 运行（示例：将环境变量从主机注入/挂载 .env）
+docker run -d --name hospital-backend -p 8000:8000 --env-file backend/.env bjtu-hospital-backend:latest
+```
+
+建议使用 docker-compose 编排数据库、redis 与后端服务以便调试。
+
+## 五、常见问题与排查
+
+- 启动报错：Redis 连接失败 → 请检查 `.env` 中的 `REDIS_HOST`/`REDIS_PORT` 是否正确，Redis 服务是否启动。
+- 启动报错：数据库连接/迁移错误 → 请确保 `DATABASE_URL` 正确且数据库可达；可先用 CLI 测试连接。
+- 登录后访问受保护接口返回 Token 无效 → 检查请求头 `Authorization: Bearer <token>` 是否正确；检查 Redis 中是否存在 `token:{token}` 与 `user_token:{user_id}`（可能被清理或过期）。
+
 ---
+
+# API 参考文档
+
+## 一、统一错误码与格式
+
+所有 API 响应均使用统一的 JSON 结构：
+```json
+{
+    "code": int,
+    "message": object | list | str
+}
+```
+
+其中 `code` 为 0 表示成功，非 0 表示错误。错误时 `message` 通常包含 `error` 与 `msg` 说明。
+
+## 标准错误码定义
+
+```python
+SUCCESS_CODE: int = 0            # 成功
+UNKNOWN_ERROR_CODE: int = 97     # 未知错误
+HTTP_ERROR_CODE: int = 98        # HTTP错误
+REQ_ERROR_CODE: int = 99         # 请求参数错误
+REGISTER_FAILED_CODE: int = 100  # 注册失败
+LOGIN_FAILED_CODE: int = 101     # 登入失败
+INSUFFICIENT_AUTHORITY_CODE: int = 102  # 权限不足
+USER_GET_FAILED_CODE: int = 103  # 用户获取失败
+UPDATEPROFILE_FAILED_CODE: int = 104    # 用户个人信息更新失败
+TOKEN_INVALID_CODE: int = 105    # Token失效
+DATA_GET_FAILED_CODE: int = 106  # 数据获取失败
+```
+
+错误响应示例：
+```json
+{
+    "code": 102,
+    "message": {
+        "error": "权限不足",
+        "msg": "无权限"
+    }
+}
+```
+
+## 异常分类与处理
+
+项目使用全局异常处理器统一格式化以下类型的异常：
+
+- **AuthHTTPException**: 认证/鉴权相关错误（token 无效、权限不足等）
+- **BusinessHTTPException**: 业务规则或参数校验失败
+- **ResourceHTTPException**: 资源或 IO 相关错误（文件不存在、数据库记录未找到等）
+
+这些异常会被转换为统一格式：
+```json
+{
+    "code": "<对应错误码>",
+    "message": {
+        "error": "<分类描述>",
+        "msg": "<详细信息>"
+    }
+}
+```
+
+---
+
+# 开发环境与部署
+
+## 一、环境与依赖
+
+Python后端服务：
+- Python 3.11
+- FastAPI
+- async SQLAlchemy
+- redis.asyncio
+
+数据库与缓存：
+- PostgreSQL/MySQL（可通过 SQLAlchemy URL 配置）
+- Redis（用于 token 管理与邮箱验证）
+
+推荐使用虚拟环境（venv/conda），安装依赖：
+
+```pwsh
+# 进入 backend 目录
+cd backend
+pip install -r requirements.txt
+```
 
 ## 二、配置（.env）
 
@@ -223,65 +374,491 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
-## 十、开发建议 / 后续改进
-
-- 添加自动化测试（单元/集成），覆盖认证、医生创建/删除（包含 soft-delete 行为）与科室迁移等关键路径。
-- 补充 API 文档（可导出 OpenAPI JSON 并生成客户端 SDK）。
-- 在软删除用户时，是否需要同时清理敏感字段（如 `hashed_password`、email）或保留以支持恢复？请在业务上确认。
-- 建议写一个 `docker-compose.yml` 将 Postgres/MariaDB、Redis 与后端服务组合，方便本地一键启动测试环境。
 
 ---
 
-如果你想，我可以：
-- 生成一个 `docker-compose.yml` 示例来快速本地启动依赖；
-- 为 `DELETE /doctors/{doctor_id}` 的 soft-delete 行为添加集成测试（需要可用测试 DB）；
-- 或把 `README` 中的 API 列表自动从代码生成（解析路由）以保证文档与实现同步。
+# API 接口详细说明
 
----
+## 一、认证 API 接口 `/auth`
 
-更新说明：本次我将根 README 扩充为更全面的项目指南，包含运行步骤、配置与目前实现的主要 API 概要与示例请求。如需我把每个接口的请求/返回完整示例列入 README（逐个字段），我可以继续扫描代码并补全详细示例。
+## 1. 注册接口 Post: `/auth/register`
 
-
-# 统一异常错误输出
-
-```
-#错误码
-UNKNOWN_ERROR_CODE: int = 97 #未知错误
-HTTP_ERROR_CODE: int = 98 #HTTP错误
-REQ_ERROR_CODE: int = 99 #请求参数错误
-REGISTER_FAILED_CODE: int = 100 #注册失败
-LOGIN_FAILED_CODE: int = 101 #登入失败
-INSUFFICIENT_AUTHORITY_CODE: int = 102 #权限不足
-USER_GET_FAILED_CODE: int = 103 #用户获取失败
-UPDATEPROFILE_FAILED_CODE: int = 104 #用户个人信息更新失败
-TOKEN_INVALID_CODE: int = 105 #Token失效
-DATA_GET_FAILED_CODE: int = 106 #交通数据获取失败
-SUCCESS_CODE: int = 0 #成功
-```
-
-
-```
+### 输入：JSON格式的注册数据
+```json
 {
-    code: int,
-    message: object | list | str
+    "email": "user@example.com",
+    "username": "testuser",
+    "phonenumber": "+86 12345678901",
+    "password": "securepass"
 }
 ```
 
-错误示例:
-```
+### 输出:
+```json
 {
-    "code": 102,
+    "code": 0,
     "message": {
-        "error": "权限不足",
-        "msg": "无权限"
+        "detail": "注册成功，请前往邮箱验证"
     }
 }
 ```
 
+## 2. 登录接口
 
-# 一、auth接口: /auth
+### 患者登录 Post: `/auth/patient/login`
+使用手机号登录
 
-## 1. 注册接口 Post: `/auth/register`
+### 员工登录 Post: `/auth/staff/login`
+使用工号（identifier）登录
+
+### Swagger OAuth2 登录 Post: `/auth/swagger-login`
+用于 Swagger UI 中的表单登录测试
+
+### 请求示例：
+```json
+{
+    "username": "huashen",  // 或手机号/工号
+    "password": "123456"
+}
+```
+
+### 响应示例:
+```json
+{
+    "code": 0,
+    "message": {
+        "userid": 1,
+        "access_token": "...",
+        "token_type": "Bearer"
+    }
+}
+```
+
+## 3. 用户管理接口
+
+### 获取所有用户 Get: `/auth/users`
+仅管理员可用
+
+#### 响应示例:
+```json
+{
+    "code": 0,
+    "message": [
+        {
+            "username": "huashen",
+            "email": "1137746306sssss@qq.com",
+            "phonenumber": "18279073254",
+            "userid": 1,
+            "is_admin": true
+        }
+    ]
+}
+```
+
+### 获取单个用户 Get: `/auth/users/{user_id}`
+管理员可查所有用户，普通用户只能查看自己
+
+### 更新用户信息 Put: `/auth/users/{user_id}/updateProfile`
+管理员可改所有，普通用户只能改自己
+
+#### 请求示例：
+```json
+{
+    "username": "newname",
+    "email": "newemail@example.com",
+    "phonenumber": "12345678901"
+}
+```
+
+### 删除用户 Delete: `/auth/users/{user_id}`
+仅管理员可用，且不能删除其他管理员
+
+### 获取当前用户 Get: `/auth/me`
+
+#### 响应示例:
+```json
+{
+    "code": 0,
+    "message": {
+        "role": "admin"
+    }
+}
+```
+
+---
+
+# 二、管理员 API 接口
+
+以下接口都需要：
+1. 管理员权限（`current_user.is_admin == true`）
+2. 请求头：`Authorization: Bearer <token>`
+
+## 1. 科室管理
+
+### A. 大科室管理
+
+#### 1.1 创建大科室
+- POST `/major-departments`
+
+请求体：
+```json
+{
+    "name": "内科",
+    "description": "内科相关"
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功创建大科室：内科"
+    }
+}
+```
+
+#### 1.2 获取大科室列表
+- GET `/major-departments`
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "departments": [
+            {
+                "major_dept_id": 1,
+                "name": "内科",
+                "description": "内科相关",
+                "create_time": "2024-01-01T10:00:00"
+            },
+            // ... 其他大科室
+        ]
+    }
+}
+```
+
+#### 1.3 更新大科室
+- PUT `/major-departments/{dept_id}`
+
+请求体：
+```json
+{
+    "name": "内科（更新）",
+    "description": "内科相关科室"
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功更新大科室信息"
+    }
+}
+```
+
+#### 1.4 删除大科室
+- DELETE `/major-departments/{dept_id}`
+- 注意：若存在关联的小科室，则不允许删除
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功删除大科室"
+    }
+}
+```
+
+### B. 小科室管理
+
+#### 1.5 创建小科室
+- POST `/minor-departments`
+
+请求体：
+```json
+{
+    "major_dept_id": 1,
+    "name": "心内科",
+    "description": "心脏内科"
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功创建小科室：心内科"
+    }
+}
+```
+
+#### 1.6 获取小科室列表
+- GET `/minor-departments?major_dept_id={major_dept_id}`
+- 参数 `major_dept_id` 可选，用于按大科室过滤
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "departments": [
+            {
+                "minor_dept_id": 1,
+                "major_dept_id": 1,
+                "name": "心内科",
+                "description": "心脏内科",
+                "create_time": "2024-01-01T10:00:00"
+            },
+            // ... 其他小科室
+        ]
+    }
+}
+```
+
+#### 1.7 更新小科室
+- PUT `/minor-departments/{minor_dept_id}`
+
+请求体：
+```json
+{
+    "major_dept_id": 1,  // 可选，用于调整所属大科室
+    "name": "心内科（更新）",
+    "description": "心脏内科相关"
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功更新小科室信息"
+    }
+}
+```
+
+#### 1.8 删除小科室
+- DELETE `/minor-departments/{minor_dept_id}`
+- 注意：若存在关联的医生，则不允许删除
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功删除小科室 心内科"
+    }
+}
+```
+
+## 2. 医生管理
+
+### 2.1 创建医生
+- POST `/doctors`
+
+请求体（可选是否同时创建账号）：
+```json
+{
+    "dept_id": 1,
+    "name": "张三",
+    "title": "主治医师",
+    "specialty": "心血管疾病",
+    "introduction": "从事心血管疾病临床工作多年...",
+    "identifier": "doc1001",  // 可选，工号（若要创建账号）
+    "password": "StrongP@ss", // 可选，密码（若要创建账号）
+    "email": "zhangsan@example.com",
+    "phonenumber": "13800000000"
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功创建医生信息",
+        "doctor_id": 1,
+        "user_id": 10  // 若同时创建了账号则返回
+    }
+}
+```
+
+### 2.2 获取医生列表
+- GET `/doctors?dept_id={dept_id}`
+- 参数 `dept_id` 可选，用于按科室过滤
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "doctors": [
+            {
+                "doctor_id": 1,
+                "user_id": 10,
+                "dept_id": 1,
+                "name": "张三",
+                "title": "主治医师",
+                "specialty": "心血管疾病",
+                "introduction": "从事心血管疾病临床工作多年...",
+                "photo_path": null,
+                "original_photo_url": null,
+                "is_registered": true,
+                "create_time": "2024-01-01T10:00:00"
+            },
+            // ... 其他医生
+        ]
+    }
+}
+```
+
+字段说明：
+- `is_registered`：布尔值，表示该医生是否已在系统中有可用的用户账号。严格判定规则为：
+  1) `doctor.user_id` 不为空且能在 `User` 表中找到对应记录；
+  2) 对应的 `User.is_active` 为 True；
+  3) 对应的 `User.is_deleted` 为 False（即未被软删除）。
+
+示例中 `is_registered: true` 表示张三已有激活且未删除的用户账号；若医生档案存在但未创建账号或账号被停用/删除，则该字段为 `false`。
+
+### 2.3 更新医生信息
+- PUT `/doctors/{doctor_id}`
+
+请求体（所有字段可选）：
+```json
+{
+    "name": "张三（更新）",
+    "title": "副主任医师",
+    "specialty": "心血管疾病，高血压",
+    "introduction": "更新的简介..."
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功更新医生信息"
+    }
+}
+```
+
+### 2.4 删除医生
+- DELETE `/doctors/{doctor_id}`
+- 说明：如果医生有关联的用户账号，会执行以下操作：
+  1. 将用户标记为已删除（`is_deleted=True`）
+  2. 停用账号（`is_active=False`）
+  3. 清理 Redis 中的 token 映射
+  4. 解除医生-用户关联并删除医生记录
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功删除医生 张三"
+    }
+}
+```
+
+### 2.5 为医生创建账号
+- POST `/doctors/{doctor_id}/create-account`
+- 说明：为已有的医生记录创建关联的用户账号
+
+请求体：
+```json
+{
+    "identifier": "doc1001",  // 工号作为登录用户名
+    "password": "StrongP@ss",
+    "email": "doctor@example.com",  // 可选
+    "phonenumber": "13800000000"    // 可选
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功为医生创建账号",
+        "user_id": 10,
+        "doctor_id": 1
+    }
+}
+```
+
+### 2.6 医生调科室
+- PUT `/doctors/{doctor_id}/transfer`
+- 说明：将医生调到新的科室
+
+请求体：
+```json
+{
+    "new_dept_id": 2  // 新科室ID
+}
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功将医生 张三 调至新科室",
+        "doctor_id": 1,
+        "old_dept_id": 1,
+        "new_dept_id": 2
+    }
+}
+
+### 2.7 医生照片上传
+- POST `/doctors/{doctor_id}/photo`
+- 说明：管理员为医生上传照片（multipart/form-data）。接口会将文件异步保存到 `app/static/image/`，并在数据库中更新 `Doctor.photo_path`（内部访问路径，如 `/static/image/<filename>`）以及 `Doctor.original_photo_url`（若来源为外部 URL，可保留）。
+
+请求：Content-Type: multipart/form-data，字段名 `file`（文件）
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "photo_path": "/static/image/doctor_12345_20251030.jpg",
+        "original_photo_url": null
+    }
+}
+```
+
+注意：
+- 上传接口会对文件写入进行异常分类，如果写文件失败或磁盘问题，会被标记为资源错误并上抛 `ResourceHTTPException`（由全局异常处理器统一响应）；如果请求参数不满足业务规则会抛 `BusinessHTTPException`。
+
+### 2.8 医生照片删除
+- DELETE `/doctors/{doctor_id}/photo`
+- 说明：删除医生已上传的本地照片（清理 `app/static/image` 中对应文件，并将 `Doctor.photo_path` 设为 `None`/空）。
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功删除医生照片"
+    }
+}
+```
+
+注意：若文件不存在或删除期间发生 IO 错误，会抛出 `ResourceHTTPException` 并由全局异常处理器返回语义化错误信息。
+```
+
+# 二、管理员 API 接口
+
+以下接口均需管理员权限和有效的 Token。
+
+
+
 
 ### 输入：JSON格式的注册数据
 

@@ -10,15 +10,51 @@ import time
 
 from app.core.security import get_hash_pwd, verify_pwd, create_access_token
 from app.schemas.user import user as UserSchema, PatientLogin, StaffLogin
-from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleResponse, DeleteResponse, UpdateUserRoleResponse, UserAccessLogPageResponse
-from app.db.base import get_db, redis, User, UserAccessLog
+from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleResponse, DeleteResponse, UpdateUserRoleResponse, UserAccessLogPageResponse, AdminRegisterResponse
+from app.db.base import get_db, redis, User, UserAccessLog, Administrator
+from app.models.user import UserType
 from app.core.config import settings
-from app.core.exception_handler import AuthHTTPException
+from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer("/auth/swagger-login")
+oauth2_scheme = OAuth2PasswordBearer("/auth/swagger-login", auto_error=False)
+
+async def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[UserSchema]:
+    """
+    可选的用户认证（用于支持首次创建管理员时无需认证）
+    - 如果有 token 且有效，返回用户
+    - 如果无 token 或 token 无效，返回 None（不抛异常）
+    """
+    if not token:
+        return None
+        
+    try:
+        user_id = await redis.get(f"token:{token}")
+        if not user_id:
+            return None
+            
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.TOKEN_ALGORITHM])
+            sub = payload.get("sub")
+            if sub is None or str(sub) != str(user_id):
+                return None
+        except JWTError:
+            return None
+
+        result = await db.execute(select(User).where(and_(User.user_id == int(user_id), User.is_deleted == 0)))
+        db_user = result.scalar_one_or_none()
+        if not db_user:
+            return None
+            
+        return UserSchema.from_orm(db_user)
+    except Exception as e:
+        logger.error(f"获取当前用户时发生异常（可选认证）: {str(e)}")
+        return None
 
 
 @router.post("/swagger-login", summary="Swagger UI 登录", tags=["Auth"])
@@ -66,6 +102,10 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
         }
     except HTTPException:
         raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         logger.error(f"Swagger登录异常: {str(e)}")
         raise HTTPException(status_code=500, detail="内部服务异常")
@@ -97,7 +137,7 @@ async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get
         await redis.set(f"user_token:{user.user_id}", token, ex=settings.TOKEN_EXPIRE_TIME * 60)
     except Exception as e:
         logger.error(f"保存 token 到 Redis 时发生异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.LOGIN_FAILED_CODE,
             msg="登录失败，请稍后重试",
             status_code=500
@@ -132,7 +172,7 @@ async def staff_login(login_data: StaffLogin, db: AsyncSession = Depends(get_db)
         await redis.set(f"user_token:{user.user_id}", token, ex=settings.TOKEN_EXPIRE_TIME * 60)
     except Exception as e:
         logger.error(f"保存 token 到 Redis 时发生异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.LOGIN_FAILED_CODE,
             msg="登录失败，请稍后重试",
             status_code=500
@@ -225,6 +265,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         return UserSchema.from_orm(db_user)
     except AuthHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取当前用户时发生未处理异常: {str(e)}")
         raise AuthHTTPException(
@@ -242,6 +286,10 @@ async def get_me(current_user: UserSchema = Depends(get_current_user)):
         role_response = UserRoleResponse(role=role)
         return ResponseModel(code=0, message=role_response)
     except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
         raise
     except Exception as e:
         logger.error(f"获取当前用户角色时发生未处理异常: {str(e)}")
@@ -264,9 +312,13 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), current_
         )
     except AuthHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         logger.error(f"删除用户时发生未处理异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.USER_GET_FAILED_CODE,
             msg="内部服务异常",
             status_code=500
@@ -290,9 +342,13 @@ async def update_user_role(
         )
     except AuthHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         logger.error(f"更新用户角色时发生未处理异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.USER_GET_FAILED_CODE,
             msg="内部服务异常",
             status_code=500
@@ -323,9 +379,13 @@ async def get_user_logs(
         )
     except AuthHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取用户访问日志异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.DATA_GET_FAILED_CODE,
             msg="内部服务异常",
             status_code=500
@@ -345,7 +405,7 @@ async def register_patient(
         # 检查手机号是否已被注册
         result = await db.execute(select(User).where(User.phonenumber == phonenumber))
         if result.scalar_one_or_none():
-            raise AuthHTTPException(
+            raise BusinessHTTPException(
                 code=settings.REGISTER_FAILED_CODE,
                 msg="该手机号已被注册",
                 status_code=400
@@ -373,12 +433,111 @@ async def register_patient(
         return ResponseModel(code=0, message=token)
     except AuthHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"注册用户时发生异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.REGISTER_FAILED_CODE,
             msg="注册失败，请稍后重试",
+            status_code=500
+        )
+
+
+@router.post("/register-admin", response_model=ResponseModel[Union[AdminRegisterResponse, AuthErrorResponse]])
+async def register_admin(
+    identifier: str,
+    password: str,
+    name: str,
+    email: Optional[str] = None,
+    job_title: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[UserSchema] = Depends(get_current_user_optional)
+):
+    """管理员注册接口（开发/运维用）
+
+    逻辑：
+    - 如果系统中尚无 Administrator 记录（首次引导），允许无认证创建第一个管理员（bootstrap）。
+    - 否则，仅允许已认证且具有 is_admin=True 的用户创建新管理员。
+    """
+    try:
+        # 检查是否已有管理员存在
+        result = await db.execute(select(Administrator))
+        exists = result.first() is not None
+
+        # 如果已有管理员，要求调用者为管理员
+        if exists:
+            if not current_user:
+                raise AuthHTTPException(
+                    code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                    msg="仅管理员可创建新管理员",
+                    status_code=403
+                )
+
+            if not getattr(current_user, "is_admin", False):
+                raise AuthHTTPException(
+                    code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                    msg="仅管理员可创建新管理员",
+                    status_code=403
+                )
+
+        # 校验 identifier / email 唯一性
+        if identifier:
+            res = await db.execute(select(User).where(User.identifier == identifier))
+            if res.scalar_one_or_none():
+                raise BusinessHTTPException(
+                    code=settings.REGISTER_FAILED_CODE,
+                    msg="该工号(identifier)已被占用",
+                    status_code=400
+                )
+        if email:
+            res2 = await db.execute(select(User).where(User.email == email))
+            if res2.scalar_one_or_none():
+                raise BusinessHTTPException(
+                    code=settings.REGISTER_FAILED_CODE,
+                    msg="该邮箱已被占用",
+                    status_code=400
+                )
+
+        # 创建 User
+        new_user = User(
+            identifier=identifier,
+            hashed_password=get_hash_pwd(password),
+            email=email,
+            is_admin=True,
+            is_verified=True,
+            user_type=UserType.ADMIN
+        )
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+
+        # 创建 Administrator 详细信息
+        admin = Administrator(
+            user_id=new_user.user_id,
+            name=name,
+            job_title=job_title
+        )
+        db.add(admin)
+        await db.commit()
+        await db.refresh(admin)
+
+        return ResponseModel(code=0, message=AdminRegisterResponse(detail=f"成功创建管理员 {name}"))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"创建管理员时发生异常: {str(e)}")
+        raise AuthHTTPException(
+            code=settings.REGISTER_FAILED_CODE,
+            msg="创建管理员失败，请稍后重试",
             status_code=500
         )
 
@@ -393,9 +552,15 @@ async def logout(current_user: UserSchema = Depends(get_current_user)):
             await redis.delete(f"token:{token}")
             await redis.delete(f"user_token:{current_user.user_id}")
         return ResponseModel(code=0, message="登出成功")
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
     except Exception as e:
         logger.error(f"用户登出时发生异常: {str(e)}")
-        raise AuthHTTPException(
+        raise BusinessHTTPException(
             code=settings.DATA_DELETE_FAILED_CODE,
             msg="登出失败，请稍后重试",
             status_code=500

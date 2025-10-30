@@ -12,8 +12,22 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+class BusinessHTTPException(Exception):
+    """业务逻辑相关异常, 例如数据验证、业务规则校验等"""
+    def __init__(self, code: int, msg: str, status_code: int = 400):
+        self.status_code = status_code
+        self.detail = {"code": code, "msg": msg}
+        super().__init__(msg)
+
+class ResourceHTTPException(Exception):
+    """资源相关异常, 例如资源不存在、资源已存在、资源状态错误等"""
+    def __init__(self, code: int, msg: str, status_code: int = 400):
+        self.status_code = status_code
+        self.detail = {"code": code, "msg": msg}
+        super().__init__(msg)
+
 class AuthHTTPException(Exception):
-    """专为认证相关接口设计的异常,detail 必须为 dict,包含 code 和 msg 字段"""
+    """专为认证相关接口设计的异常,例如权限不足、登录失败等"""
     def __init__(self, code: int, msg: str, status_code: int = 400):
         self.status_code = status_code
         self.detail = {"code": code, "msg": msg}
@@ -32,6 +46,15 @@ class StatisticsHTTPException(Exception):
         self.status_code = status_code
         self.detail = {"code": code, "msg": msg}
         super().__init__(msg)
+
+
+class BusinessHTTPException(Exception):
+    """通用业务逻辑异常，用于处理业务规则校验失败等情况"""
+    def __init__(self, code: int, msg: str, status_code: int = 400):
+        self.status_code = status_code
+        self.detail = {"code": code, "msg": msg}
+        super().__init__(msg)
+
 
 def register_exception_handlers(app):
     """全局异常处理器
@@ -110,18 +133,6 @@ def register_exception_handlers(app):
             ).dict(),
         )
 
-    #交通请求异常
-    @app.exception_handler(TrafficHTTPException)
-    async def traffic_http_exception_handler(request: Request, exc: TrafficHTTPException):
-        logger.warning(f"TrafficHTTPException: {exc.detail}")
-        return JSONResponse(
-            status_code=200,
-            content=ResponseModel(
-                code=exc.detail["code"],
-                message=TrafficErrorResponse(error="交通数据操作异常", msg=exc.detail["msg"])
-            ).dict(),
-        )
-
     #统计信息异常
     @app.exception_handler(StatisticsHTTPException)
     async def statistics_http_exception_handler(request: Request, exc: StatisticsHTTPException):
@@ -133,5 +144,26 @@ def register_exception_handlers(app):
                 message=StatisticsErrorResponse(msg=exc.detail["msg"])
             ).dict(),
         )
-        
+
+    @app.exception_handler(BusinessHTTPException)
+    async def business_http_exception_handler(request: Request, exc: BusinessHTTPException):
+        logger.warning(f"BusinessHTTPException: {exc.detail}")
+        return JSONResponse(
+            status_code=200,
+            content=ResponseModel(
+                code=exc.detail["code"],
+                message={"error": "业务规则校验失败", "msg": exc.detail["msg"]}
+            ).dict(),
+        )
+
+    @app.exception_handler(ResourceHTTPException)
+    async def resource_http_exception_handler(request: Request, exc: ResourceHTTPException):
+        logger.warning(f"ResourceHTTPException: {exc.detail}")
+        return JSONResponse(
+            status_code=200,
+            content=ResponseModel(
+                code=exc.detail["code"],
+                message={"error": "资源操作失败", "msg": exc.detail["msg"]}
+            ).dict(),
+        )
     
