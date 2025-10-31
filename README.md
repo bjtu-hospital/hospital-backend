@@ -910,6 +910,37 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
+### 2.9 获取医生照片（原始数据）
+- GET `/admin/doctors/{doctor_id}/photo`
+- 说明：根据医生 ID 返回真实图片二进制数据（非静态文件路径）。仅管理员可访问。
+
+参数：
+- `doctor_id`：医生 ID（路径参数）
+
+权限与请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应：
+- 成功时返回图片二进制流，`Content-Type` 将根据文件扩展名自动推断（如 `image/jpeg`、`image/png`）。
+- 失败时返回统一错误格式，例如医生不存在、未上传照片或文件缺失：
+```json
+{
+  "code": 106,
+  "message": {
+    "error": "资源错误",
+    "msg": "医生照片文件不存在"
+  }
+}
+```
+
+注意：
+- 服务端会将 `Doctor.photo_path`（如 `/static/image/xxx.jpg` 或 `app/static/image/xxx.jpg`）规范化为相对 `app/` 的文件路径读取，避免暴露绝对路径。
+- 若需要在浏览器直接预览，可在请求中不设置 `Accept` 限制，或将响应保存为本地文件。
+
+---
+
 ## 3. 门诊管理
 
 ### 3.1 获取科室门诊列表

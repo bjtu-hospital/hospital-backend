@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends,UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import Optional, Union
@@ -18,6 +19,7 @@ from datetime import datetime
 import os
 import aiofiles
 import time
+import mimetypes
 
 
 logger = logging.getLogger(__name__)
@@ -1856,6 +1858,85 @@ async def delete_schedule(
         raise
     except Exception as e:
         logger.error(f"删除排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 医生照片二进制获取 ======
+@router.get("/doctors/{doctor_id}/photo")
+async def get_doctor_photo_raw(
+    doctor_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """根据医生ID返回照片二进制数据（仅管理员）。
+
+    - 优先读取 `Doctor.photo_path` 指向的本地文件，例如 `/static/image/xxx.jpg`
+    - 如果不存在或文件缺失，则返回 404
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        result = await db.execute(select(Doctor).where(Doctor.doctor_id == doctor_id))
+        db_doctor = result.scalar_one_or_none()
+        if not db_doctor:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生不存在",
+                status_code=404
+            )
+
+        if not db_doctor.photo_path:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="该医生暂无本地照片",
+                status_code=404
+            )
+
+        # 解析本地文件系统路径（始终使用相对 app 目录的路径）
+        base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+        rel_path = db_doctor.photo_path.lstrip("/")  # e.g. static/image/xxx.jpg 或 app/static/image/xxx.jpg
+        if rel_path.startswith("app/"):
+            # 归一化去掉前缀 app/
+            rel_path = rel_path[4:]
+        fs_path = os.path.normpath(os.path.join(base_dir, rel_path))  # app/<rel_path>
+
+        if not os.path.exists(fs_path) or os.path.isdir(fs_path):
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生照片文件不存在",
+                status_code=404
+            )
+
+        mime_type, _ = mimetypes.guess_type(fs_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        def file_iterator(path: str, chunk_size: int = 8192):
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        return StreamingResponse(file_iterator(fs_path), media_type=mime_type)
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生照片数据时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
