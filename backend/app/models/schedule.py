@@ -21,7 +21,7 @@ class Schedule(Base):
     date = Column(Date, nullable=False, comment="具体出诊日期")
     week_day = Column(Integer, nullable=False, comment="星期几 (1=周一, 7=周日)")
     time_section = Column(String(20), nullable=False, comment="时间段 (上午/下午/晚上)")
-    slot_type = Column(Enum(SlotType), nullable=False, comment="号源类型：普通、特需、专家")
+    slot_type = Column(Enum(SlotType, values_callable=lambda x: [e.value for e in x]), nullable=False, comment="号源类型：普通、特需、专家")
     total_slots = Column(Integer, nullable=False, default=0, comment="预设总号源数")
     remaining_slots = Column(Integer, nullable=False, default=0, comment="当前剩余号源数")
     status = Column(String(20), nullable=True, default="正常", comment="排班状态 (如：正常、停诊)")

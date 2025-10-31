@@ -4,11 +4,11 @@ from sqlalchemy import select, and_
 from typing import Optional, Union
 import logging
 
-from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment
+from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
-from app.db.base import get_db, redis, User, MajorDepartment, MinorDepartment, Doctor
+from app.db.base import get_db, redis, User, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule
 from app.schemas.user import user as UserSchema
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
@@ -1319,6 +1319,556 @@ async def create_or_update_doctor_account(
         raise
     except Exception as e:
         logger.error(f"为医生{operation_type}账号时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 门诊管理接口 ======
+
+@router.get("/clinics", response_model=ResponseModel[Union[ClinicListResponse, AuthErrorResponse]])
+async def get_clinics(
+    dept_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取科室门诊列表 - 仅管理员可操作，可按小科室过滤"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        filters = []
+        if dept_id:
+            filters.append(Clinic.minor_dept_id == dept_id)
+
+        result = await db.execute(select(Clinic).where(and_(*filters) if filters else True))
+        clinics = result.scalars().all()
+
+        clinic_list = []
+        for c in clinics:
+            clinic_list.append({
+                "clinic_id": c.clinic_id,
+                "area_id": c.area_id,
+                "name": c.name,
+                "address": c.address,
+                "minor_dept_id": c.minor_dept_id,
+                "clinic_type": c.clinic_type,
+                "create_time": c.create_time
+            })
+
+        return ResponseModel(code=0, message=ClinicListResponse(clinics=clinic_list))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取门诊列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/clinics", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def create_clinic(
+    clinic_data: ClinicCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """创建门诊 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 校验小科室存在
+        result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == clinic_data.minor_dept_id))
+        if not result.scalar_one_or_none():
+            raise ResourceHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="小科室不存在",
+                status_code=400
+            )
+
+        # 目前未提供院区选择，默认归属院区ID=1（后续支持可扩展）
+        db_clinic = Clinic(
+            area_id=1,
+            name=clinic_data.name,
+            address=clinic_data.address,
+            minor_dept_id=clinic_data.minor_dept_id,
+            clinic_type=clinic_data.clinic_type
+        )
+        db.add(db_clinic)
+        await db.commit()
+        await db.refresh(db_clinic)
+
+        logger.info(f"创建门诊成功: {db_clinic.name}")
+        return ResponseModel(code=0, message={
+            "clinic_id": db_clinic.clinic_id,
+            "detail": "门诊创建成功"
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建门诊时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 排班管理接口 ======
+
+def _weekday_to_cn(week_day: int) -> str:
+    mapping = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
+    return mapping.get(week_day, "")
+
+
+def _slot_type_to_str(slot_type_enum) -> str:
+    # Enum values are Chinese strings in model
+    return slot_type_enum.value if hasattr(slot_type_enum, "value") else str(slot_type_enum)
+
+
+def _str_to_slot_type(value: str):
+    # Accept: 普通/专家/特需
+    from app.models.schedule import SlotType
+    for member in SlotType:
+        if member.value == value:
+            return member
+    raise BusinessHTTPException(
+        code=settings.REQ_ERROR_CODE,
+        msg="无效的号源类型，应为 普通/专家/特需",
+        status_code=400
+    )
+
+
+@router.get("/departments/{dept_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
+async def get_department_schedules(
+    dept_id: int,
+    start_date: str,
+    end_date: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取科室排班 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 校验科室
+        result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == dept_id))
+        if not result.scalar_one_or_none():
+            raise ResourceHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="小科室不存在",
+                status_code=400
+            )
+
+        # 日期解析
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        # 查询：该小科室下的门诊 -> 排班
+        result = await db.execute(select(Clinic.clinic_id).where(Clinic.minor_dept_id == dept_id))
+        clinic_ids = [row[0] for row in result.all()]
+        if not clinic_ids:
+            return ResponseModel(code=0, message=ScheduleListResponse(schedules=[]))
+
+        from sqlalchemy import or_  # ensure imported
+        result = await db.execute(
+            select(Schedule, Doctor.name, Clinic.name, Clinic.clinic_type)
+            .join(Doctor, Doctor.doctor_id == Schedule.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .where(
+                and_(
+                    Schedule.clinic_id.in_(clinic_ids),
+                    Schedule.date >= start_dt,
+                    Schedule.date <= end_dt,
+                )
+            )
+        )
+
+        rows = result.all()
+        data = []
+        for sch, doctor_name, clinic_name, clinic_type in rows:
+            data.append({
+                "schedule_id": sch.schedule_id,
+                "doctor_id": sch.doctor_id,
+                "doctor_name": doctor_name,
+                "clinic_id": sch.clinic_id,
+                "clinic_name": clinic_name,
+                "clinic_type": clinic_type,
+                "date": sch.date,
+                "week_day": _weekday_to_cn(sch.week_day),
+                "time_section": sch.time_section,
+                "slot_type": _slot_type_to_str(sch.slot_type),
+                "total_slots": sch.total_slots,
+                "remaining_slots": sch.remaining_slots,
+                "status": sch.status,
+                "price": float(sch.price),
+                "create_time": sch.create_time,
+            })
+
+        return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取科室排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/doctors/{doctor_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
+async def get_doctor_schedules(
+    doctor_id: int,
+    start_date: str,
+    end_date: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取医生排班 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 校验医生
+        result = await db.execute(select(Doctor).where(Doctor.doctor_id == doctor_id))
+        if not result.scalar_one_or_none():
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生不存在",
+                status_code=404
+            )
+
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        result = await db.execute(
+            select(Schedule, Doctor.name, Clinic.name, Clinic.clinic_type)
+            .join(Doctor, Doctor.doctor_id == Schedule.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .where(
+                and_(
+                    Schedule.doctor_id == doctor_id,
+                    Schedule.date >= start_dt,
+                    Schedule.date <= end_dt,
+                )
+            )
+        )
+
+        rows = result.all()
+        data = []
+        for sch, doctor_name, clinic_name, clinic_type in rows:
+            data.append({
+                "schedule_id": sch.schedule_id,
+                "doctor_id": sch.doctor_id,
+                "doctor_name": doctor_name,
+                "clinic_id": sch.clinic_id,
+                "clinic_name": clinic_name,
+                "clinic_type": clinic_type,
+                "date": sch.date,
+                "week_day": _weekday_to_cn(sch.week_day),
+                "time_section": sch.time_section,
+                "slot_type": _slot_type_to_str(sch.slot_type),
+                "total_slots": sch.total_slots,
+                "remaining_slots": sch.remaining_slots,
+                "status": sch.status,
+                "price": float(sch.price),
+                "create_time": sch.create_time,
+            })
+
+        return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/clinics/{clinic_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
+async def get_clinic_schedules(
+    clinic_id: int,
+    start_date: str,
+    end_date: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取门诊排班 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 校验门诊
+        result = await db.execute(select(Clinic).where(Clinic.clinic_id == clinic_id))
+        if not result.scalar_one_or_none():
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="门诊不存在",
+                status_code=404
+            )
+
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        result = await db.execute(
+            select(Schedule, Doctor.name, Clinic.name, Clinic.clinic_type)
+            .join(Doctor, Doctor.doctor_id == Schedule.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .where(
+                and_(
+                    Schedule.clinic_id == clinic_id,
+                    Schedule.date >= start_dt,
+                    Schedule.date <= end_dt,
+                )
+            )
+        )
+
+        rows = result.all()
+        data = []
+        for sch, doctor_name, clinic_name, clinic_type in rows:
+            data.append({
+                "schedule_id": sch.schedule_id,
+                "doctor_id": sch.doctor_id,
+                "doctor_name": doctor_name,
+                "clinic_id": sch.clinic_id,
+                "clinic_name": clinic_name,
+                "clinic_type": clinic_type,
+                "date": sch.date,
+                "week_day": _weekday_to_cn(sch.week_day),
+                "time_section": sch.time_section,
+                "slot_type": _slot_type_to_str(sch.slot_type),
+                "total_slots": sch.total_slots,
+                "remaining_slots": sch.remaining_slots,
+                "status": sch.status,
+                "price": float(sch.price),
+                "create_time": sch.create_time,
+            })
+
+        return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取门诊排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/schedules", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def create_schedule(
+    schedule_data: ScheduleCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """创建排班 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 基本校验
+        if not (await db.execute(select(Doctor).where(Doctor.doctor_id == schedule_data.doctor_id))).scalar_one_or_none():
+            raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="医生不存在", status_code=400)
+        if not (await db.execute(select(Clinic).where(Clinic.clinic_id == schedule_data.clinic_id))).scalar_one_or_none():
+            raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="门诊不存在", status_code=400)
+
+        # 计算 week_day (1-7)
+        week_day = schedule_data.schedule_date.isoweekday()
+
+        db_schedule = Schedule(
+            doctor_id=schedule_data.doctor_id,
+            clinic_id=schedule_data.clinic_id,
+            date=schedule_data.schedule_date,
+            week_day=week_day,
+            time_section=schedule_data.time_section,
+            slot_type=_str_to_slot_type(schedule_data.slot_type),
+            total_slots=schedule_data.total_slots,
+            remaining_slots=schedule_data.total_slots,
+            status=schedule_data.status,
+            price=schedule_data.price,
+        )
+        db.add(db_schedule)
+        await db.commit()
+        await db.refresh(db_schedule)
+
+        logger.info(f"创建排班成功: {db_schedule.schedule_id}")
+        return ResponseModel(code=0, message={"schedule_id": db_schedule.schedule_id, "detail": "排班创建成功"})
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/schedules/{schedule_id}", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_schedule(
+    schedule_id: int,
+    schedule_data: ScheduleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新排班 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        result = await db.execute(select(Schedule).where(Schedule.schedule_id == schedule_id))
+        db_schedule = result.scalar_one_or_none()
+        if not db_schedule:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在", status_code=404)
+
+        # 字段更新和校验
+        if schedule_data.doctor_id is not None and schedule_data.doctor_id != db_schedule.doctor_id:
+            if not (await db.execute(select(Doctor).where(Doctor.doctor_id == schedule_data.doctor_id))).scalar_one_or_none():
+                raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="医生不存在", status_code=400)
+            db_schedule.doctor_id = schedule_data.doctor_id
+
+        if schedule_data.clinic_id is not None and schedule_data.clinic_id != db_schedule.clinic_id:
+            if not (await db.execute(select(Clinic).where(Clinic.clinic_id == schedule_data.clinic_id))).scalar_one_or_none():
+                raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="门诊不存在", status_code=400)
+            db_schedule.clinic_id = schedule_data.clinic_id
+
+        if schedule_data.schedule_date is not None:
+            db_schedule.date = schedule_data.schedule_date
+            db_schedule.week_day = schedule_data.schedule_date.isoweekday()
+
+        if schedule_data.time_section is not None:
+            db_schedule.time_section = schedule_data.time_section
+
+        if schedule_data.slot_type is not None:
+            db_schedule.slot_type = _str_to_slot_type(schedule_data.slot_type)
+
+        if schedule_data.total_slots is not None:
+            # 调整 remaining 时保持不为负
+            delta = schedule_data.total_slots - db_schedule.total_slots
+            db_schedule.total_slots = schedule_data.total_slots
+            db_schedule.remaining_slots = max(0, db_schedule.remaining_slots + delta)
+
+        if schedule_data.status is not None:
+            db_schedule.status = schedule_data.status
+
+        if schedule_data.price is not None:
+            db_schedule.price = schedule_data.price
+
+        db.add(db_schedule)
+        await db.commit()
+        await db.refresh(db_schedule)
+
+        logger.info(f"更新排班成功: {db_schedule.schedule_id}")
+        return ResponseModel(code=0, message={"detail": "排班更新成功"})
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.delete("/schedules/{schedule_id}", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def delete_schedule(
+    schedule_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """删除排班 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        result = await db.execute(select(Schedule).where(Schedule.schedule_id == schedule_id))
+        db_schedule = result.scalar_one_or_none()
+        if not db_schedule:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在", status_code=404)
+
+        await db.delete(db_schedule)
+        await db.commit()
+
+        logger.info(f"删除排班成功: {schedule_id}")
+        return ResponseModel(code=0, message={"detail": "排班删除成功"})
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除排班时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
