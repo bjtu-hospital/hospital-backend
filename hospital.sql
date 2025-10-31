@@ -11,7 +11,7 @@
  Target Server Version : 80039
  File Encoding         : 65001
 
- Date: 31/10/2025 13:58:20
+ Date: 31/10/2025 12:52:31
 */
 
 SET NAMES utf8mb4;
@@ -60,6 +60,7 @@ CREATE TABLE `clinic`  (
 -- ----------------------------
 -- Records of clinic
 -- ----------------------------
+-- Area ID = 1 的门诊地址: '北京市海淀区中共中央党校院内门诊部'
 INSERT INTO `clinic` VALUES (1, 1, '中央党校院区临床营养科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 47, 0);
 INSERT INTO `clinic` VALUES (2, 1, '中央党校院区全科医学科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 37, 0);
 INSERT INTO `clinic` VALUES (3, 1, '中央党校院区内分泌科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 3, 0);
@@ -79,6 +80,8 @@ INSERT INTO `clinic` VALUES (16, 1, '中央党校院区肾内科门诊', '北京
 INSERT INTO `clinic` VALUES (17, 1, '中央党校院区肿瘤化疗与放射病科', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 16, 0);
 INSERT INTO `clinic` VALUES (18, 1, '中央党校院区运动医学门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 27, 0);
 INSERT INTO `clinic` VALUES (19, 1, '中央党校院区骨科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 19, 0);
+
+-- Area ID = 2 的门诊地址: '北京市西城区总院门诊部'
 INSERT INTO `clinic` VALUES (20, 2, '中医科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 13, 0);
 INSERT INTO `clinic` VALUES (21, 2, '中医科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 13, 2);
 INSERT INTO `clinic` VALUES (22, 2, '临床营养科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 47, 0);
@@ -202,9 +205,11 @@ INSERT INTO `clinic` VALUES (139, 2, '骨科门诊', '北京市西城区总院�
 INSERT INTO `clinic` VALUES (140, 2, '骨科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 1);
 INSERT INTO `clinic` VALUES (141, 2, '骨科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 2);
 INSERT INTO `clinic` VALUES (142, 2, '骨质疏松门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 0);
-INSERT INTO `clinic` VALUES (143, 2, '高干门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 0, 0);
-INSERT INTO `clinic` VALUES (144, 2, '麻醉科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 0, 0);
-INSERT INTO `clinic` VALUES (145, 3, '北方院区中医科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 13, 0);
+INSERT INTO `clinic` VALUES (143, 2, '高干门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 0, 0); -- 假设 minor_dept_id 为 0 或其他默认值
+INSERT INTO `clinic` VALUES (144, 2, '麻醉科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 0, 0); -- 假设 minor_dept_id 为 0 或其他默认值
+
+-- Area ID = 3 的门诊地址: '北京市昌平区北方医院院区门诊部'
+INSERT INTO `clinic` VALUES (145, 3, '北方院区中医科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 13, 0); -- 假设 minor_dept_id
 INSERT INTO `clinic` VALUES (146, 3, '北方院区内分泌内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 3, 0);
 INSERT INTO `clinic` VALUES (147, 3, '北方院区变态反应门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 2, 0);
 INSERT INTO `clinic` VALUES (148, 3, '北方院区呼吸内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 2, 0);
@@ -223,6 +228,8 @@ INSERT INTO `clinic` VALUES (160, 3, '北方院区肿瘤放疗科门诊', '北�
 INSERT INTO `clinic` VALUES (161, 3, '北方院区胸外科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 21, 0);
 INSERT INTO `clinic` VALUES (162, 3, '北方院区风湿免疫科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 7, 0);
 INSERT INTO `clinic` VALUES (163, 3, '北方院区骨科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 19, 0);
+
+-- Area ID = 4 的门诊地址: '北京市顺义区首都国际机场院区门诊部'
 INSERT INTO `clinic` VALUES (164, 4, '机场中医科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 13, 0);
 INSERT INTO `clinic` VALUES (165, 4, '机场内分泌门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 3, 0);
 INSERT INTO `clinic` VALUES (166, 4, '机场内分泌门诊（特需）', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 3, 2);
@@ -242,6 +249,8 @@ INSERT INTO `clinic` VALUES (179, 4, '机场运动医学门诊', '北京市顺�
 INSERT INTO `clinic` VALUES (180, 4, '机场运动医学门诊（特需）', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 27, 2);
 INSERT INTO `clinic` VALUES (181, 4, '机场院区肿瘤化疗与放射病科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 16, 0);
 INSERT INTO `clinic` VALUES (182, 4, '机场院区肿瘤放疗科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 15, 0);
+
+-- Area ID = 5 的门诊地址: '北京市海淀区西北旺镇海淀北部医院门诊部'
 INSERT INTO `clinic` VALUES (183, 5, '海淀北部院区临床营养科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 47, 0);
 INSERT INTO `clinic` VALUES (184, 5, '海淀北部院区介入血管外科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 25, 0);
 INSERT INTO `clinic` VALUES (185, 5, '海淀北部院区内分泌门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 3, 0);
@@ -273,12 +282,13 @@ INSERT INTO `clinic` VALUES (210, 5, '海淀北部院区血液内科门诊', '�
 INSERT INTO `clinic` VALUES (211, 5, '海淀北部院区血液内科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 5, 2);
 INSERT INTO `clinic` VALUES (212, 5, '海淀北部院区骨科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 19, 0);
 INSERT INTO `clinic` VALUES (213, 5, '海淀北部院区骨科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 19, 2);
+
+-- Area ID = 6 的门诊地址: '北京市西城区复兴门内大街第二门诊部'
 INSERT INTO `clinic` VALUES (214, 6, '第二门诊部中医科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 13, 0);
 INSERT INTO `clinic` VALUES (215, 6, '第二门诊部妇科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 29, 0);
 INSERT INTO `clinic` VALUES (216, 6, '第二门诊部心血管科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 1, 0);
 INSERT INTO `clinic` VALUES (217, 6, '第二门诊部神经科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 9, 0);
 INSERT INTO `clinic` VALUES (218, 6, '第二门诊部肾内科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 4, 0);
-
 -- ----------------------------
 -- Table structure for doctor
 -- ----------------------------
@@ -1153,6 +1163,7 @@ INSERT INTO `doctor` VALUES (872, NULL, 47, '李百花', '副主任营养师', '
 INSERT INTO `doctor` VALUES (873, NULL, 47, '张秋香', '主管营养师', '常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等，及危重症的肠内营养支持。', '张秋香 基本情况 姓名：张秋香性别：女学位：医学硕士毕业院校：北京大学医学部专业：营养与食品卫生技术职称：主管营养师 专业特长 常见慢性疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等，营养评估，肠内营养支持治疗。', '/static/images/doctor/doctor_873.jpg', 'https://puh3.net.cn/__local/E/E0/46/6F51F766913F0D6E11E1603ED5B_B405BB58_3AA5E.jpg', '2025-10-16 11:12:59');
 INSERT INTO `doctor` VALUES (874, NULL, 47, '贺晓娟', '主管营养师', '常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等的营养咨询与治疗。', '贺晓娟 基本情况 姓名：贺晓娟性别：女学位：医学硕士毕业院校：首都医科大学专业：营养与食品卫生技术职称：主管营养师 专业特长 常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等的营养咨询与治疗。 工作经历...', '/static/images/doctor/doctor_874.jpg', 'https://puh3.net.cn/__local/6/36/E4/0F9716C26A9B83866A22E74E333_640532E4_21CF4.jpg', '2025-10-16 11:12:59');
 INSERT INTO `doctor` VALUES (875, NULL, 13, '李东', '主任医师、教授', '中医及中西医结合治疗妇科生殖、内分泌失调、不孕不育等疾病。中医药治疗消化、心脑血管、呼吸系统等疾病及各种内科杂症。在慢性胃炎，消化性溃疡、结肠炎、慢性支气管炎、慢阻肺、冠心病、脑血管疾病及肿瘤调理等各种内科杂症及月经不调、子宫肌瘤、子宫腺肌症、多囊卵巢综合征、不孕不育及妇科生殖疾病等方面积累了丰富的经验。', '工作经历1990年毕业于北京中医药大学，毕业后一直在北京大学第三医院中医科从事临床、教学和科研工作，历任住院医师、主治医师、副主任医师和主任医师。先后师从著名中医专家、首都国医名师姜良铎教授和中国工程院院士、国医大师王琦教授，分别获得硕士和博士学位。现任北京大学第三医院中医科主任，博士生导师，博士后合作导师，科室学术带头人，北京市中西医结合生殖医学研究所副所长，北京大学医学部中西医结合学系副主任，兼任北京中西医结合学会副会长。...', '/static/images/doctor/doctor_242.jpg', 'https://puh3.net.cn/__local/9/1C/E4/B1E32C87164827E8651738A73B2_B14E067F_1E8FF.jpg?e=.jpg', '2025-10-17 00:38:53');
+INSERT INTO `doctor` VALUES (876, NULL, 1, 'string', NULL, NULL, NULL, '/static/images/doctor/doctor_876_1761886058524.jpg', NULL, NULL);
 INSERT INTO `doctor` VALUES (876, NULL, 1, 'string', NULL, NULL, NULL, '/static/images/doctor/doctor_876_1761886058524.jpg', NULL, NULL);
 
 -- ----------------------------
@@ -4308,9 +4319,9 @@ CREATE TABLE `system_config`  (
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`config_id`) USING BTREE,
-  UNIQUE INDEX `uk_scope_key`(`scope_type`, `scope_id`, `config_key`) USING BTREE,
-  INDEX `idx_key`(`config_key`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统通用配置表' ROW_FORMAT = DYNAMIC;
+  UNIQUE INDEX `uk_scope_key`(`scope_type` ASC, `scope_id` ASC, `config_key` ASC) USING BTREE,
+  INDEX `idx_key`(`config_key` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统通用配置表' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of system_config
@@ -4373,7 +4384,7 @@ CREATE TABLE `user_access_log`  (
   PRIMARY KEY (`user_access_log_id`) USING BTREE,
   INDEX `user_id`(`user_id`) USING BTREE,
   CONSTRAINT `user_access_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 219 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 166 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_access_log
@@ -4543,59 +4554,6 @@ INSERT INTO `user_access_log` VALUES (162, 5, '127.0.0.1', 'Mozilla/5.0 (Windows
 INSERT INTO `user_access_log` VALUES (163, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'POST', 200, 0, '2025-10-31 12:47:38', 78);
 INSERT INTO `user_access_log` VALUES (164, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'GET', 200, NULL, '2025-10-31 12:47:51', 33);
 INSERT INTO `user_access_log` VALUES (165, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/800/photo', 'GET', 200, NULL, '2025-10-31 12:47:55', 19);
-INSERT INTO `user_access_log` VALUES (166, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-10-31 13:50:42', 0);
-INSERT INTO `user_access_log` VALUES (167, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-10-31 13:50:42', 29);
-INSERT INTO `user_access_log` VALUES (168, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors?dept_id=20', 'GET', 200, 0, '2025-10-31 13:50:44', 21);
-INSERT INTO `user_access_log` VALUES (169, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/20/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 118);
-INSERT INTO `user_access_log` VALUES (170, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=20', 'GET', 200, 0, '2025-10-31 13:50:44', 19);
-INSERT INTO `user_access_log` VALUES (171, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/8/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
-INSERT INTO `user_access_log` VALUES (172, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/68/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 15);
-INSERT INTO `user_access_log` VALUES (173, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/69/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 19);
-INSERT INTO `user_access_log` VALUES (174, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/70/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 13);
-INSERT INTO `user_access_log` VALUES (175, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/71/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
-INSERT INTO `user_access_log` VALUES (176, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/152/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
-INSERT INTO `user_access_log` VALUES (177, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/171/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
-INSERT INTO `user_access_log` VALUES (178, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/195/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 14);
-INSERT INTO `user_access_log` VALUES (179, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/196/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 17);
-INSERT INTO `user_access_log` VALUES (180, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/417/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:45', 16);
-INSERT INTO `user_access_log` VALUES (181, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/419/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:46', 15);
-INSERT INTO `user_access_log` VALUES (182, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/421/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:46', 15);
-INSERT INTO `user_access_log` VALUES (183, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/401/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:51', 17);
-INSERT INTO `user_access_log` VALUES (184, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-10-31 13:53:04', 0);
-INSERT INTO `user_access_log` VALUES (185, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-10-31 13:53:04', 13);
-INSERT INTO `user_access_log` VALUES (186, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors', 'GET', 200, 0, '2025-10-31 13:53:05', 65);
-INSERT INTO `user_access_log` VALUES (187, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/major-departments', 'GET', 200, 0, '2025-10-31 13:53:05', 55);
-INSERT INTO `user_access_log` VALUES (188, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/2/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 172);
-INSERT INTO `user_access_log` VALUES (189, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/3/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 20);
-INSERT INTO `user_access_log` VALUES (190, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/4/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 20);
-INSERT INTO `user_access_log` VALUES (191, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/1/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 174);
-INSERT INTO `user_access_log` VALUES (192, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/5/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 23);
-INSERT INTO `user_access_log` VALUES (193, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/6/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 23);
-INSERT INTO `user_access_log` VALUES (194, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/8/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 44);
-INSERT INTO `user_access_log` VALUES (195, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/9/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 48);
-INSERT INTO `user_access_log` VALUES (196, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/10/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 43);
-INSERT INTO `user_access_log` VALUES (197, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/7/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 51);
-INSERT INTO `user_access_log` VALUES (198, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/11/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 42);
-INSERT INTO `user_access_log` VALUES (199, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/12/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 34);
-INSERT INTO `user_access_log` VALUES (200, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=8', 'GET', 200, 0, '2025-10-31 13:53:06', 26);
-INSERT INTO `user_access_log` VALUES (201, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/8/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 38);
-INSERT INTO `user_access_log` VALUES (202, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/13/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 13);
-INSERT INTO `user_access_log` VALUES (203, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/104/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 15);
-INSERT INTO `user_access_log` VALUES (204, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/105/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 15);
-INSERT INTO `user_access_log` VALUES (205, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/157/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 15);
-INSERT INTO `user_access_log` VALUES (206, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/205/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 16);
-INSERT INTO `user_access_log` VALUES (207, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=20', 'GET', 200, 0, '2025-10-31 13:53:28', 30);
-INSERT INTO `user_access_log` VALUES (208, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors?dept_id=20', 'GET', 200, 0, '2025-10-31 13:53:28', 30);
-INSERT INTO `user_access_log` VALUES (209, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/20/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 34);
-INSERT INTO `user_access_log` VALUES (210, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/8/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 17);
-INSERT INTO `user_access_log` VALUES (211, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/68/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 15);
-INSERT INTO `user_access_log` VALUES (212, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/69/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 16);
-INSERT INTO `user_access_log` VALUES (213, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/70/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 13);
-INSERT INTO `user_access_log` VALUES (214, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/71/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 14);
-INSERT INTO `user_access_log` VALUES (215, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/152/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 16);
-INSERT INTO `user_access_log` VALUES (216, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/171/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 16);
-INSERT INTO `user_access_log` VALUES (217, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/195/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 14);
-INSERT INTO `user_access_log` VALUES (218, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/196/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 18);
 
 -- ----------------------------
 -- Table structure for visit_history
