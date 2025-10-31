@@ -487,6 +487,61 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
+## 8. 管理员注册（开发/运维） Post: `/auth/register-admin`
+### 用途
+用于创建管理员账户。逻辑如下：
+- 如果系统尚无 Administrator 记录（首次引导），允许无认证创建第一个管理员（bootstrap）。
+- 否则，仅允许当前已认证且 `is_admin==True` 的用户创建新管理员。
+
+### 请求参数（表单 / JSON 均可，示例为字段说明）
+
+- `identifier` (string) — 工号，用于登录（必填）
+- `password` (string) — 登录密码（必填）
+- `name` (string) — 管理员姓名（必填）
+- `email` (string, optional) — 邮箱（可选，但若提供必须唯一）
+- `job_title` (string, optional) — 职位
+
+### 权限与行为
+- 首次引导（无 Administrator 记录）时允许匿名调用以创建第一个管理员。
+- 若已有管理员存在，则调用者必须携带有效 token，并且 `current_user.is_admin == True`，否则返回权限不足错误（HTTP 403，框架中抛出 `AuthHTTPException`，错误码为 `INSUFFICIENT_AUTHORITY_CODE`）。
+- 会校验 `identifier` 与 `email` 的唯一性，若冲突返回业务错误（400，`REGISTER_FAILED_CODE`）。
+
+### 成功响应示例
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "成功创建管理员 张三"
+    }
+}
+```
+
+### 可能的错误示例
+- 权限不足（已有管理员但当前请求者非管理员）
+```json
+{
+    "code": 102,
+    "message": {
+        "error": "权限不足",
+        "msg": "仅管理员可创建新管理员"
+    }
+}
+```
+- 注册失败（identifier 或 email 冲突）
+```json
+{
+    "code": 100,
+    "message": {
+        "error": "注册失败",
+        "msg": "该工号(identifier)已被占用"
+    }
+}
+``` 
+
+---
+
+---
+
 # 二、管理员 API 接口
 
 以下接口都需要：
@@ -852,6 +907,231 @@ curl -X POST http://127.0.0.1:8000/doctors \
 ```
 
 注意：若文件不存在或删除期间发生 IO 错误，会抛出 `ResourceHTTPException` 并由全局异常处理器返回语义化错误信息。
+
+---
+
+## 3. 门诊管理
+
+### 3.1 获取科室门诊列表
+- GET `/admin/clinics?dept_id={dept_id}`
+- 说明：获取门诊列表，可按小科室过滤
+- 参数 `dept_id` 可选，用于按小科室过滤
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "clinics": [
+            {
+                "clinic_id": 1,
+                "area_id": 1,
+                "name": "心血管内科普通门诊",
+                "address": "门诊楼2层",
+                "minor_dept_id": 1,
+                "clinic_type": 0,
+                "create_time": "2025-10-17T00:51:23"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `clinic_type`：门诊类型，0-普通，1-国疗，2-特需
+
+### 3.2 创建门诊
+- POST `/admin/clinics`
+- 说明：创建新的门诊地点
+
+请求体：
+```json
+{
+    "minor_dept_id": 1,
+    "name": "心血管内科普通门诊",
+    "clinic_type": 0,
+    "address": "门诊楼2层"
+}
+```
+
+字段说明：
+- `minor_dept_id`：小科室ID（必填）
+- `name`：门诊名称（必填）
+- `clinic_type`：门诊类型，0-普通，1-国疗，2-特需（必填，默认0）
+- `address`：门诊地址描述（可选）
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "clinic_id": 123,
+        "detail": "门诊创建成功"
+    }
+}
+```
+
+---
+
+## 4. 排班管理
+
+### 4.1 获取科室排班
+- GET `/admin/departments/{dept_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
+- 说明：获取指定小科室在日期范围内的所有排班
+
+参数：
+- `dept_id`：小科室ID（路径参数）
+- `start_date`：开始日期，格式 YYYY-MM-DD（查询参数）
+- `end_date`：结束日期，格式 YYYY-MM-DD（查询参数）
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "schedules": [
+            {
+                "schedule_id": 1,
+                "doctor_id": 1,
+                "doctor_name": "陈明哲",
+                "clinic_id": 1,
+                "clinic_name": "心血管内科普通门诊",
+                "clinic_type": 0,
+                "date": "2025-10-31",
+                "week_day": "五",
+                "time_section": "上午",
+                "slot_type": "专家",
+                "total_slots": 20,
+                "remaining_slots": 15,
+                "status": "正常",
+                "price": 100.00,
+                "create_time": "2025-10-20T23:44:28"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `time_section`：时间段，值为"上午"、"下午"、"晚上"
+- `slot_type`：号源类型，值为"普通"、"专家"、"特需"
+- `status`：排班状态，如"正常"、"停诊"
+- `week_day`：星期几，值为"一"、"二"、"三"、"四"、"五"、"六"、"日"
+
+### 4.2 获取医生排班
+- GET `/admin/doctors/{doctor_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
+- 说明：获取指定医生在日期范围内的所有排班
+
+参数：
+- `doctor_id`：医生ID（路径参数）
+- `start_date`：开始日期，格式 YYYY-MM-DD（查询参数）
+- `end_date`：结束日期，格式 YYYY-MM-DD（查询参数）
+
+响应：同 4.1 获取科室排班的响应格式
+
+### 4.3 获取门诊排班
+- GET `/admin/clinics/{clinic_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
+- 说明：获取指定门诊在日期范围内的所有排班
+
+参数：
+- `clinic_id`：门诊ID（路径参数）
+- `start_date`：开始日期，格式 YYYY-MM-DD（查询参数）
+- `end_date`：结束日期，格式 YYYY-MM-DD（查询参数）
+
+响应：同 4.1 获取科室排班的响应格式
+
+### 4.4 创建排班
+- POST `/admin/schedules`
+- 说明：为医生创建新的排班记录
+
+请求体：
+```json
+{
+    "doctor_id": 1,
+    "clinic_id": 1,
+    "schedule_date": "2025-11-01",
+    "time_section": "上午",
+    "slot_type": "专家",
+    "status": "正常",
+    "price": 100.00,
+    "total_slots": 20
+}
+```
+
+字段说明：
+- `doctor_id`：医生ID（必填）
+- `clinic_id`：门诊ID（必填）
+- `schedule_date`：出诊日期，格式 YYYY-MM-DD（必填）
+- `time_section`：时间段，"上午"/"下午"/"晚上"（必填）
+- `slot_type`：号源类型，"普通"/"专家"/"特需"（必填）
+- `status`：排班状态（必填，默认"正常"）
+- `price`：挂号原价，单位元（必填，≥0）
+- `total_slots`：总号源数（必填，≥0）
+
+注意：创建时系统会自动计算 `week_day`（星期几），并设置 `remaining_slots` 等于 `total_slots`。
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "schedule_id": 123,
+        "detail": "排班创建成功"
+    }
+}
+```
+
+### 4.5 更新排班
+- PUT `/admin/schedules/{schedule_id}`
+- 说明：更新排班信息，支持部分字段更新
+
+参数：
+- `schedule_id`：排班ID（路径参数）
+
+请求体（所有字段可选，只更新提供的字段）：
+```json
+{
+    "doctor_id": 1,
+    "clinic_id": 1,
+    "schedule_date": "2025-11-02",
+    "time_section": "下午",
+    "slot_type": "特需",
+    "status": "停诊",
+    "price": 150.00,
+    "total_slots": 25
+}
+```
+
+字段说明：
+- 更新 `schedule_date` 时，系统会自动重新计算 `week_day`
+- 更新 `total_slots` 时，系统会自动调整 `remaining_slots`（保持差额不变，但不允许为负数）
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "排班更新成功"
+    }
+}
+```
+
+### 4.6 删除排班
+- DELETE `/admin/schedules/{schedule_id}`
+- 说明：删除指定的排班记录
+
+参数：
+- `schedule_id`：排班ID（路径参数）
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "排班删除成功"
+    }
+}
+```
 
 ---
 

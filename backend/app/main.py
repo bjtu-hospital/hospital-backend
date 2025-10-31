@@ -117,9 +117,14 @@ app.add_middleware(
 
 
 #引用子路由
-app.include_router(router=auth.router, prefix="/auth", tags="authentication")
-app.include_router(router=statistics.router, prefix="/statistics", tags="statistics")
-app.include_router(router=admin.router, prefix="/admin", tags="admin")
+try:
+    app.include_router(router=auth.router, prefix="/auth", tags=["authentication"])
+    app.include_router(router=statistics.router, prefix="/statistics", tags=["statistics"])
+    app.include_router(router=admin.router, prefix="/admin", tags=["admin"])
+    logger.info("All routers registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register routers: {e}", exc_info=True)
+    raise
 
 #默认
 @app.get("/")

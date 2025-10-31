@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
-from datetime import datetime
+from typing import Optional, List
+from datetime import datetime, date
 
 
 # 管理员注册
@@ -115,3 +115,74 @@ class DoctorTransferDepartment(BaseModel):
     # doctor_id: int = Field(description="医生ID")
     new_dept_id: int = Field(description="新科室ID")
 
+
+# ====== 门诊与排班（新增） ======
+
+# 门诊
+class ClinicCreate(BaseModel):
+    minor_dept_id: int = Field(description="小科室ID")
+    name: str = Field(max_length=100, description="门诊名称")
+    clinic_type: int = Field(0, description="门诊类型: 0-普通, 1-国疗, 2-特需")
+    address: Optional[str] = Field(None, max_length=255, description="门诊地址描述")
+
+
+class ClinicResponse(BaseModel):
+    clinic_id: int
+    area_id: int
+    name: str
+    address: Optional[str]
+    minor_dept_id: Optional[int]
+    clinic_type: int
+    create_time: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class ClinicListResponse(BaseModel):
+    clinics: List[ClinicResponse]
+
+
+# 排班
+class ScheduleCreate(BaseModel):
+    doctor_id: int = Field(description="医生ID")
+    clinic_id: int = Field(description="门诊ID")
+    schedule_date: date = Field(description="出诊日期，YYYY-MM-DD")
+    time_section: str = Field(description="时间段: 上午/下午/晚上")
+    slot_type: str = Field(description="号源类型: 普通/专家/特需")
+    status: str = Field("正常", description="排班状态")
+    price: float = Field(ge=0, description="挂号原价")
+    total_slots: int = Field(ge=0, description="总号源数")
+
+
+class ScheduleUpdate(BaseModel):
+    doctor_id: Optional[int] = Field(None, description="医生ID")
+    clinic_id: Optional[int] = Field(None, description="门诊ID")
+    schedule_date: Optional[date] = Field(None, description="出诊日期，YYYY-MM-DD")
+    time_section: Optional[str] = Field(None, description="时间段: 上午/下午/晚上")
+    slot_type: Optional[str] = Field(None, description="号源类型: 普通/专家/特需")
+    status: Optional[str] = Field(None, description="排班状态")
+    price: Optional[float] = Field(None, ge=0, description="挂号原价")
+    total_slots: Optional[int] = Field(None, ge=0, description="总号源数")
+
+
+class ScheduleItemResponse(BaseModel):
+    schedule_id: int
+    doctor_id: int
+    doctor_name: str
+    clinic_id: int
+    clinic_name: str
+    clinic_type: int
+    date: date
+    week_day: str
+    time_section: str
+    slot_type: str
+    total_slots: int
+    remaining_slots: int
+    status: Optional[str]
+    price: float
+    create_time: Optional[datetime]
+
+
+class ScheduleListResponse(BaseModel):
+    schedules: List[ScheduleItemResponse]

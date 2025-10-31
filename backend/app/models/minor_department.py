@@ -16,3 +16,4 @@ class MinorDepartment(Base):
     # 关系字段
     major_department = relationship("MajorDepartment", back_populates="minor_departments")
     doctors = relationship("Doctor", back_populates="minor_department")
+    clinics = relationship("Clinic", back_populates="minor_department")
