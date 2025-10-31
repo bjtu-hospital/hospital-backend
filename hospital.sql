@@ -1,17 +1,17 @@
 /*
- Navicat Premium Dump SQL
+ Navicat Premium Data Transfer
 
- Source Server         : dbstudy
+ Source Server         : local
  Source Server Type    : MySQL
- Source Server Version : 80041 (8.0.41)
+ Source Server Version : 80039
  Source Host           : localhost:3306
  Source Schema         : hospital
 
  Target Server Type    : MySQL
- Target Server Version : 80041 (8.0.41)
+ Target Server Version : 80039
  File Encoding         : 65001
 
- Date: 31/10/2025 08:58:18
+ Date: 31/10/2025 13:58:20
 */
 
 SET NAMES utf8mb4;
@@ -28,7 +28,7 @@ CREATE TABLE `administrator`  (
   `job_title` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '职务',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`admin_id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id`) USING BTREE,
   CONSTRAINT `fk_admin_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '管理员详细信息表' ROW_FORMAT = DYNAMIC;
 
@@ -51,8 +51,8 @@ CREATE TABLE `clinic`  (
   `minor_dept_id` int NULL DEFAULT NULL,
   `clinic_type` tinyint NOT NULL DEFAULT 0 COMMENT '门诊类型: 0-普通, 1-国疗, 2-特需',
   PRIMARY KEY (`clinic_id`) USING BTREE,
-  INDEX `fk_clinic_area`(`area_id` ASC) USING BTREE,
-  INDEX `fk_clinic_minor_dept`(`minor_dept_id` ASC) USING BTREE,
+  INDEX `fk_clinic_area`(`area_id`) USING BTREE,
+  INDEX `fk_clinic_minor_dept`(`minor_dept_id`) USING BTREE,
   CONSTRAINT `fk_clinic_area` FOREIGN KEY (`area_id`) REFERENCES `hospital_area` (`area_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_clinic_minor_dept` FOREIGN KEY (`minor_dept_id`) REFERENCES `minor_department` (`minor_dept_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 220 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '门诊地点信息表' ROW_FORMAT = DYNAMIC;
@@ -60,224 +60,224 @@ CREATE TABLE `clinic`  (
 -- ----------------------------
 -- Records of clinic
 -- ----------------------------
-INSERT INTO `clinic` VALUES (1, 1, '中央党校院区临床营养科门诊', NULL, '2025-10-17 00:51:23', 47, 0);
-INSERT INTO `clinic` VALUES (2, 1, '中央党校院区全科医学科门诊', NULL, '2025-10-17 00:51:23', 37, 0);
-INSERT INTO `clinic` VALUES (3, 1, '中央党校院区内分泌科门诊', NULL, '2025-10-17 00:51:23', 3, 0);
-INSERT INTO `clinic` VALUES (4, 1, '中央党校院区呼吸内科门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (5, 1, '中央党校院区妇科门诊', NULL, '2025-10-17 00:51:23', 29, 0);
-INSERT INTO `clinic` VALUES (6, 1, '中央党校院区康复科门诊', NULL, '2025-10-17 00:51:23', 28, 0);
-INSERT INTO `clinic` VALUES (7, 1, '中央党校院区心血管内科门诊', NULL, '2025-10-17 00:51:23', 1, 0);
-INSERT INTO `clinic` VALUES (8, 1, '中央党校院区泌尿科门诊', NULL, '2025-10-17 00:51:23', 20, 0);
-INSERT INTO `clinic` VALUES (9, 1, '中央党校院区消化内科门诊', NULL, '2025-10-17 00:51:23', 6, 0);
-INSERT INTO `clinic` VALUES (10, 1, '中央党校院区疼痛门诊', NULL, '2025-10-17 00:51:23', 36, 0);
-INSERT INTO `clinic` VALUES (11, 1, '中央党校院区皮肤科门诊', NULL, '2025-10-17 00:51:23', 12, 0);
-INSERT INTO `clinic` VALUES (12, 1, '中央党校院区神经科门诊', NULL, '2025-10-17 00:51:23', 9, 0);
-INSERT INTO `clinic` VALUES (13, 1, '中央党校院区老年内科门诊', NULL, '2025-10-17 00:51:23', 8, 0);
-INSERT INTO `clinic` VALUES (14, 1, '中央党校院区耳鼻喉科门诊', NULL, '2025-10-17 00:51:23', 32, 0);
-INSERT INTO `clinic` VALUES (15, 1, '中央党校院区肛肠科门诊', NULL, '2025-10-17 00:51:23', 18, 0);
-INSERT INTO `clinic` VALUES (16, 1, '中央党校院区肾内科门诊', NULL, '2025-10-17 00:51:23', 4, 0);
-INSERT INTO `clinic` VALUES (17, 1, '中央党校院区肿瘤化疗与放射病科', NULL, '2025-10-17 00:51:23', 16, 0);
-INSERT INTO `clinic` VALUES (18, 1, '中央党校院区运动医学门诊', NULL, '2025-10-17 00:51:23', 27, 0);
-INSERT INTO `clinic` VALUES (19, 1, '中央党校院区骨科门诊', NULL, '2025-10-17 00:51:23', 19, 0);
-INSERT INTO `clinic` VALUES (20, 2, '中医科门诊', NULL, '2025-10-17 00:51:23', 13, 0);
-INSERT INTO `clinic` VALUES (21, 2, '中医科门诊（特需）', NULL, '2025-10-17 00:51:23', 13, 2);
-INSERT INTO `clinic` VALUES (22, 2, '临床营养科门诊', NULL, '2025-10-17 00:51:23', 47, 0);
-INSERT INTO `clinic` VALUES (23, 2, '产科门诊', NULL, '2025-10-17 00:51:23', 29, 0);
-INSERT INTO `clinic` VALUES (24, 2, '产科门诊（特需）', NULL, '2025-10-17 00:51:23', 29, 2);
-INSERT INTO `clinic` VALUES (25, 2, '介入血管外科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 25, 2);
-INSERT INTO `clinic` VALUES (26, 2, '介入血管外科门诊', NULL, '2025-10-17 00:51:23', 25, 0);
-INSERT INTO `clinic` VALUES (27, 2, '介入血管外科门诊（国疗）', NULL, '2025-10-17 00:51:23', 25, 1);
-INSERT INTO `clinic` VALUES (28, 2, '介入血管门诊（特需）', NULL, '2025-10-17 00:51:23', 25, 2);
-INSERT INTO `clinic` VALUES (29, 2, '伤口治疗中心晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 24, 2);
-INSERT INTO `clinic` VALUES (30, 2, '儿科晚间门诊(特需)', NULL, '2025-10-17 00:51:23', 17, 2);
-INSERT INTO `clinic` VALUES (31, 2, '儿科门诊', NULL, '2025-10-17 00:51:23', 17, 0);
-INSERT INTO `clinic` VALUES (32, 2, '儿科门诊（国疗）', NULL, '2025-10-17 00:51:23', 17, 1);
-INSERT INTO `clinic` VALUES (33, 2, '儿科门诊（特需）', NULL, '2025-10-17 00:51:23', 17, 2);
-INSERT INTO `clinic` VALUES (34, 2, '儿童健康发展门诊(特需)', NULL, '2025-10-17 00:51:23', 17, 2);
-INSERT INTO `clinic` VALUES (35, 2, '全科医学科门诊', NULL, '2025-10-17 00:51:23', 37, 0);
-INSERT INTO `clinic` VALUES (36, 2, '内分泌科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 3, 2);
-INSERT INTO `clinic` VALUES (37, 2, '内分泌门诊', NULL, '2025-10-17 00:51:23', 3, 0);
-INSERT INTO `clinic` VALUES (38, 2, '内分泌门诊(特需)', NULL, '2025-10-17 00:51:23', 3, 2);
-INSERT INTO `clinic` VALUES (39, 2, '变态反应门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (40, 2, '口腔科门诊', NULL, '2025-10-17 00:51:23', 33, 0);
-INSERT INTO `clinic` VALUES (41, 2, '口腔科（特需）', NULL, '2025-10-17 00:51:23', 33, 2);
-INSERT INTO `clinic` VALUES (42, 2, '呼吸内科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 2, 2);
-INSERT INTO `clinic` VALUES (43, 2, '呼吸门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (44, 2, '呼吸门诊（特需）', NULL, '2025-10-17 00:51:23', 2, 2);
-INSERT INTO `clinic` VALUES (45, 2, '妇科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 29, 2);
-INSERT INTO `clinic` VALUES (46, 2, '妇科门诊', NULL, '2025-10-17 00:51:23', 29, 0);
-INSERT INTO `clinic` VALUES (47, 2, '妇科门诊（国疗）', NULL, '2025-10-17 00:51:23', 29, 1);
-INSERT INTO `clinic` VALUES (48, 2, '妇科门诊（特需）', NULL, '2025-10-17 00:51:23', 29, 2);
-INSERT INTO `clinic` VALUES (49, 2, '康复医学科', NULL, '2025-10-17 00:51:23', 28, 0);
-INSERT INTO `clinic` VALUES (50, 2, '康复医学科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 28, 2);
-INSERT INTO `clinic` VALUES (51, 2, '康复医学科门诊（国疗）', NULL, '2025-10-17 00:51:23', 28, 1);
-INSERT INTO `clinic` VALUES (52, 2, '康复医学门诊(特需)', NULL, '2025-10-17 00:51:23', 28, 2);
-INSERT INTO `clinic` VALUES (53, 2, '心脏外科门诊', NULL, '2025-10-17 00:51:23', 22, 0);
-INSERT INTO `clinic` VALUES (54, 2, '心血管内科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 1, 2);
-INSERT INTO `clinic` VALUES (55, 2, '心血管内科门诊（国疗）', NULL, '2025-10-17 00:51:23', 1, 1);
-INSERT INTO `clinic` VALUES (56, 2, '心血管科门诊', NULL, '2025-10-17 00:51:23', 1, 0);
-INSERT INTO `clinic` VALUES (57, 2, '心血管科门诊（特需）', NULL, '2025-10-17 00:51:23', 1, 2);
-INSERT INTO `clinic` VALUES (58, 2, '感染疾病科门诊', NULL, '2025-10-17 00:51:23', 10, 0);
-INSERT INTO `clinic` VALUES (59, 2, '成形外科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 24, 2);
-INSERT INTO `clinic` VALUES (60, 2, '成形外科门诊（国疗）', NULL, '2025-10-17 00:51:23', 24, 1);
-INSERT INTO `clinic` VALUES (61, 2, '成形科门诊', NULL, '2025-10-17 00:51:23', 24, 0);
-INSERT INTO `clinic` VALUES (62, 2, '放射科', NULL, '2025-10-17 00:51:23', 38, 0);
-INSERT INTO `clinic` VALUES (63, 2, '普外门诊', NULL, '2025-10-17 00:51:23', 18, 0);
-INSERT INTO `clinic` VALUES (64, 2, '普外门诊（特需）', NULL, '2025-10-17 00:51:23', 18, 2);
-INSERT INTO `clinic` VALUES (65, 2, '普通外科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 18, 2);
-INSERT INTO `clinic` VALUES (66, 2, '普通外科门诊（国疗）', NULL, '2025-10-17 00:51:23', 18, 1);
-INSERT INTO `clinic` VALUES (67, 2, '核医学科门诊', NULL, '2025-10-17 00:51:23', 40, 0);
-INSERT INTO `clinic` VALUES (68, 2, '泌尿外科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 20, 2);
-INSERT INTO `clinic` VALUES (69, 2, '泌尿外科门诊', NULL, '2025-10-17 00:51:23', 20, 0);
-INSERT INTO `clinic` VALUES (70, 2, '泌尿外科门诊(特需)', NULL, '2025-10-17 00:51:23', 20, 2);
-INSERT INTO `clinic` VALUES (71, 2, '泌尿外科门诊（国疗）', NULL, '2025-10-17 00:51:23', 20, 1);
-INSERT INTO `clinic` VALUES (72, 2, '消化科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 6, 2);
-INSERT INTO `clinic` VALUES (73, 2, '消化科门诊', NULL, '2025-10-17 00:51:23', 6, 0);
-INSERT INTO `clinic` VALUES (74, 2, '消化科门诊（国疗）', NULL, '2025-10-17 00:51:23', 6, 1);
-INSERT INTO `clinic` VALUES (75, 2, '消化科门诊（特需）', NULL, '2025-10-17 00:51:23', 6, 2);
-INSERT INTO `clinic` VALUES (76, 2, '生殖医学中心妇科', NULL, '2025-10-17 00:51:23', 30, 0);
-INSERT INTO `clinic` VALUES (77, 2, '生殖医学中心妇科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 30, 2);
-INSERT INTO `clinic` VALUES (78, 2, '生殖医学中心妇科（国疗）', NULL, '2025-10-17 00:51:23', 30, 1);
-INSERT INTO `clinic` VALUES (79, 2, '生殖医学中心妇科（特需）', NULL, '2025-10-17 00:51:23', 30, 2);
-INSERT INTO `clinic` VALUES (80, 2, '生殖医学中心男科', NULL, '2025-10-17 00:51:23', 30, 0);
-INSERT INTO `clinic` VALUES (81, 2, '生殖医学中心男科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 30, 2);
-INSERT INTO `clinic` VALUES (82, 2, '生殖医学中心男科（国疗）', NULL, '2025-10-17 00:51:23', 30, 1);
-INSERT INTO `clinic` VALUES (83, 2, '生殖医学中心男科（特需）', NULL, '2025-10-17 00:51:23', 30, 2);
-INSERT INTO `clinic` VALUES (84, 2, '疼痛科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 36, 2);
-INSERT INTO `clinic` VALUES (85, 2, '疼痛科门诊（特需）', NULL, '2025-10-17 00:51:23', 36, 2);
-INSERT INTO `clinic` VALUES (86, 2, '疼痛门诊', NULL, '2025-10-17 00:51:23', 36, 0);
-INSERT INTO `clinic` VALUES (87, 2, '皮肤科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 12, 2);
-INSERT INTO `clinic` VALUES (88, 2, '皮肤科门诊', NULL, '2025-10-17 00:51:23', 12, 0);
-INSERT INTO `clinic` VALUES (89, 2, '皮肤科门诊（国疗）', NULL, '2025-10-17 00:51:23', 12, 1);
-INSERT INTO `clinic` VALUES (90, 2, '皮肤科门诊（特需）', NULL, '2025-10-17 00:51:23', 12, 2);
-INSERT INTO `clinic` VALUES (91, 2, '眼科晚间门诊(特需)', NULL, '2025-10-17 00:51:23', 31, 2);
-INSERT INTO `clinic` VALUES (92, 2, '眼科门诊', NULL, '2025-10-17 00:51:23', 31, 0);
-INSERT INTO `clinic` VALUES (93, 2, '眼科门诊（国疗）', NULL, '2025-10-17 00:51:23', 31, 1);
-INSERT INTO `clinic` VALUES (94, 2, '眼科门诊（特需）', NULL, '2025-10-17 00:51:23', 31, 2);
-INSERT INTO `clinic` VALUES (95, 2, '神经内科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 9, 2);
-INSERT INTO `clinic` VALUES (96, 2, '神经内科门诊（国疗）', NULL, '2025-10-17 00:51:23', 9, 1);
-INSERT INTO `clinic` VALUES (97, 2, '神经外科门诊', NULL, '2025-10-17 00:51:23', 23, 0);
-INSERT INTO `clinic` VALUES (98, 2, '神经外科门诊(特需)', NULL, '2025-10-17 00:51:23', 23, 2);
-INSERT INTO `clinic` VALUES (99, 2, '神经科门诊', NULL, '2025-10-17 00:51:23', 9, 0);
-INSERT INTO `clinic` VALUES (100, 2, '神经科门诊（特需）', NULL, '2025-10-17 00:51:23', 9, 2);
-INSERT INTO `clinic` VALUES (101, 2, '美容中医中心', NULL, '2025-10-17 00:51:23', 13, 0);
-INSERT INTO `clinic` VALUES (102, 2, '美容成形', NULL, '2025-10-17 00:51:23', 24, 0);
-INSERT INTO `clinic` VALUES (103, 2, '美容皮科', NULL, '2025-10-17 00:51:23', 12, 0);
-INSERT INTO `clinic` VALUES (104, 2, '老年病内科门诊', NULL, '2025-10-17 00:51:23', 8, 0);
-INSERT INTO `clinic` VALUES (105, 2, '老年病内科（特需）', NULL, '2025-10-17 00:51:23', 8, 2);
-INSERT INTO `clinic` VALUES (106, 2, '耳鼻喉科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 32, 2);
-INSERT INTO `clinic` VALUES (107, 2, '耳鼻喉科门诊', NULL, '2025-10-17 00:51:23', 32, 0);
-INSERT INTO `clinic` VALUES (108, 2, '耳鼻喉科门诊(特需)', NULL, '2025-10-17 00:51:23', 32, 2);
-INSERT INTO `clinic` VALUES (109, 2, '职业病门诊', NULL, '2025-10-17 00:51:23', 14, 0);
-INSERT INTO `clinic` VALUES (110, 2, '肛肠科门诊（特需）', NULL, '2025-10-17 00:51:23', 18, 2);
-INSERT INTO `clinic` VALUES (111, 2, '肛肠门诊', NULL, '2025-10-17 00:51:23', 18, 0);
-INSERT INTO `clinic` VALUES (112, 2, '肝炎门诊', NULL, '2025-10-17 00:51:23', 10, 0);
-INSERT INTO `clinic` VALUES (113, 2, '肝炎门诊（特需）', NULL, '2025-10-17 00:51:23', 10, 2);
-INSERT INTO `clinic` VALUES (114, 2, '肾内科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 4, 2);
-INSERT INTO `clinic` VALUES (115, 2, '肾内门诊', NULL, '2025-10-17 00:51:23', 4, 0);
-INSERT INTO `clinic` VALUES (116, 2, '肾内门诊（特需）', NULL, '2025-10-17 00:51:23', 4, 2);
-INSERT INTO `clinic` VALUES (117, 2, '肿瘤化疗与放射病科晚间门诊(特需)', NULL, '2025-10-17 00:51:23', 16, 2);
-INSERT INTO `clinic` VALUES (118, 2, '肿瘤化疗与放射病科门诊（国疗）', NULL, '2025-10-17 00:51:23', 16, 1);
-INSERT INTO `clinic` VALUES (119, 2, '肿瘤化疗与放射病科门诊（特需）', NULL, '2025-10-17 00:51:23', 16, 2);
-INSERT INTO `clinic` VALUES (120, 2, '肿瘤化疗与放射病门诊', NULL, '2025-10-17 00:51:23', 16, 0);
-INSERT INTO `clinic` VALUES (121, 2, '肿瘤放疗科晚间门诊(特需)', NULL, '2025-10-17 00:51:23', 15, 2);
-INSERT INTO `clinic` VALUES (122, 2, '肿瘤放疗科门诊（特需）', NULL, '2025-10-17 00:51:23', 15, 2);
-INSERT INTO `clinic` VALUES (123, 2, '肿瘤放疗门诊', NULL, '2025-10-17 00:51:23', 15, 0);
-INSERT INTO `clinic` VALUES (124, 2, '胸外科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 21, 2);
-INSERT INTO `clinic` VALUES (125, 2, '胸外科门诊', NULL, '2025-10-17 00:51:23', 21, 0);
-INSERT INTO `clinic` VALUES (126, 2, '胸外科门诊(特需)', NULL, '2025-10-17 00:51:23', 21, 2);
-INSERT INTO `clinic` VALUES (127, 2, '胸外科门诊（国疗）', NULL, '2025-10-17 00:51:23', 21, 1);
-INSERT INTO `clinic` VALUES (128, 2, '血液病门诊', NULL, '2025-10-17 00:51:23', 5, 0);
-INSERT INTO `clinic` VALUES (129, 2, '血液门诊（特需）', NULL, '2025-10-17 00:51:23', 5, 2);
-INSERT INTO `clinic` VALUES (130, 2, '运动医学科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 27, 2);
-INSERT INTO `clinic` VALUES (131, 2, '运动医学科门诊（国疗）', NULL, '2025-10-17 00:51:23', 27, 1);
-INSERT INTO `clinic` VALUES (132, 2, '运动医学门诊', NULL, '2025-10-17 00:51:23', 27, 0);
-INSERT INTO `clinic` VALUES (133, 2, '运动医学门诊（特需）', NULL, '2025-10-17 00:51:23', 27, 2);
-INSERT INTO `clinic` VALUES (134, 2, '风湿免疫科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 7, 2);
-INSERT INTO `clinic` VALUES (135, 2, '风湿免疫科门诊（国疗）', NULL, '2025-10-17 00:51:23', 7, 1);
-INSERT INTO `clinic` VALUES (136, 2, '风湿免疫门诊', NULL, '2025-10-17 00:51:23', 7, 0);
-INSERT INTO `clinic` VALUES (137, 2, '风湿免疫门诊（特需）', NULL, '2025-10-17 00:51:23', 7, 2);
-INSERT INTO `clinic` VALUES (138, 2, '骨科晚间门诊（特需）', NULL, '2025-10-17 00:51:23', 19, 2);
-INSERT INTO `clinic` VALUES (139, 2, '骨科门诊', NULL, '2025-10-17 00:51:23', 19, 0);
-INSERT INTO `clinic` VALUES (140, 2, '骨科门诊（国疗）', NULL, '2025-10-17 00:51:23', 19, 1);
-INSERT INTO `clinic` VALUES (141, 2, '骨科门诊（特需）', NULL, '2025-10-17 00:51:23', 19, 2);
-INSERT INTO `clinic` VALUES (142, 2, '骨质疏松门诊', NULL, '2025-10-17 00:51:23', 3, 0);
-INSERT INTO `clinic` VALUES (143, 2, '高干门诊', NULL, '2025-10-17 00:51:23', 8, 0);
-INSERT INTO `clinic` VALUES (144, 2, '麻醉科', NULL, '2025-10-17 00:51:23', 34, 0);
-INSERT INTO `clinic` VALUES (145, 3, '北方院区中医科门诊', NULL, '2025-10-17 00:51:23', 13, 0);
-INSERT INTO `clinic` VALUES (146, 3, '北方院区内分泌内科门诊', NULL, '2025-10-17 00:51:23', 3, 0);
-INSERT INTO `clinic` VALUES (147, 3, '北方院区变态反应门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (148, 3, '北方院区呼吸内科门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (149, 3, '北方院区妇科门诊', NULL, '2025-10-17 00:51:23', 29, 0);
-INSERT INTO `clinic` VALUES (150, 3, '北方院区心血管内科门诊', NULL, '2025-10-17 00:51:23', 1, 0);
-INSERT INTO `clinic` VALUES (151, 3, '北方院区普通外科门诊', NULL, '2025-10-17 00:51:23', 18, 0);
-INSERT INTO `clinic` VALUES (152, 3, '北方院区泌尿外科门诊', NULL, '2025-10-17 00:51:23', 20, 0);
-INSERT INTO `clinic` VALUES (153, 3, '北方院区消化科门诊', NULL, '2025-10-17 00:51:23', 6, 0);
-INSERT INTO `clinic` VALUES (154, 3, '北方院区疼痛科门诊', NULL, '2025-10-17 00:51:23', 36, 0);
-INSERT INTO `clinic` VALUES (155, 3, '北方院区皮肤科门诊', NULL, '2025-10-17 00:51:23', 12, 0);
-INSERT INTO `clinic` VALUES (156, 3, '北方院区神经内科门诊', NULL, '2025-10-17 00:51:23', 9, 0);
-INSERT INTO `clinic` VALUES (157, 3, '北方院区老年病内科门诊', NULL, '2025-10-17 00:51:23', 8, 0);
-INSERT INTO `clinic` VALUES (158, 3, '北方院区职业病科门诊', NULL, '2025-10-17 00:51:23', 14, 0);
-INSERT INTO `clinic` VALUES (159, 3, '北方院区肾内科门诊', NULL, '2025-10-17 00:51:23', 4, 0);
-INSERT INTO `clinic` VALUES (160, 3, '北方院区肿瘤放疗科门诊', NULL, '2025-10-17 00:51:23', 15, 0);
-INSERT INTO `clinic` VALUES (161, 3, '北方院区胸外科门诊', NULL, '2025-10-17 00:51:23', 21, 0);
-INSERT INTO `clinic` VALUES (162, 3, '北方院区风湿免疫科门诊', NULL, '2025-10-17 00:51:23', 7, 0);
-INSERT INTO `clinic` VALUES (163, 3, '北方院区骨科门诊', NULL, '2025-10-17 00:51:23', 19, 0);
-INSERT INTO `clinic` VALUES (164, 4, '机场中医科门诊', NULL, '2025-10-17 00:51:23', 13, 0);
-INSERT INTO `clinic` VALUES (165, 4, '机场内分泌门诊', NULL, '2025-10-17 00:51:23', 3, 0);
-INSERT INTO `clinic` VALUES (166, 4, '机场内分泌门诊（特需）', NULL, '2025-10-17 00:51:23', 3, 2);
-INSERT INTO `clinic` VALUES (167, 4, '机场口腔科门诊', NULL, '2025-10-17 00:51:23', 33, 0);
-INSERT INTO `clinic` VALUES (168, 4, '机场妇科门诊', NULL, '2025-10-17 00:51:23', 29, 0);
-INSERT INTO `clinic` VALUES (169, 4, '机场心血管内科门诊', NULL, '2025-10-17 00:51:23', 1, 0);
-INSERT INTO `clinic` VALUES (170, 4, '机场普外门诊', NULL, '2025-10-17 00:51:23', 18, 0);
-INSERT INTO `clinic` VALUES (171, 4, '机场泌尿科门诊', NULL, '2025-10-17 00:51:23', 20, 0);
-INSERT INTO `clinic` VALUES (172, 4, '机场消化科门诊', NULL, '2025-10-17 00:51:23', 6, 0);
-INSERT INTO `clinic` VALUES (173, 4, '机场疼痛门诊', NULL, '2025-10-17 00:51:23', 36, 0);
-INSERT INTO `clinic` VALUES (174, 4, '机场皮肤科门诊', NULL, '2025-10-17 00:51:23', 12, 0);
-INSERT INTO `clinic` VALUES (175, 4, '机场神经内科门诊', NULL, '2025-10-17 00:51:23', 9, 0);
-INSERT INTO `clinic` VALUES (176, 4, '机场神经内科门诊（特需）', NULL, '2025-10-17 00:51:23', 9, 2);
-INSERT INTO `clinic` VALUES (177, 4, '机场肾内科门诊', NULL, '2025-10-17 00:51:23', 4, 0);
-INSERT INTO `clinic` VALUES (178, 4, '机场血液科门诊', NULL, '2025-10-17 00:51:23', 5, 0);
-INSERT INTO `clinic` VALUES (179, 4, '机场运动医学门诊', NULL, '2025-10-17 00:51:23', 27, 0);
-INSERT INTO `clinic` VALUES (180, 4, '机场运动医学门诊（特需）', NULL, '2025-10-17 00:51:23', 27, 2);
-INSERT INTO `clinic` VALUES (181, 4, '机场院区肿瘤化疗与放射病科门诊', NULL, '2025-10-17 00:51:23', 16, 0);
-INSERT INTO `clinic` VALUES (182, 4, '机场院区肿瘤放疗科门诊', NULL, '2025-10-17 00:51:23', 15, 0);
-INSERT INTO `clinic` VALUES (183, 5, '海淀北部院区临床营养科门诊', NULL, '2025-10-17 00:51:23', 47, 0);
-INSERT INTO `clinic` VALUES (184, 5, '海淀北部院区介入血管外科门诊', NULL, '2025-10-17 00:51:23', 25, 0);
-INSERT INTO `clinic` VALUES (185, 5, '海淀北部院区内分泌门诊', NULL, '2025-10-17 00:51:23', 3, 0);
-INSERT INTO `clinic` VALUES (186, 5, '海淀北部院区内分泌门诊（特需）', NULL, '2025-10-17 00:51:23', 3, 2);
-INSERT INTO `clinic` VALUES (187, 5, '海淀北部院区变态反应门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (188, 5, '海淀北部院区呼吸内科门诊', NULL, '2025-10-17 00:51:23', 2, 0);
-INSERT INTO `clinic` VALUES (189, 5, '海淀北部院区康复医学科门诊（特需）', NULL, '2025-10-17 00:51:23', 28, 2);
-INSERT INTO `clinic` VALUES (190, 5, '海淀北部院区心血管内科门诊', NULL, '2025-10-17 00:51:23', 1, 0);
-INSERT INTO `clinic` VALUES (191, 5, '海淀北部院区心血管内科门诊（特需）', NULL, '2025-10-17 00:51:23', 1, 2);
-INSERT INTO `clinic` VALUES (192, 5, '海淀北部院区成形外科门诊', NULL, '2025-10-17 00:51:23', 24, 0);
-INSERT INTO `clinic` VALUES (193, 5, '海淀北部院区普通外科门诊', NULL, '2025-10-17 00:51:23', 18, 0);
-INSERT INTO `clinic` VALUES (194, 5, '海淀北部院区普通外科门诊（特需）', NULL, '2025-10-17 00:51:23', 18, 2);
-INSERT INTO `clinic` VALUES (195, 5, '海淀北部院区泌尿外科门诊', NULL, '2025-10-17 00:51:23', 20, 0);
-INSERT INTO `clinic` VALUES (196, 5, '海淀北部院区泌尿外科门诊（特需）', NULL, '2025-10-17 00:51:23', 20, 2);
-INSERT INTO `clinic` VALUES (197, 5, '海淀北部院区消化科门诊', NULL, '2025-10-17 00:51:23', 6, 0);
-INSERT INTO `clinic` VALUES (198, 5, '海淀北部院区消化科门诊（特需）', NULL, '2025-10-17 00:51:23', 6, 2);
-INSERT INTO `clinic` VALUES (199, 5, '海淀北部院区疼痛科门诊', NULL, '2025-10-17 00:51:23', 36, 0);
-INSERT INTO `clinic` VALUES (200, 5, '海淀北部院区皮肤科门诊', NULL, '2025-10-17 00:51:23', 12, 0);
-INSERT INTO `clinic` VALUES (201, 5, '海淀北部院区皮肤科门诊（特需）', NULL, '2025-10-17 00:51:23', 12, 2);
-INSERT INTO `clinic` VALUES (202, 5, '海淀北部院区神经内科门诊', NULL, '2025-10-17 00:51:23', 9, 0);
-INSERT INTO `clinic` VALUES (203, 5, '海淀北部院区神经内科门诊（特需）', NULL, '2025-10-17 00:51:23', 9, 2);
-INSERT INTO `clinic` VALUES (204, 5, '海淀北部院区神经外科门诊', NULL, '2025-10-17 00:51:23', 23, 0);
-INSERT INTO `clinic` VALUES (205, 5, '海淀北部院区老年病内科门诊', NULL, '2025-10-17 00:51:23', 8, 0);
-INSERT INTO `clinic` VALUES (206, 5, '海淀北部院区肝炎门诊', NULL, '2025-10-17 00:51:23', 10, 0);
-INSERT INTO `clinic` VALUES (207, 5, '海淀北部院区肾内科门诊', NULL, '2025-10-17 00:51:23', 4, 0);
-INSERT INTO `clinic` VALUES (208, 5, '海淀北部院区肿瘤化疗与放射病门诊', NULL, '2025-10-17 00:51:23', 16, 0);
-INSERT INTO `clinic` VALUES (209, 5, '海淀北部院区肿瘤放疗科门诊', NULL, '2025-10-17 00:51:23', 15, 0);
-INSERT INTO `clinic` VALUES (210, 5, '海淀北部院区血液内科门诊', NULL, '2025-10-17 00:51:23', 5, 0);
-INSERT INTO `clinic` VALUES (211, 5, '海淀北部院区血液内科门诊（特需）', NULL, '2025-10-17 00:51:23', 5, 2);
-INSERT INTO `clinic` VALUES (212, 5, '海淀北部院区骨科门诊', NULL, '2025-10-17 00:51:23', 19, 0);
-INSERT INTO `clinic` VALUES (213, 5, '海淀北部院区骨科门诊（特需）', NULL, '2025-10-17 00:51:23', 19, 2);
-INSERT INTO `clinic` VALUES (214, 6, '第二门诊部中医科', NULL, '2025-10-17 00:51:23', 13, 0);
-INSERT INTO `clinic` VALUES (215, 6, '第二门诊部妇科', NULL, '2025-10-17 00:51:23', 29, 0);
-INSERT INTO `clinic` VALUES (216, 6, '第二门诊部心血管科', NULL, '2025-10-17 00:51:23', 1, 0);
-INSERT INTO `clinic` VALUES (217, 6, '第二门诊部神经科', NULL, '2025-10-17 00:51:23', 9, 0);
-INSERT INTO `clinic` VALUES (218, 6, '第二门诊部肾内科', NULL, '2025-10-17 00:51:23', 4, 0);
+INSERT INTO `clinic` VALUES (1, 1, '中央党校院区临床营养科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 47, 0);
+INSERT INTO `clinic` VALUES (2, 1, '中央党校院区全科医学科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 37, 0);
+INSERT INTO `clinic` VALUES (3, 1, '中央党校院区内分泌科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 3, 0);
+INSERT INTO `clinic` VALUES (4, 1, '中央党校院区呼吸内科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (5, 1, '中央党校院区妇科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 29, 0);
+INSERT INTO `clinic` VALUES (6, 1, '中央党校院区康复科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 28, 0);
+INSERT INTO `clinic` VALUES (7, 1, '中央党校院区心血管内科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 1, 0);
+INSERT INTO `clinic` VALUES (8, 1, '中央党校院区泌尿科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 20, 0);
+INSERT INTO `clinic` VALUES (9, 1, '中央党校院区消化内科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 6, 0);
+INSERT INTO `clinic` VALUES (10, 1, '中央党校院区疼痛门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 36, 0);
+INSERT INTO `clinic` VALUES (11, 1, '中央党校院区皮肤科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 12, 0);
+INSERT INTO `clinic` VALUES (12, 1, '中央党校院区神经科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 9, 0);
+INSERT INTO `clinic` VALUES (13, 1, '中央党校院区老年内科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 8, 0);
+INSERT INTO `clinic` VALUES (14, 1, '中央党校院区耳鼻喉科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 32, 0);
+INSERT INTO `clinic` VALUES (15, 1, '中央党校院区肛肠科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 18, 0);
+INSERT INTO `clinic` VALUES (16, 1, '中央党校院区肾内科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 4, 0);
+INSERT INTO `clinic` VALUES (17, 1, '中央党校院区肿瘤化疗与放射病科', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 16, 0);
+INSERT INTO `clinic` VALUES (18, 1, '中央党校院区运动医学门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 27, 0);
+INSERT INTO `clinic` VALUES (19, 1, '中央党校院区骨科门诊', '北京市海淀区中共中央党校院内门诊部', '2025-10-17 00:51:23', 19, 0);
+INSERT INTO `clinic` VALUES (20, 2, '中医科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 13, 0);
+INSERT INTO `clinic` VALUES (21, 2, '中医科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 13, 2);
+INSERT INTO `clinic` VALUES (22, 2, '临床营养科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 47, 0);
+INSERT INTO `clinic` VALUES (23, 2, '产科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 29, 0);
+INSERT INTO `clinic` VALUES (24, 2, '产科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 29, 2);
+INSERT INTO `clinic` VALUES (25, 2, '介入血管外科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 25, 2);
+INSERT INTO `clinic` VALUES (26, 2, '介入血管外科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 25, 0);
+INSERT INTO `clinic` VALUES (27, 2, '介入血管外科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 25, 1);
+INSERT INTO `clinic` VALUES (28, 2, '介入血管门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 25, 2);
+INSERT INTO `clinic` VALUES (29, 2, '伤口治疗中心晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 24, 2);
+INSERT INTO `clinic` VALUES (30, 2, '儿科晚间门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 17, 2);
+INSERT INTO `clinic` VALUES (31, 2, '儿科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 17, 0);
+INSERT INTO `clinic` VALUES (32, 2, '儿科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 17, 1);
+INSERT INTO `clinic` VALUES (33, 2, '儿科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 17, 2);
+INSERT INTO `clinic` VALUES (34, 2, '儿童健康发展门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 17, 2);
+INSERT INTO `clinic` VALUES (35, 2, '全科医学科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 37, 0);
+INSERT INTO `clinic` VALUES (36, 2, '内分泌科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 3, 2);
+INSERT INTO `clinic` VALUES (37, 2, '内分泌门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 3, 0);
+INSERT INTO `clinic` VALUES (38, 2, '内分泌门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 3, 2);
+INSERT INTO `clinic` VALUES (39, 2, '变态反应门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (40, 2, '口腔科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 33, 0);
+INSERT INTO `clinic` VALUES (41, 2, '口腔科（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 33, 2);
+INSERT INTO `clinic` VALUES (42, 2, '呼吸内科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 2, 2);
+INSERT INTO `clinic` VALUES (43, 2, '呼吸门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (44, 2, '呼吸门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 2, 2);
+INSERT INTO `clinic` VALUES (45, 2, '妇科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 29, 2);
+INSERT INTO `clinic` VALUES (46, 2, '妇科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 29, 0);
+INSERT INTO `clinic` VALUES (47, 2, '妇科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 29, 1);
+INSERT INTO `clinic` VALUES (48, 2, '妇科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 29, 2);
+INSERT INTO `clinic` VALUES (49, 2, '康复医学科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 28, 0);
+INSERT INTO `clinic` VALUES (50, 2, '康复医学科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 28, 2);
+INSERT INTO `clinic` VALUES (51, 2, '康复医学科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 28, 1);
+INSERT INTO `clinic` VALUES (52, 2, '康复医学门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 28, 2);
+INSERT INTO `clinic` VALUES (53, 2, '心脏外科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 22, 0);
+INSERT INTO `clinic` VALUES (54, 2, '心血管内科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 1, 2);
+INSERT INTO `clinic` VALUES (55, 2, '心血管内科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 1, 1);
+INSERT INTO `clinic` VALUES (56, 2, '心血管科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 1, 0);
+INSERT INTO `clinic` VALUES (57, 2, '心血管科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 1, 2);
+INSERT INTO `clinic` VALUES (58, 2, '感染疾病科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 10, 0);
+INSERT INTO `clinic` VALUES (59, 2, '成形外科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 24, 2);
+INSERT INTO `clinic` VALUES (60, 2, '成形外科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 24, 1);
+INSERT INTO `clinic` VALUES (61, 2, '成形科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 24, 0);
+INSERT INTO `clinic` VALUES (62, 2, '放射科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 38, 0);
+INSERT INTO `clinic` VALUES (63, 2, '普外门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 18, 0);
+INSERT INTO `clinic` VALUES (64, 2, '普外门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 18, 2);
+INSERT INTO `clinic` VALUES (65, 2, '普通外科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 18, 2);
+INSERT INTO `clinic` VALUES (66, 2, '普通外科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 18, 1);
+INSERT INTO `clinic` VALUES (67, 2, '核医学科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 40, 0);
+INSERT INTO `clinic` VALUES (68, 2, '泌尿外科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 20, 2);
+INSERT INTO `clinic` VALUES (69, 2, '泌尿外科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 20, 0);
+INSERT INTO `clinic` VALUES (70, 2, '泌尿外科门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 20, 2);
+INSERT INTO `clinic` VALUES (71, 2, '泌尿外科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 20, 1);
+INSERT INTO `clinic` VALUES (72, 2, '消化科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 6, 2);
+INSERT INTO `clinic` VALUES (73, 2, '消化科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 6, 0);
+INSERT INTO `clinic` VALUES (74, 2, '消化科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 6, 1);
+INSERT INTO `clinic` VALUES (75, 2, '消化科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 6, 2);
+INSERT INTO `clinic` VALUES (76, 2, '生殖医学中心妇科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 0);
+INSERT INTO `clinic` VALUES (77, 2, '生殖医学中心妇科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 2);
+INSERT INTO `clinic` VALUES (78, 2, '生殖医学中心妇科（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 1);
+INSERT INTO `clinic` VALUES (79, 2, '生殖医学中心妇科（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 2);
+INSERT INTO `clinic` VALUES (80, 2, '生殖医学中心男科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 0);
+INSERT INTO `clinic` VALUES (81, 2, '生殖医学中心男科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 2);
+INSERT INTO `clinic` VALUES (82, 2, '生殖医学中心男科（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 1);
+INSERT INTO `clinic` VALUES (83, 2, '生殖医学中心男科（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 30, 2);
+INSERT INTO `clinic` VALUES (84, 2, '疼痛科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 36, 2);
+INSERT INTO `clinic` VALUES (85, 2, '疼痛科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 36, 2);
+INSERT INTO `clinic` VALUES (86, 2, '疼痛门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 36, 0);
+INSERT INTO `clinic` VALUES (87, 2, '皮肤科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 12, 2);
+INSERT INTO `clinic` VALUES (88, 2, '皮肤科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 12, 0);
+INSERT INTO `clinic` VALUES (89, 2, '皮肤科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 12, 1);
+INSERT INTO `clinic` VALUES (90, 2, '皮肤科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 12, 2);
+INSERT INTO `clinic` VALUES (91, 2, '眼科晚间门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 31, 2);
+INSERT INTO `clinic` VALUES (92, 2, '眼科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 31, 0);
+INSERT INTO `clinic` VALUES (93, 2, '眼科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 31, 1);
+INSERT INTO `clinic` VALUES (94, 2, '眼科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 31, 2);
+INSERT INTO `clinic` VALUES (95, 2, '神经内科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 9, 2);
+INSERT INTO `clinic` VALUES (96, 2, '神经内科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 9, 1);
+INSERT INTO `clinic` VALUES (97, 2, '神经外科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 23, 0);
+INSERT INTO `clinic` VALUES (98, 2, '神经外科门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 23, 2);
+INSERT INTO `clinic` VALUES (99, 2, '神经科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 9, 0);
+INSERT INTO `clinic` VALUES (100, 2, '神经科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 9, 2);
+INSERT INTO `clinic` VALUES (101, 2, '美容中医中心', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 13, 0);
+INSERT INTO `clinic` VALUES (102, 2, '美容成形', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 24, 0);
+INSERT INTO `clinic` VALUES (103, 2, '美容皮科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 12, 0);
+INSERT INTO `clinic` VALUES (104, 2, '老年病内科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 8, 0);
+INSERT INTO `clinic` VALUES (105, 2, '老年病内科（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 8, 2);
+INSERT INTO `clinic` VALUES (106, 2, '耳鼻喉科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 32, 2);
+INSERT INTO `clinic` VALUES (107, 2, '耳鼻喉科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 32, 0);
+INSERT INTO `clinic` VALUES (108, 2, '耳鼻喉科门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 32, 2);
+INSERT INTO `clinic` VALUES (109, 2, '职业病门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 14, 0);
+INSERT INTO `clinic` VALUES (110, 2, '肛肠科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 18, 2);
+INSERT INTO `clinic` VALUES (111, 2, '肛肠门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 18, 0);
+INSERT INTO `clinic` VALUES (112, 2, '肝炎门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 10, 0);
+INSERT INTO `clinic` VALUES (113, 2, '肝炎门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 10, 2);
+INSERT INTO `clinic` VALUES (114, 2, '肾内科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 4, 2);
+INSERT INTO `clinic` VALUES (115, 2, '肾内门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 4, 0);
+INSERT INTO `clinic` VALUES (116, 2, '肾内门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 4, 2);
+INSERT INTO `clinic` VALUES (117, 2, '肿瘤化疗与放射病科晚间门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 16, 2);
+INSERT INTO `clinic` VALUES (118, 2, '肿瘤化疗与放射病科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 16, 1);
+INSERT INTO `clinic` VALUES (119, 2, '肿瘤化疗与放射病科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 16, 2);
+INSERT INTO `clinic` VALUES (120, 2, '肿瘤化疗与放射病门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 16, 0);
+INSERT INTO `clinic` VALUES (121, 2, '肿瘤放疗科晚间门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 15, 2);
+INSERT INTO `clinic` VALUES (122, 2, '肿瘤放疗科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 15, 2);
+INSERT INTO `clinic` VALUES (123, 2, '肿瘤放疗门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 15, 0);
+INSERT INTO `clinic` VALUES (124, 2, '胸外科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 21, 2);
+INSERT INTO `clinic` VALUES (125, 2, '胸外科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 21, 0);
+INSERT INTO `clinic` VALUES (126, 2, '胸外科门诊(特需)', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 21, 2);
+INSERT INTO `clinic` VALUES (127, 2, '胸外科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 21, 1);
+INSERT INTO `clinic` VALUES (128, 2, '血液病门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 5, 0);
+INSERT INTO `clinic` VALUES (129, 2, '血液门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 5, 2);
+INSERT INTO `clinic` VALUES (130, 2, '运动医学科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 27, 2);
+INSERT INTO `clinic` VALUES (131, 2, '运动医学科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 27, 1);
+INSERT INTO `clinic` VALUES (132, 2, '运动医学门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 27, 0);
+INSERT INTO `clinic` VALUES (133, 2, '运动医学门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 27, 2);
+INSERT INTO `clinic` VALUES (134, 2, '风湿免疫科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 7, 2);
+INSERT INTO `clinic` VALUES (135, 2, '风湿免疫科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 7, 1);
+INSERT INTO `clinic` VALUES (136, 2, '风湿免疫门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 7, 0);
+INSERT INTO `clinic` VALUES (137, 2, '风湿免疫门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 7, 2);
+INSERT INTO `clinic` VALUES (138, 2, '骨科晚间门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 2);
+INSERT INTO `clinic` VALUES (139, 2, '骨科门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 0);
+INSERT INTO `clinic` VALUES (140, 2, '骨科门诊（国疗）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 1);
+INSERT INTO `clinic` VALUES (141, 2, '骨科门诊（特需）', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 2);
+INSERT INTO `clinic` VALUES (142, 2, '骨质疏松门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 19, 0);
+INSERT INTO `clinic` VALUES (143, 2, '高干门诊', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 0, 0);
+INSERT INTO `clinic` VALUES (144, 2, '麻醉科', '北京市西城区总院门诊部', '2025-10-17 00:51:23', 0, 0);
+INSERT INTO `clinic` VALUES (145, 3, '北方院区中医科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 13, 0);
+INSERT INTO `clinic` VALUES (146, 3, '北方院区内分泌内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 3, 0);
+INSERT INTO `clinic` VALUES (147, 3, '北方院区变态反应门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (148, 3, '北方院区呼吸内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (149, 3, '北方院区妇科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 29, 0);
+INSERT INTO `clinic` VALUES (150, 3, '北方院区心血管内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 1, 0);
+INSERT INTO `clinic` VALUES (151, 3, '北方院区普通外科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 18, 0);
+INSERT INTO `clinic` VALUES (152, 3, '北方院区泌尿外科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 20, 0);
+INSERT INTO `clinic` VALUES (153, 3, '北方院区消化科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 6, 0);
+INSERT INTO `clinic` VALUES (154, 3, '北方院区疼痛科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 36, 0);
+INSERT INTO `clinic` VALUES (155, 3, '北方院区皮肤科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 12, 0);
+INSERT INTO `clinic` VALUES (156, 3, '北方院区神经内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 9, 0);
+INSERT INTO `clinic` VALUES (157, 3, '北方院区老年病内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 8, 0);
+INSERT INTO `clinic` VALUES (158, 3, '北方院区职业病科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 14, 0);
+INSERT INTO `clinic` VALUES (159, 3, '北方院区肾内科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 4, 0);
+INSERT INTO `clinic` VALUES (160, 3, '北方院区肿瘤放疗科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 15, 0);
+INSERT INTO `clinic` VALUES (161, 3, '北方院区胸外科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 21, 0);
+INSERT INTO `clinic` VALUES (162, 3, '北方院区风湿免疫科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 7, 0);
+INSERT INTO `clinic` VALUES (163, 3, '北方院区骨科门诊', '北京市昌平区北方医院院区门诊部', '2025-10-17 00:51:23', 19, 0);
+INSERT INTO `clinic` VALUES (164, 4, '机场中医科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 13, 0);
+INSERT INTO `clinic` VALUES (165, 4, '机场内分泌门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 3, 0);
+INSERT INTO `clinic` VALUES (166, 4, '机场内分泌门诊（特需）', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 3, 2);
+INSERT INTO `clinic` VALUES (167, 4, '机场口腔科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 33, 0);
+INSERT INTO `clinic` VALUES (168, 4, '机场妇科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 29, 0);
+INSERT INTO `clinic` VALUES (169, 4, '机场心血管内科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 1, 0);
+INSERT INTO `clinic` VALUES (170, 4, '机场普外门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 18, 0);
+INSERT INTO `clinic` VALUES (171, 4, '机场泌尿科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 20, 0);
+INSERT INTO `clinic` VALUES (172, 4, '机场消化科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 6, 0);
+INSERT INTO `clinic` VALUES (173, 4, '机场疼痛门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 36, 0);
+INSERT INTO `clinic` VALUES (174, 4, '机场皮肤科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 12, 0);
+INSERT INTO `clinic` VALUES (175, 4, '机场神经内科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 9, 0);
+INSERT INTO `clinic` VALUES (176, 4, '机场神经内科门诊（特需）', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 9, 2);
+INSERT INTO `clinic` VALUES (177, 4, '机场肾内科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 4, 0);
+INSERT INTO `clinic` VALUES (178, 4, '机场血液科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 5, 0);
+INSERT INTO `clinic` VALUES (179, 4, '机场运动医学门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 27, 0);
+INSERT INTO `clinic` VALUES (180, 4, '机场运动医学门诊（特需）', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 27, 2);
+INSERT INTO `clinic` VALUES (181, 4, '机场院区肿瘤化疗与放射病科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 16, 0);
+INSERT INTO `clinic` VALUES (182, 4, '机场院区肿瘤放疗科门诊', '北京市顺义区首都国际机场院区门诊部', '2025-10-17 00:51:23', 15, 0);
+INSERT INTO `clinic` VALUES (183, 5, '海淀北部院区临床营养科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 47, 0);
+INSERT INTO `clinic` VALUES (184, 5, '海淀北部院区介入血管外科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 25, 0);
+INSERT INTO `clinic` VALUES (185, 5, '海淀北部院区内分泌门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 3, 0);
+INSERT INTO `clinic` VALUES (186, 5, '海淀北部院区内分泌门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 3, 2);
+INSERT INTO `clinic` VALUES (187, 5, '海淀北部院区变态反应门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (188, 5, '海淀北部院区呼吸内科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 2, 0);
+INSERT INTO `clinic` VALUES (189, 5, '海淀北部院区康复医学科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 28, 2);
+INSERT INTO `clinic` VALUES (190, 5, '海淀北部院区心血管内科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 1, 0);
+INSERT INTO `clinic` VALUES (191, 5, '海淀北部院区心血管内科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 1, 2);
+INSERT INTO `clinic` VALUES (192, 5, '海淀北部院区成形外科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 24, 0);
+INSERT INTO `clinic` VALUES (193, 5, '海淀北部院区普通外科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 18, 0);
+INSERT INTO `clinic` VALUES (194, 5, '海淀北部院区普通外科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 18, 2);
+INSERT INTO `clinic` VALUES (195, 5, '海淀北部院区泌尿外科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 20, 0);
+INSERT INTO `clinic` VALUES (196, 5, '海淀北部院区泌尿外科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 20, 2);
+INSERT INTO `clinic` VALUES (197, 5, '海淀北部院区消化科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 6, 0);
+INSERT INTO `clinic` VALUES (198, 5, '海淀北部院区消化科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 6, 2);
+INSERT INTO `clinic` VALUES (199, 5, '海淀北部院区疼痛科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 36, 0);
+INSERT INTO `clinic` VALUES (200, 5, '海淀北部院区皮肤科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 12, 0);
+INSERT INTO `clinic` VALUES (201, 5, '海淀北部院区皮肤科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 12, 2);
+INSERT INTO `clinic` VALUES (202, 5, '海淀北部院区神经内科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 9, 0);
+INSERT INTO `clinic` VALUES (203, 5, '海淀北部院区神经内科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 9, 2);
+INSERT INTO `clinic` VALUES (204, 5, '海淀北部院区神经外科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 23, 0);
+INSERT INTO `clinic` VALUES (205, 5, '海淀北部院区老年病内科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 8, 0);
+INSERT INTO `clinic` VALUES (206, 5, '海淀北部院区肝炎门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 10, 0);
+INSERT INTO `clinic` VALUES (207, 5, '海淀北部院区肾内科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 4, 0);
+INSERT INTO `clinic` VALUES (208, 5, '海淀北部院区肿瘤化疗与放射病门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 16, 0);
+INSERT INTO `clinic` VALUES (209, 5, '海淀北部院区肿瘤放疗科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 15, 0);
+INSERT INTO `clinic` VALUES (210, 5, '海淀北部院区血液内科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 5, 0);
+INSERT INTO `clinic` VALUES (211, 5, '海淀北部院区血液内科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 5, 2);
+INSERT INTO `clinic` VALUES (212, 5, '海淀北部院区骨科门诊', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 19, 0);
+INSERT INTO `clinic` VALUES (213, 5, '海淀北部院区骨科门诊（特需）', '北京市海淀区西北旺镇海淀北部医院门诊部', '2025-10-17 00:51:23', 19, 2);
+INSERT INTO `clinic` VALUES (214, 6, '第二门诊部中医科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 13, 0);
+INSERT INTO `clinic` VALUES (215, 6, '第二门诊部妇科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 29, 0);
+INSERT INTO `clinic` VALUES (216, 6, '第二门诊部心血管科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 1, 0);
+INSERT INTO `clinic` VALUES (217, 6, '第二门诊部神经科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 9, 0);
+INSERT INTO `clinic` VALUES (218, 6, '第二门诊部肾内科', '北京市西城区复兴门内大街第二门诊部', '2025-10-17 00:51:23', 4, 0);
 
 -- ----------------------------
 -- Table structure for doctor
@@ -295,11 +295,11 @@ CREATE TABLE `doctor`  (
   `original_photo_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '原医院的完整图片下载URL (用于备份)',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
   PRIMARY KEY (`doctor_id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
-  INDEX `fk_doctor_minor_dept`(`dept_id` ASC) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id`) USING BTREE,
+  INDEX `fk_doctor_minor_dept`(`dept_id`) USING BTREE,
   CONSTRAINT `fk_doctor_minor_dept` FOREIGN KEY (`dept_id`) REFERENCES `minor_department` (`minor_dept_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_doctor_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 876 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院医生基本信息表' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 877 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院医生基本信息表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of doctor
@@ -1153,6 +1153,7 @@ INSERT INTO `doctor` VALUES (872, NULL, 47, '李百花', '副主任营养师', '
 INSERT INTO `doctor` VALUES (873, NULL, 47, '张秋香', '主管营养师', '常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等，及危重症的肠内营养支持。', '张秋香 基本情况 姓名：张秋香性别：女学位：医学硕士毕业院校：北京大学医学部专业：营养与食品卫生技术职称：主管营养师 专业特长 常见慢性疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等，营养评估，肠内营养支持治疗。', '/static/images/doctor/doctor_873.jpg', 'https://puh3.net.cn/__local/E/E0/46/6F51F766913F0D6E11E1603ED5B_B405BB58_3AA5E.jpg', '2025-10-16 11:12:59');
 INSERT INTO `doctor` VALUES (874, NULL, 47, '贺晓娟', '主管营养师', '常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等的营养咨询与治疗。', '贺晓娟 基本情况 姓名：贺晓娟性别：女学位：医学硕士毕业院校：首都医科大学专业：营养与食品卫生技术职称：主管营养师 专业特长 常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等的营养咨询与治疗。 工作经历...', '/static/images/doctor/doctor_874.jpg', 'https://puh3.net.cn/__local/6/36/E4/0F9716C26A9B83866A22E74E333_640532E4_21CF4.jpg', '2025-10-16 11:12:59');
 INSERT INTO `doctor` VALUES (875, NULL, 13, '李东', '主任医师、教授', '中医及中西医结合治疗妇科生殖、内分泌失调、不孕不育等疾病。中医药治疗消化、心脑血管、呼吸系统等疾病及各种内科杂症。在慢性胃炎，消化性溃疡、结肠炎、慢性支气管炎、慢阻肺、冠心病、脑血管疾病及肿瘤调理等各种内科杂症及月经不调、子宫肌瘤、子宫腺肌症、多囊卵巢综合征、不孕不育及妇科生殖疾病等方面积累了丰富的经验。', '工作经历1990年毕业于北京中医药大学，毕业后一直在北京大学第三医院中医科从事临床、教学和科研工作，历任住院医师、主治医师、副主任医师和主任医师。先后师从著名中医专家、首都国医名师姜良铎教授和中国工程院院士、国医大师王琦教授，分别获得硕士和博士学位。现任北京大学第三医院中医科主任，博士生导师，博士后合作导师，科室学术带头人，北京市中西医结合生殖医学研究所副所长，北京大学医学部中西医结合学系副主任，兼任北京中西医结合学会副会长。...', '/static/images/doctor/doctor_242.jpg', 'https://puh3.net.cn/__local/9/1C/E4/B1E32C87164827E8651738A73B2_B14E067F_1E8FF.jpg?e=.jpg', '2025-10-17 00:38:53');
+INSERT INTO `doctor` VALUES (876, NULL, 1, 'string', NULL, NULL, NULL, '/static/images/doctor/doctor_876_1761886058524.jpg', NULL, NULL);
 
 -- ----------------------------
 -- Table structure for hospital_area
@@ -1186,7 +1187,7 @@ CREATE TABLE `major_department`  (
   `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`major_dept_id`) USING BTREE,
-  UNIQUE INDEX `name`(`name` ASC) USING BTREE
+  UNIQUE INDEX `name`(`name`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -1207,8 +1208,8 @@ CREATE TABLE `minor_department`  (
   `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`minor_dept_id`) USING BTREE,
-  UNIQUE INDEX `name`(`name` ASC) USING BTREE,
-  INDEX `major_dept_id`(`major_dept_id` ASC) USING BTREE,
+  UNIQUE INDEX `name`(`name`) USING BTREE,
+  INDEX `major_dept_id`(`major_dept_id`) USING BTREE,
   CONSTRAINT `minor_department_ibfk_1` FOREIGN KEY (`major_dept_id`) REFERENCES `major_department` (`major_dept_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 49 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
@@ -1278,8 +1279,8 @@ CREATE TABLE `patient`  (
   `is_verified` tinyint(1) NULL DEFAULT 0 COMMENT '身份是否已通过管理员审核 (0=否, 1=是)',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`patient_id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
-  UNIQUE INDEX `student_id`(`student_id` ASC) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id`) USING BTREE,
+  UNIQUE INDEX `student_id`(`student_id`) USING BTREE,
   CONSTRAINT `fk_patient_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = DYNAMIC;
 
@@ -1307,15 +1308,15 @@ CREATE TABLE `registration_order`  (
   `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime NULL DEFAULT NULL COMMENT '最后更新时间',
   PRIMARY KEY (`order_id`) USING BTREE,
-  INDEX `patient_id`(`patient_id` ASC) USING BTREE,
-  INDEX `user_id`(`user_id` ASC) USING BTREE,
-  INDEX `doctor_id`(`doctor_id` ASC) USING BTREE,
-  INDEX `schedule_id`(`schedule_id` ASC) USING BTREE,
+  INDEX `patient_id`(`patient_id`) USING BTREE,
+  INDEX `user_id`(`user_id`) USING BTREE,
+  INDEX `doctor_id`(`doctor_id`) USING BTREE,
+  INDEX `schedule_id`(`schedule_id`) USING BTREE,
   CONSTRAINT `registration_order_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_4` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of registration_order
@@ -1339,8 +1340,8 @@ CREATE TABLE `schedule`  (
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   `price` decimal(10, 2) NOT NULL DEFAULT 0.00 COMMENT '挂号原价 (单位: 元)',
   PRIMARY KEY (`schedule_id`) USING BTREE,
-  UNIQUE INDEX `uk_doc_clinic_time_type`(`doctor_id` ASC, `clinic_id` ASC, `date` ASC, `time_section` ASC, `slot_type` ASC) USING BTREE,
-  INDEX `fk_schedule_clinic_v3`(`clinic_id` ASC) USING BTREE,
+  UNIQUE INDEX `uk_doc_clinic_time_type`(`doctor_id`, `clinic_id`, `date`, `time_section`, `slot_type`) USING BTREE,
+  INDEX `fk_schedule_clinic_v3`(`clinic_id`) USING BTREE,
   CONSTRAINT `fk_schedule_clinic_v3` FOREIGN KEY (`clinic_id`) REFERENCES `clinic` (`clinic_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_schedule_doctor_v3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB AUTO_INCREMENT = 2947 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医生出诊排班及号源管理表 (含号源类型)' ROW_FORMAT = DYNAMIC;
@@ -4292,6 +4293,32 @@ INSERT INTO `schedule` VALUES (2942, 517, 132, '2025-10-21', 2, '下午', '专�
 INSERT INTO `schedule` VALUES (2943, 517, 131, '2025-10-23', 4, '下午', '专家', 15, 15, '正常', '2025-10-20 23:44:34', 2000.00);
 
 -- ----------------------------
+-- Table structure for system_config
+-- ----------------------------
+DROP TABLE IF EXISTS `system_config`;
+CREATE TABLE `system_config`  (
+  `config_id` int UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '配置项唯一ID',
+  `config_key` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '配置键名 (格式: 模块.子模块.参数)',
+  `scope_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'GLOBAL' COMMENT '配置应用范围类型: GLOBAL(全局), MODULE(模块), CLINIC(门诊), DOCTOR(医生)',
+  `scope_id` int UNSIGNED NULL DEFAULT NULL COMMENT '应用范围的实体ID (如: clinic_id, doctor_id). GLOBAL时为NULL',
+  `config_value` json NOT NULL COMMENT '配置值 (使用JSON类型存储，方便存储复杂结构)',
+  `data_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '值的预期数据类型: STRING, INT, FLOAT, BOOLEAN, JSON',
+  `description` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '配置项用途描述',
+  `is_active` tinyint NOT NULL DEFAULT 1 COMMENT '是否启用 (1: 启用, 0: 禁用)',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`config_id`) USING BTREE,
+  UNIQUE INDEX `uk_scope_key`(`scope_type`, `scope_id`, `config_key`) USING BTREE,
+  INDEX `idx_key`(`config_key`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统通用配置表' ROW_FORMAT = DYNAMIC;
+
+-- ----------------------------
+-- Records of system_config
+-- ----------------------------
+INSERT INTO `system_config` VALUES (1, 'scheduling.time_sections', 'GLOBAL', NULL, '[{\"end\": \"12:00\", \"key\": \"MORNING\", \"label\": \"上午\", \"start\": \"08:00\"}, {\"end\": \"17:00\", \"key\": \"AFTERNOON\", \"label\": \"下午\", \"start\": \"13:00\"}, {\"end\": \"20:00\", \"key\": \"EVENING\", \"label\": \"晚上\", \"start\": \"17:00\"}]', 'JSON', '全局排班时间段定义', 1, '2025-10-31 11:02:23', '2025-10-31 11:02:23');
+INSERT INTO `system_config` VALUES (2, 'scheduling.time_sections', 'CLINIC', 1, '[{\"end\": \"11:00\", \"key\": \"MORNING\", \"label\": \"上午诊\", \"start\": \"09:00\"}]', 'JSON', '门诊 1 的特殊上午排班时间', 1, '2025-10-31 11:02:23', '2025-10-31 11:02:23');
+
+-- ----------------------------
 -- Table structure for user
 -- ----------------------------
 DROP TABLE IF EXISTS `user`;
@@ -4310,15 +4337,15 @@ CREATE TABLE `user`  (
   `last_login_ip` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '最近登录IP',
   `last_login_time` bigint NULL DEFAULT NULL COMMENT '最近登录时间（时间戳）',
   PRIMARY KEY (`user_id`) USING BTREE,
-  UNIQUE INDEX `phone_number`(`phonenumber` ASC) USING BTREE,
-  UNIQUE INDEX `phone_number_2`(`phonenumber` ASC) USING BTREE,
-  UNIQUE INDEX `phone_number_3`(`phonenumber` ASC) USING BTREE,
-  UNIQUE INDEX `email`(`email` ASC) USING BTREE,
-  UNIQUE INDEX `identifier`(`identifier` ASC) USING BTREE,
-  UNIQUE INDEX `email_2`(`email` ASC) USING BTREE,
-  UNIQUE INDEX `email_3`(`email` ASC) USING BTREE,
-  UNIQUE INDEX `phonenumber`(`phonenumber` ASC) USING BTREE,
-  UNIQUE INDEX `identifier_2`(`identifier` ASC) USING BTREE
+  UNIQUE INDEX `phone_number`(`phonenumber`) USING BTREE,
+  UNIQUE INDEX `phone_number_2`(`phonenumber`) USING BTREE,
+  UNIQUE INDEX `phone_number_3`(`phonenumber`) USING BTREE,
+  UNIQUE INDEX `email`(`email`) USING BTREE,
+  UNIQUE INDEX `identifier`(`identifier`) USING BTREE,
+  UNIQUE INDEX `email_2`(`email`) USING BTREE,
+  UNIQUE INDEX `email_3`(`email`) USING BTREE,
+  UNIQUE INDEX `phonenumber`(`phonenumber`) USING BTREE,
+  UNIQUE INDEX `identifier_2`(`identifier`) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -4344,9 +4371,9 @@ CREATE TABLE `user_access_log`  (
   `access_time` datetime NULL DEFAULT NULL COMMENT '访问时间',
   `duration_ms` int NOT NULL COMMENT '请求耗时（毫秒）',
   PRIMARY KEY (`user_access_log_id`) USING BTREE,
-  INDEX `user_id`(`user_id` ASC) USING BTREE,
+  INDEX `user_id`(`user_id`) USING BTREE,
   CONSTRAINT `user_access_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 113 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 219 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_access_log
@@ -4463,6 +4490,112 @@ INSERT INTO `user_access_log` VALUES (109, 5, '127.0.0.1', 'Mozilla/5.0 (Windows
 INSERT INTO `user_access_log` VALUES (110, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/schedules/2944', 'PUT', 200, 0, '2025-10-31 08:03:49', 64);
 INSERT INTO `user_access_log` VALUES (111, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/schedules/875', 'DELETE', 200, 0, '2025-10-31 08:06:13', 35);
 INSERT INTO `user_access_log` VALUES (112, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/schedules/2946', 'DELETE', 200, 0, '2025-10-31 08:06:45', 41);
+INSERT INTO `user_access_log` VALUES (113, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-10-31 09:38:13', 0);
+INSERT INTO `user_access_log` VALUES (114, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-10-31 09:38:13', 1);
+INSERT INTO `user_access_log` VALUES (115, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-10-31 09:38:16', 1);
+INSERT INTO `user_access_log` VALUES (116, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-10-31 09:38:16', 114);
+INSERT INTO `user_access_log` VALUES (117, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-10-31 09:38:24', 617);
+INSERT INTO `user_access_log` VALUES (118, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors?dept_id=1', 'GET', 200, 301, '2025-10-31 09:38:34', 36);
+INSERT INTO `user_access_log` VALUES (119, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-10-31 09:48:35', 1);
+INSERT INTO `user_access_log` VALUES (120, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-10-31 09:48:36', 1);
+INSERT INTO `user_access_log` VALUES (121, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-10-31 09:48:43', 1);
+INSERT INTO `user_access_log` VALUES (122, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-10-31 09:48:43', 174);
+INSERT INTO `user_access_log` VALUES (123, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-10-31 09:48:46', 695);
+INSERT INTO `user_access_log` VALUES (124, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors?dept_id=1', 'GET', 200, 0, '2025-10-31 09:48:57', 30);
+INSERT INTO `user_access_log` VALUES (125, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/major-departments', 'GET', 200, 0, '2025-10-31 09:49:07', 19);
+INSERT INTO `user_access_log` VALUES (126, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/minor-departments?major_dept_id=1', 'GET', 200, 0, '2025-10-31 09:49:16', 34);
+INSERT INTO `user_access_log` VALUES (127, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/clinics?dept_id=1', 'GET', 200, 0, '2025-10-31 09:49:25', 25);
+INSERT INTO `user_access_log` VALUES (128, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/departments/1/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 0, '2025-10-31 09:49:48', 57);
+INSERT INTO `user_access_log` VALUES (129, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/800/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 0, '2025-10-31 09:50:04', 26);
+INSERT INTO `user_access_log` VALUES (130, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/777/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 0, '2025-10-31 09:50:07', 23);
+INSERT INTO `user_access_log` VALUES (131, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/1111/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 301, '2025-10-31 09:50:10', 16);
+INSERT INTO `user_access_log` VALUES (132, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/111/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 0, '2025-10-31 09:50:14', 22);
+INSERT INTO `user_access_log` VALUES (133, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/clinics/2/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 0, '2025-10-31 09:50:29', 26);
+INSERT INTO `user_access_log` VALUES (134, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/clinics/10/schedules?start_date=2025-10-20&end_date=2025-10-21', 'GET', 200, 0, '2025-10-31 09:50:36', 27);
+INSERT INTO `user_access_log` VALUES (135, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-10-31 11:22:20', 0);
+INSERT INTO `user_access_log` VALUES (136, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-10-31 11:22:21', 1);
+INSERT INTO `user_access_log` VALUES (137, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-10-31 11:22:26', 0);
+INSERT INTO `user_access_log` VALUES (138, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-10-31 11:22:26', 82);
+INSERT INTO `user_access_log` VALUES (139, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/1/photo', 'GET', 200, 105, '2025-10-31 11:24:18', 84);
+INSERT INTO `user_access_log` VALUES (140, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-10-31 11:24:27', 796);
+INSERT INTO `user_access_log` VALUES (141, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/1/photo', 'GET', 200, 301, '2025-10-31 11:24:30', 42);
+INSERT INTO `user_access_log` VALUES (142, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/2/photo', 'GET', 200, 301, '2025-10-31 11:24:35', 25);
+INSERT INTO `user_access_log` VALUES (143, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/3/photo', 'GET', 200, 301, '2025-10-31 11:24:38', 18);
+INSERT INTO `user_access_log` VALUES (144, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-10-31 11:27:58', 0);
+INSERT INTO `user_access_log` VALUES (145, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-10-31 11:27:58', 88);
+INSERT INTO `user_access_log` VALUES (146, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-10-31 11:28:02', 783);
+INSERT INTO `user_access_log` VALUES (147, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/1/photo', 'GET', 200, 301, '2025-10-31 11:28:07', 22);
+INSERT INTO `user_access_log` VALUES (148, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/1/photo', 'GET', 200, 301, '2025-10-31 11:28:58', 65);
+INSERT INTO `user_access_log` VALUES (149, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-10-31 11:30:58', 0);
+INSERT INTO `user_access_log` VALUES (150, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-10-31 11:30:59', 2);
+INSERT INTO `user_access_log` VALUES (151, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-10-31 11:31:05', 662);
+INSERT INTO `user_access_log` VALUES (152, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/1/photo', 'GET', 200, NULL, '2025-10-31 11:31:16', 252);
+INSERT INTO `user_access_log` VALUES (153, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors', 'POST', 200, 99, '2025-10-31 11:44:20', 4);
+INSERT INTO `user_access_log` VALUES (154, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-10-31 12:42:08', 1);
+INSERT INTO `user_access_log` VALUES (155, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-10-31 12:42:09', 2);
+INSERT INTO `user_access_log` VALUES (156, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-10-31 12:42:13', 0);
+INSERT INTO `user_access_log` VALUES (157, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-10-31 12:42:14', 102);
+INSERT INTO `user_access_log` VALUES (158, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'POST', 200, 105, '2025-10-31 12:43:31', 10);
+INSERT INTO `user_access_log` VALUES (159, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-10-31 12:43:36', 670);
+INSERT INTO `user_access_log` VALUES (160, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'POST', 200, 0, '2025-10-31 12:43:38', 67);
+INSERT INTO `user_access_log` VALUES (161, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'GET', 200, NULL, '2025-10-31 12:43:59', 299);
+INSERT INTO `user_access_log` VALUES (162, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'GET', 200, NULL, '2025-10-31 12:47:19', 247);
+INSERT INTO `user_access_log` VALUES (163, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'POST', 200, 0, '2025-10-31 12:47:38', 78);
+INSERT INTO `user_access_log` VALUES (164, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/876/photo', 'GET', 200, NULL, '2025-10-31 12:47:51', 33);
+INSERT INTO `user_access_log` VALUES (165, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/800/photo', 'GET', 200, NULL, '2025-10-31 12:47:55', 19);
+INSERT INTO `user_access_log` VALUES (166, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-10-31 13:50:42', 0);
+INSERT INTO `user_access_log` VALUES (167, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-10-31 13:50:42', 29);
+INSERT INTO `user_access_log` VALUES (168, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors?dept_id=20', 'GET', 200, 0, '2025-10-31 13:50:44', 21);
+INSERT INTO `user_access_log` VALUES (169, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/20/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 118);
+INSERT INTO `user_access_log` VALUES (170, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=20', 'GET', 200, 0, '2025-10-31 13:50:44', 19);
+INSERT INTO `user_access_log` VALUES (171, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/8/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
+INSERT INTO `user_access_log` VALUES (172, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/68/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 15);
+INSERT INTO `user_access_log` VALUES (173, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/69/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 19);
+INSERT INTO `user_access_log` VALUES (174, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/70/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 13);
+INSERT INTO `user_access_log` VALUES (175, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/71/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
+INSERT INTO `user_access_log` VALUES (176, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/152/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
+INSERT INTO `user_access_log` VALUES (177, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/171/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 16);
+INSERT INTO `user_access_log` VALUES (178, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/195/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 14);
+INSERT INTO `user_access_log` VALUES (179, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/196/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:44', 17);
+INSERT INTO `user_access_log` VALUES (180, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/417/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:45', 16);
+INSERT INTO `user_access_log` VALUES (181, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/419/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:46', 15);
+INSERT INTO `user_access_log` VALUES (182, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/421/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:46', 15);
+INSERT INTO `user_access_log` VALUES (183, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/401/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:50:51', 17);
+INSERT INTO `user_access_log` VALUES (184, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-10-31 13:53:04', 0);
+INSERT INTO `user_access_log` VALUES (185, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-10-31 13:53:04', 13);
+INSERT INTO `user_access_log` VALUES (186, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors', 'GET', 200, 0, '2025-10-31 13:53:05', 65);
+INSERT INTO `user_access_log` VALUES (187, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/major-departments', 'GET', 200, 0, '2025-10-31 13:53:05', 55);
+INSERT INTO `user_access_log` VALUES (188, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/2/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 172);
+INSERT INTO `user_access_log` VALUES (189, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/3/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 20);
+INSERT INTO `user_access_log` VALUES (190, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/4/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 20);
+INSERT INTO `user_access_log` VALUES (191, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/1/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 174);
+INSERT INTO `user_access_log` VALUES (192, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/5/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 23);
+INSERT INTO `user_access_log` VALUES (193, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/6/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 23);
+INSERT INTO `user_access_log` VALUES (194, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/8/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 44);
+INSERT INTO `user_access_log` VALUES (195, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/9/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 48);
+INSERT INTO `user_access_log` VALUES (196, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/10/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 43);
+INSERT INTO `user_access_log` VALUES (197, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/7/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 51);
+INSERT INTO `user_access_log` VALUES (198, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/11/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 42);
+INSERT INTO `user_access_log` VALUES (199, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/12/photo', 'GET', 200, NULL, '2025-10-31 13:53:05', 34);
+INSERT INTO `user_access_log` VALUES (200, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=8', 'GET', 200, 0, '2025-10-31 13:53:06', 26);
+INSERT INTO `user_access_log` VALUES (201, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/8/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 38);
+INSERT INTO `user_access_log` VALUES (202, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/13/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 13);
+INSERT INTO `user_access_log` VALUES (203, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/104/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 15);
+INSERT INTO `user_access_log` VALUES (204, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/105/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 15);
+INSERT INTO `user_access_log` VALUES (205, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/157/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 15);
+INSERT INTO `user_access_log` VALUES (206, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/205/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:06', 16);
+INSERT INTO `user_access_log` VALUES (207, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=20', 'GET', 200, 0, '2025-10-31 13:53:28', 30);
+INSERT INTO `user_access_log` VALUES (208, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors?dept_id=20', 'GET', 200, 0, '2025-10-31 13:53:28', 30);
+INSERT INTO `user_access_log` VALUES (209, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/20/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 34);
+INSERT INTO `user_access_log` VALUES (210, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/8/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 17);
+INSERT INTO `user_access_log` VALUES (211, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/68/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 15);
+INSERT INTO `user_access_log` VALUES (212, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/69/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 16);
+INSERT INTO `user_access_log` VALUES (213, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/70/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 13);
+INSERT INTO `user_access_log` VALUES (214, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/71/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 14);
+INSERT INTO `user_access_log` VALUES (215, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/152/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 16);
+INSERT INTO `user_access_log` VALUES (216, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/171/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 16);
+INSERT INTO `user_access_log` VALUES (217, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/195/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 14);
+INSERT INTO `user_access_log` VALUES (218, 3, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/196/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-10-31 13:53:28', 18);
 
 -- ----------------------------
 -- Table structure for visit_history
@@ -4483,13 +4616,13 @@ CREATE TABLE `visit_history`  (
   `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime NULL DEFAULT NULL COMMENT '最后更新时间',
   PRIMARY KEY (`visit_id`) USING BTREE,
-  INDEX `patient_id`(`patient_id` ASC) USING BTREE,
-  INDEX `doctor_id`(`doctor_id` ASC) USING BTREE,
-  INDEX `schedule_id`(`schedule_id` ASC) USING BTREE,
+  INDEX `patient_id`(`patient_id`) USING BTREE,
+  INDEX `doctor_id`(`doctor_id`) USING BTREE,
+  INDEX `schedule_id`(`schedule_id`) USING BTREE,
   CONSTRAINT `visit_history_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_3` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of visit_history
