@@ -29,7 +29,6 @@ class MajorDepartmentResponse(BaseModel):
     major_dept_id: int
     name: str
     description: Optional[str]
-    create_time: Optional[datetime]
     
     class Config:
         from_attributes = True
@@ -53,7 +52,6 @@ class MinorDepartmentResponse(BaseModel):
     major_dept_id: int
     name: str
     description: Optional[str]
-    create_time: Optional[datetime]
     major_department: Optional[MajorDepartmentResponse]
     
     class Config:
@@ -93,7 +91,6 @@ class DoctorResponse(BaseModel):
     introduction: Optional[str] = None
     photo_path: Optional[str] = None
     original_photo_url: Optional[str] = None
-    create_time: Optional[datetime] = None
     minor_department: Optional[MinorDepartmentResponse] = None
     user: Optional[dict] = None  # 用户基本信息
     
@@ -133,7 +130,6 @@ class ClinicResponse(BaseModel):
     address: Optional[str]
     minor_dept_id: Optional[int]
     clinic_type: int
-    create_time: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -181,7 +177,6 @@ class ScheduleItemResponse(BaseModel):
     remaining_slots: int
     status: Optional[str]
     price: float
-    create_time: Optional[datetime]
 
 
 class ScheduleListResponse(BaseModel):

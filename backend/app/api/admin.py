@@ -67,8 +67,7 @@ async def create_major_department(
             message={
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
-                "description": db_dept.description,
-                "create_time": db_dept.create_time
+                "description": db_dept.description
             }
         )
     except AuthHTTPException:
@@ -108,8 +107,7 @@ async def get_major_departments(
             dept_list.append({
                 "major_dept_id": dept.major_dept_id,
                 "name": dept.name,
-                "description": dept.description,
-                "create_time": dept.create_time
+                "description": dept.description
             })
         
         return ResponseModel(
@@ -186,8 +184,7 @@ async def update_major_department(
             message={
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
-                "description": db_dept.description,
-                "create_time": db_dept.create_time
+                "description": db_dept.description
             }
         )
     except AuthHTTPException:
@@ -314,8 +311,7 @@ async def create_minor_department(
                 "minor_dept_id": db_dept.minor_dept_id,
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
-                "description": db_dept.description,
-                "create_time": db_dept.create_time
+                "description": db_dept.description
             }
         )
     except AuthHTTPException:
@@ -407,8 +403,7 @@ async def update_minor_department(
             "minor_dept_id": db_dept.minor_dept_id,
             "major_dept_id": db_dept.major_dept_id,
             "name": db_dept.name,
-            "description": db_dept.description,
-            "create_time": db_dept.create_time
+            "description": db_dept.description
         }
         
         # 如果发生了科室转移，添加转移相关信息
@@ -520,8 +515,7 @@ async def get_minor_departments(
                 "minor_dept_id": dept.minor_dept_id,
                 "major_dept_id": dept.major_dept_id,
                 "name": dept.name,
-                "description": dept.description,
-                "create_time": dept.create_time
+                "description": dept.description
             })
         
         return ResponseModel(
@@ -610,8 +604,7 @@ async def create_doctor(
             "name": db_doctor.name,
             "title": db_doctor.title,
             "specialty": db_doctor.specialty,
-            "introduction": db_doctor.introduction,
-            "create_time": db_doctor.create_time
+            "introduction": db_doctor.introduction
         }
 
         # 如果请求体中包含工号和密码，则在此一并创建用户账号并关联
@@ -744,8 +737,7 @@ async def get_doctors(
                 "specialty": doctor.specialty,
                 "introduction": doctor.introduction,
                 "photo_path": doctor.photo_path,
-                "original_photo_url": doctor.original_photo_url,
-                "create_time": doctor.create_time
+                "original_photo_url": doctor.original_photo_url
             })
         
         return ResponseModel(
@@ -835,8 +827,7 @@ async def update_doctor(
                 "specialty": db_doctor.specialty,
                 "introduction": db_doctor.introduction,
                 "photo_path": db_doctor.photo_path,
-                "original_photo_url": db_doctor.original_photo_url,
-                "create_time": db_doctor.create_time
+                "original_photo_url": db_doctor.original_photo_url
             }
         )
     except AuthHTTPException:
@@ -1358,8 +1349,7 @@ async def get_clinics(
                 "name": c.name,
                 "address": c.address,
                 "minor_dept_id": c.minor_dept_id,
-                "clinic_type": c.clinic_type,
-                "create_time": c.create_time
+                "clinic_type": c.clinic_type
             })
 
         return ResponseModel(code=0, message=ClinicListResponse(clinics=clinic_list))
@@ -1526,8 +1516,7 @@ async def get_department_schedules(
                 "total_slots": sch.total_slots,
                 "remaining_slots": sch.remaining_slots,
                 "status": sch.status,
-                "price": float(sch.price),
-                "create_time": sch.create_time,
+                "price": float(sch.price)
             })
 
         return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
@@ -1605,8 +1594,7 @@ async def get_doctor_schedules(
                 "total_slots": sch.total_slots,
                 "remaining_slots": sch.remaining_slots,
                 "status": sch.status,
-                "price": float(sch.price),
-                "create_time": sch.create_time,
+                "price": float(sch.price)
             })
 
         return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
@@ -1684,8 +1672,7 @@ async def get_clinic_schedules(
                 "total_slots": sch.total_slots,
                 "remaining_slots": sch.remaining_slots,
                 "status": sch.status,
-                "price": float(sch.price),
-                "create_time": sch.create_time,
+                "price": float(sch.price)
             })
 
         return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
@@ -1738,7 +1725,7 @@ async def create_schedule(
             total_slots=schedule_data.total_slots,
             remaining_slots=schedule_data.total_slots,
             status=schedule_data.status,
-            price=schedule_data.price,
+            price=schedule_data.price
         )
         db.add(db_schedule)
         await db.commit()
