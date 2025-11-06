@@ -1158,21 +1158,136 @@ Authorization: Bearer <token>
 - 强制校验文件路径必须在应用基础目录内
 - 仅管理员可访问
 
-使用示例（PowerShell）：
-```pwsh
-# 获取附件并保存为本地文件
-$token = "<your_admin_token>"
-$path = "/static/audit/leave_20251101_123456.jpg"
-Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
-    -Headers @{"Authorization"="Bearer $token"} `
-    -OutFile "downloaded_attachment.jpg"
+---
+
+## 4. 系统配置管理
+
+所有系统配置接口均需管理员权限，请求头需包含：
+```
+Authorization: Bearer <token>
+```
+
+### 4.1 获取系统配置
+- GET `/config`
+- 说明：获取系统所有配置信息，包括挂号配置和排班配置
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "registration": {
+            "advanceBookingDays": 14,
+            "sameDayDeadline": "08:00",
+            "noShowLimit": 3,
+            "cancelHoursBefore": 24,
+            "sameClinicInterval": 7
+        },
+        "schedule": {
+            "maxFutureDays": 60,
+            "morningStart": "08:00",
+            "morningEnd": "12:00",
+            "afternoonStart": "14:00",
+            "afternoonEnd": "18:00",
+            "eveningStart": "18:30",
+            "eveningEnd": "21:00",
+            "consultationDuration": 15,
+            "intervalTime": 5
+        }
+    }
+}
+```
+
+#### registration (挂号配置) 字段说明
+
+| 字段名 | 类型 | 说明 | 范围 |
+|--------|------|------|------|
+| advanceBookingDays | number | 提前挂号天数 | 1-90 |
+| sameDayDeadline | string | 当日挂号截止时间，格式: HH:mm | 例: "08:00" |
+| noShowLimit | number | 爽约次数限制 | 1-10 |
+| cancelHoursBefore | number | 退号提前时间（小时） | 1-72 |
+| sameClinicInterval | number | 同科室挂号间隔（天） | 1-30 |
+
+#### schedule (排班配置) 字段说明
+
+| 字段名 | 类型 | 说明 | 范围 |
+|--------|------|------|------|
+| maxFutureDays | number | 最多排未来天数 | 7-180 |
+| morningStart | string | 上午班开始时间，格式: HH:mm | 例: "08:00" |
+| morningEnd | string | 上午班结束时间，格式: HH:mm | 例: "12:00" |
+| afternoonStart | string | 下午班开始时间，格式: HH:mm | 例: "14:00" |
+| afternoonEnd | string | 下午班结束时间，格式: HH:mm | 例: "18:00" |
+| eveningStart | string | 晚班开始时间，格式: HH:mm | 例: "18:30" |
+| eveningEnd | string | 晚班结束时间，格式: HH:mm | 例: "21:00" |
+| consultationDuration | number | 单次就诊时长（分钟） | 5-60 |
+| intervalTime | number | 就诊间隔时间（分钟） | 0-30 |
+
+---
+
+### 4.2 更新系统配置
+- PUT `/config`
+- 说明：更新系统配置信息，可选择性更新挂号配置和/或排班配置
+
+请求体（所有字段可选，只需传递需要更新的字段）：
+```json
+{
+    "registration": {
+        "advanceBookingDays": 30,
+        "noShowLimit": 5
+    },
+    "schedule": {
+        "maxFutureDays": 90,
+        "morningStart": "07:30"
+    }
+}
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "配置更新成功"
+    }
+}
+```
+
+#### 数据验证规则
+
+**数值范围验证**：
+- `advanceBookingDays`: 1 ≤ value ≤ 90
+- `noShowLimit`: 1 ≤ value ≤ 10
+- `cancelHoursBefore`: 1 ≤ value ≤ 72
+- `sameClinicInterval`: 1 ≤ value ≤ 30
+- `maxFutureDays`: 7 ≤ value ≤ 180
+- `consultationDuration`: 5 ≤ value ≤ 60
+- `intervalTime`: 0 ≤ value ≤ 30
+
+**时间格式验证**：
+- 所有时间字段必须符合 HH:mm 格式（24小时制）
+- 例如: "08:00", "14:30", "23:59"
+
+**逻辑验证**：
+- 上午班: `morningStart < morningEnd`
+- 下午班: `afternoonStart < afternoonEnd`
+- 晚班: `eveningStart < eveningEnd`
+
+错误响应示例：
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "请求参数错误",
+        "msg": "上午班开始时间必须小于结束时间"
+    }
+}
 ```
 
 ---
 
-## 4. 门诊管理
+## 5. 门诊管理
 
-### 4.1 获取科室门诊列表
+### 5.1 获取科室门诊列表
 - GET `/admin/clinics?dept_id={dept_id}`
 - 说明：获取门诊列表，可按小科室过滤
 - 参数 `dept_id` 可选，用于按小科室过滤
@@ -1200,7 +1315,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 字段说明：
 - `clinic_type`：门诊类型，0-普通，1-国疗，2-特需
 
-### 3.2 创建门诊
+### 5.2 创建门诊
 - POST `/admin/clinics`
 - 说明：创建新的门诊地点
 
@@ -1233,9 +1348,9 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 
 ---
 
-## 4. 排班管理
+## 6. 排班管理
 
-### 4.1 获取科室排班
+### 6.1 获取科室排班
 - GET `/admin/departments/{dept_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定小科室在日期范围内的所有排班
 
@@ -1278,7 +1393,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 - `status`：排班状态，如"正常"、"停诊"
 - `week_day`：星期几，值为"一"、"二"、"三"、"四"、"五"、"六"、"日"
 
-### 4.2 获取医生排班
+### 6.2 获取医生排班
 - GET `/admin/doctors/{doctor_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定医生在日期范围内的所有排班
 
@@ -1289,7 +1404,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 
 响应：同 4.1 获取科室排班的响应格式
 
-### 4.3 获取门诊排班
+### 6.3 获取门诊排班
 - GET `/admin/clinics/{clinic_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定门诊在日期范围内的所有排班
 
@@ -1300,7 +1415,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 
 响应：同 4.1 获取科室排班的响应格式
 
-### 4.4 创建排班
+### 6.4 创建排班
 - POST `/admin/schedules`
 - 说明：为医生创建新的排班记录
 
@@ -1341,7 +1456,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 }
 ```
 
-### 4.5 更新排班
+### 6.5 更新排班
 - PUT `/admin/schedules/{schedule_id}`
 - 说明：更新排班信息，支持部分字段更新
 
@@ -1376,7 +1491,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
 }
 ```
 
-### 4.6 删除排班
+### 6.6 删除排班
 - DELETE `/admin/schedules/{schedule_id}`
 - 说明：删除指定的排班记录
 

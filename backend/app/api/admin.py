@@ -2,13 +2,16 @@ from fastapi import APIRouter, Depends,UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
+from sqlalchemy.orm.attributes import flag_modified
 from typing import Optional, Union
 import logging
 from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
+from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit
+from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
 from app.schemas.audit import (
     ScheduleAuditItem, ScheduleAuditListResponse, ScheduleDoctorInfo,AuditAction, AuditActionResponse,LeaveAttachment, LeaveAuditItem, LeaveAuditListResponse 
@@ -2610,6 +2613,240 @@ async def get_attachment_raw_from_path(
         raise
     except Exception as e:
         logger.error(f"获取附件数据时发生未知异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ================================== 系统配置接口 ==================================
+
+@router.get("/config", response_model=ResponseModel[Union[SystemConfigResponse, AuthErrorResponse]])
+async def get_system_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取系统配置 - 仅管理员可操作
+    
+    返回挂号配置(registration)和排班配置(schedule)的完整信息
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 查询 registration 配置
+        registration_result = await db.execute(
+            select(SystemConfig).where(
+                and_(
+                    SystemConfig.config_key == 'registration',
+                    SystemConfig.scope_type == 'GLOBAL',
+                    SystemConfig.is_active == True
+                )
+            )
+        )
+        registration_config = registration_result.scalar_one_or_none()
+
+        # 查询 schedule 配置
+        schedule_result = await db.execute(
+            select(SystemConfig).where(
+                and_(
+                    SystemConfig.config_key == 'schedule',
+                    SystemConfig.scope_type == 'GLOBAL',
+                    SystemConfig.is_active == True
+                )
+            )
+        )
+        schedule_config = schedule_result.scalar_one_or_none()
+
+        # 如果配置不存在，返回默认值
+        registration_data = registration_config.config_value if registration_config else {
+            "advanceBookingDays": 14,
+            "sameDayDeadline": "08:00",
+            "noShowLimit": 3,
+            "cancelHoursBefore": 24,
+            "sameClinicInterval": 7
+        }
+
+        schedule_data = schedule_config.config_value if schedule_config else {
+            "maxFutureDays": 60,
+            "morningStart": "08:00",
+            "morningEnd": "12:00",
+            "afternoonStart": "14:00",
+            "afternoonEnd": "18:00",
+            "eveningStart": "18:30",
+            "eveningEnd": "21:00",
+            "consultationDuration": 15,
+            "intervalTime": 5
+        }
+
+        logger.info(f"获取系统配置成功")
+        
+        return ResponseModel(
+            code=0,
+            message=SystemConfigResponse(
+                registration=registration_data,
+                schedule=schedule_data
+            )
+        )
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取系统配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/config", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_system_config(
+    config_data: SystemConfigRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新系统配置 - 仅管理员可操作
+    
+    可选择性更新挂号配置(registration)和/或排班配置(schedule)
+    只需传递需要更新的字段即可
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 处理挂号配置更新
+        if config_data.registration is not None:
+            # 验证时间格式逻辑
+            reg_dict = config_data.registration.dict(exclude_none=True)
+            
+            # 查询现有配置
+            registration_result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.config_key == 'registration',
+                        SystemConfig.scope_type == 'GLOBAL'
+                    )
+                )
+            )
+            registration_config = registration_result.scalar_one_or_none()
+
+
+            if registration_config:
+                logger.info(f"现有挂号配置: {registration_config.config_value}")
+                # 更新现有配置（合并字段）
+                current_value = registration_config.config_value or {}
+                current_value.update(reg_dict)
+                registration_config.config_value = current_value
+                registration_config.update_time = datetime.now()
+                # 关键：标记 JSON 字段已修改，确保 SQLAlchemy 追踪到变更
+                flag_modified(registration_config, "config_value")
+                db.add(registration_config)
+            else:
+                logger.info("无现有挂号配置，创建新配置")
+                # 创建新配置
+                new_config = SystemConfig(
+                    config_key='registration',
+                    scope_type='GLOBAL',
+                    scope_id=None,
+                    config_value=reg_dict,
+                    data_type='JSON',
+                    description='挂号配置：包含提前挂号天数、当日挂号截止时间、爽约次数限制、退号提前时间、同科室挂号间隔',
+                    is_active=True
+                )
+                db.add(new_config)
+
+            logger.info(f"更新挂号配置: {reg_dict}")
+
+        # 处理排班配置更新
+        if config_data.schedule is not None:
+            logger.info(f"准备更新排班配置: {config_data.schedule}")
+            # 验证时间段逻辑
+            sch_dict = config_data.schedule.dict(exclude_none=True)
+            
+            # 逻辑验证：各时间段开始时间应小于结束时间
+            if 'morningStart' in sch_dict and 'morningEnd' in sch_dict:
+                if sch_dict['morningStart'] >= sch_dict['morningEnd']:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="上午班开始时间必须小于结束时间",
+                        status_code=400
+                    )
+            
+            if 'afternoonStart' in sch_dict and 'afternoonEnd' in sch_dict:
+                if sch_dict['afternoonStart'] >= sch_dict['afternoonEnd']:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="下午班开始时间必须小于结束时间",
+                        status_code=400
+                    )
+            
+            if 'eveningStart' in sch_dict and 'eveningEnd' in sch_dict:
+                if sch_dict['eveningStart'] >= sch_dict['eveningEnd']:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="晚班开始时间必须小于结束时间",
+                        status_code=400
+                    )
+
+            # 查询现有配置
+            schedule_result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.config_key == 'schedule',
+                        SystemConfig.scope_type == 'GLOBAL'
+                    )
+                )
+            )
+            schedule_config = schedule_result.scalar_one_or_none()
+
+            if schedule_config:
+                # 更新现有配置（合并字段）
+                current_value = schedule_config.config_value or {}
+                current_value.update(sch_dict)
+                schedule_config.config_value = current_value
+                schedule_config.update_time = datetime.now()
+                # 关键：标记 JSON 字段已修改，确保 SQLAlchemy 追踪到变更
+                flag_modified(schedule_config, "config_value")
+                db.add(schedule_config)
+            else:
+                # 创建新配置
+                new_config = SystemConfig(
+                    config_key='schedule',
+                    scope_type='GLOBAL',
+                    scope_id=None,
+                    config_value=sch_dict,
+                    data_type='JSON',
+                    description='排班配置：包含最多排未来天数、上午/下午/晚班时间段、单次就诊时长、就诊间隔时间',
+                    is_active=True
+                )
+                db.add(new_config)
+
+            logger.info(f"更新排班配置: {sch_dict}")
+
+        await db.commit()
+        
+        return ResponseModel(
+            code=0,
+            message={"detail": "配置更新成功"}
+        )
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"更新系统配置时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
