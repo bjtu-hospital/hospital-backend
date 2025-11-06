@@ -6,7 +6,7 @@ from typing import Union
 
 from app.db.base import get_db, User, UserAccessLog
 from app.schemas.user import user as UserSchema
-from app.schemas.response import StatisticsErrorResponse, UserStatisticsResponse, LocationStatisticsResponse, ResponseModel, VisitStatisticsResponse,LoginCountByDayItem,LoginCountByDayResponse
+from app.schemas.response import StatisticsErrorResponse, UserStatisticsResponse,  ResponseModel, VisitStatisticsResponse,LoginCountByDayItem,LoginCountByDayResponse
 from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.exception_handler import StatisticsHTTPException

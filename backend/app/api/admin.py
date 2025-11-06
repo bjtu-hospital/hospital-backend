@@ -1,26 +1,27 @@
 from fastapi import APIRouter, Depends,UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 from typing import Optional, Union
 import logging
-
 from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
-from app.db.base import get_db, redis, User, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule
+from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit
 from app.schemas.user import user as UserSchema
+from app.schemas.audit import (
+    ScheduleAuditItem, ScheduleAuditListResponse, ScheduleDoctorInfo,AuditAction, AuditActionResponse,LeaveAttachment, LeaveAuditItem, LeaveAuditListResponse 
+)
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 from app.api.auth import get_current_user
 from app.core.security import get_hash_pwd
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import os
 import aiofiles
 import time
 import mimetypes
-
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1940,6 +1941,677 @@ async def delete_schedule(
             msg="内部服务异常",
             status_code=500
         )
+        
 
 
+async def get_administrator_id(db: AsyncSession, user_id: int) -> int:
+    """根据用户ID获取管理员ID，用于审核人字段的填充"""
+    # 查找关联的 Administrator 记录
+    result = await db.execute(
+        select(Administrator.admin_id).where(Administrator.user_id == user_id)
+    )
+    admin_id = result.scalar_one_or_none()
+    if not admin_id:
+        # 如果是管理员，但 Administrator 表中没有记录，则抛出异常
+        raise AuthHTTPException(
+            code=settings.INSUFFICIENT_AUTHORITY_CODE,
+            msg="管理员身份异常，未找到对应的管理员档案。",
+            status_code=403
+        )
+    return admin_id
 
+
+def calculate_leave_days(start_date: date, end_date: date) -> int:
+    """计算请假天数 (包含头尾两天)"""
+    return (end_date - start_date).days + 1
+
+# ================================== 排班审核接口 ==================================
+
+@router.get("/audit/schedule", response_model=ResponseModel[Union[ScheduleAuditListResponse, AuthErrorResponse]])
+async def get_schedule_audits(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取所有排班审核列表 - 仅管理员可操作 (无分页)"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: ScheduleAudit, MinorDepartment, Clinic, Doctor
+        result = await db.execute(
+            select(
+                ScheduleAudit,
+                MinorDepartment.name.label("department_name"),
+                Clinic.name.label("clinic_name"),
+                Doctor.name.label("submitter_name"),
+            )
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == ScheduleAudit.minor_dept_id)
+            .join(Clinic, Clinic.clinic_id == ScheduleAudit.clinic_id)
+            .join(Doctor, Doctor.doctor_id == ScheduleAudit.submitter_doctor_id)
+            .order_by(ScheduleAudit.submit_time.desc())
+        )
+        
+        audit_list = []
+        for audit, dept_name, clinic_name, submitter_name in result.all():
+            audit_list.append(ScheduleAuditItem(
+                id=audit.audit_id,
+                department_id=audit.minor_dept_id,
+                department_name=dept_name,
+                clinic_id=audit.clinic_id,
+                clinic_name=clinic_name,
+                submitter_id=audit.submitter_doctor_id,
+                submitter_name=submitter_name,
+                submit_time=audit.submit_time,
+                week_start=audit.week_start_date,
+                week_end=audit.week_end_date,
+                remark=audit.remark,
+                status=audit.status,
+                auditor_id=audit.auditor_admin_id,
+                audit_time=audit.audit_time,
+                audit_remark=audit.audit_remark,
+                # 假设 schedule_data_json 结构已符合 ScheduleAuditItem.schedule
+                schedule=audit.schedule_data_json
+            ))
+
+        return ResponseModel(code=0, message=ScheduleAuditListResponse(audits=audit_list))
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取排班审核列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/audit/schedule/{audit_id}", response_model=ResponseModel[Union[ScheduleAuditItem, AuthErrorResponse]])
+async def get_schedule_audit_detail(
+    audit_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取排班审核详情 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: ScheduleAudit, MinorDepartment, Clinic, Doctor
+        result = await db.execute(
+            select(
+                ScheduleAudit,
+                MinorDepartment.name.label("department_name"),
+                Clinic.name.label("clinic_name"),
+                Doctor.name.label("submitter_name"),
+            )
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == ScheduleAudit.minor_dept_id)
+            .join(Clinic, Clinic.clinic_id == ScheduleAudit.clinic_id)
+            .join(Doctor, Doctor.doctor_id == ScheduleAudit.submitter_doctor_id)
+            .where(ScheduleAudit.audit_id == audit_id)
+        )
+        row = result.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="排班申请不存在",
+                status_code=404
+            )
+        
+        audit, dept_name, clinic_name, submitter_name = row
+        
+        return ResponseModel(code=0, message=ScheduleAuditItem(
+            id=audit.audit_id,
+            department_id=audit.minor_dept_id,
+            department_name=dept_name,
+            clinic_id=audit.clinic_id,
+            clinic_name=clinic_name,
+            submitter_id=audit.submitter_doctor_id,
+            submitter_name=submitter_name,
+            submit_time=audit.submit_time,
+            week_start=audit.week_start_date,
+            week_end=audit.week_end_date,
+            remark=audit.remark,
+            status=audit.status,
+            auditor_id=audit.auditor_admin_id,
+            audit_time=audit.audit_time,
+            audit_remark=audit.audit_remark,
+            schedule=audit.schedule_data_json
+        ))
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取排班审核详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/audit/schedule/{audit_id}/approve", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def approve_schedule_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """通过排班审核 - 仅管理员可操作，并写入排班数据到 Schedule 表"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(ScheduleAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        # 获取审核人 Admin ID
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+        
+        # 1. 更新审核表状态
+        db_audit.status = 'approved'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        
+        # 2. 将排班数据写入 Schedule 表 (简化的 JSON 解析和插入逻辑)
+        # 假设 schedule_data_json 是一个 7x3 的列表结构，且已包含必要的 time_section 和 slot_type 信息
+        schedule_data = db_audit.schedule_data_json
+        start_date = db_audit.week_start_date
+        clinic_id = db_audit.clinic_id
+        
+        schedule_records = []
+        # 假设 time_section 依次为 '上午', '下午', '晚上'
+        time_sections = ['上午', '下午', '晚上']
+        # 假设排班 JSON 数据中的 DoctorInfo 包含其他必要信息如 slot_type, total_slots, price，或者使用默认值
+        # ⚠️ 注: 这里的 Schedule 表字段 (如 slot_type, total_slots, price) 缺失，需在实际模型中补充
+        
+        for day_index, day_schedule in enumerate(schedule_data):
+            current_date = start_date + timedelta(days=day_index)
+            week_day = current_date.isoweekday() # 1=Mon, 7=Sun
+            for slot_index, slot_data in enumerate(day_schedule):
+                if slot_data:
+                    # 假设 slot_data 是 ScheduleDoctorInfo: {"doctorId": 1, "doctorName": "李医生"}
+                    # 实际生产中，JSON 应该包含完整的排班信息（号源类型、数量、价格等）
+                    
+                    # 假设默认值，实际应从更详细的 JSON 结构中提取
+                    doctor_id = slot_data.get('doctor_id')
+                    
+                    # 检查医生是否存在 (可选，但推荐)
+                    if not (await db.get(Doctor, doctor_id)):
+                        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"排班数据中医生ID {doctor_id} 不存在", status_code=400)
+                    
+                    # 假设 Schedule 模型中需要这些字段 (您未提供 Schedule 模型，此处按常见结构填充)
+                    new_schedule = Schedule(
+                        doctor_id=doctor_id,
+                        clinic_id=clinic_id,
+                        date=current_date,
+                        week_day=week_day,
+                        time_section=time_sections[slot_index],
+                        slot_type='普通', # 需根据实际业务逻辑确定
+                        total_slots=50,  # 需根据实际业务逻辑确定
+                        remaining_slots=50, # 需根据实际业务逻辑确定
+                        price=10.00, # 需根据实际业务逻辑确定
+                        status='normal'
+                    )
+                    schedule_records.append(new_schedule)
+
+        db.add_all(schedule_records)
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"排班审核通过并写入排班记录: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='approved',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"通过排班审核时发生异常: {str(e)}")
+        await db.rollback()
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常: 写入排班数据失败",
+            status_code=500
+        )
+
+
+@router.post("/audit/schedule/{audit_id}/reject", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def reject_schedule_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """拒绝排班审核 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(ScheduleAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+
+        # 更新审核表状态
+        db_audit.status = 'rejected'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"排班审核拒绝: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='rejected',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"拒绝排班审核时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+# ================================== 请假审核接口 ==================================
+
+@router.get("/audit/leave", response_model=ResponseModel[Union[LeaveAuditListResponse, AuthErrorResponse]])
+async def get_leave_audits(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取所有请假审核列表 - 仅管理员可操作 (无分页)"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: LeaveAudit, Doctor, MinorDepartment
+        result = await db.execute(
+            select(
+                LeaveAudit,
+                Doctor.name.label("doctor_name"),
+                Doctor.title.label("doctor_title"),
+                MinorDepartment.name.label("department_name"),
+            )
+            .join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .order_by(LeaveAudit.submit_time.desc())
+        )
+        
+        audit_list = []
+        for audit, doctor_name, doctor_title, dept_name in result.all():
+            leave_days = calculate_leave_days(audit.leave_start_date, audit.leave_end_date)
+            # 原因预览：截取前 50 个字符
+            reason_preview = (audit.reason[:50] + '...') if len(audit.reason) > 50 else audit.reason
+            
+            audit_list.append(LeaveAuditItem(
+                id=audit.audit_id,
+                doctor_id=audit.doctor_id,
+                doctor_name=doctor_name,
+                doctor_title=doctor_title,
+                department_name=dept_name,
+                leave_start_date=audit.leave_start_date,
+                leave_end_date=audit.leave_end_date,
+                leave_days=leave_days,
+                reason=audit.reason,
+                reason_preview=reason_preview,
+                attachments=audit.attachment_data_json or [], # 确保返回列表
+                submit_time=audit.submit_time,
+                status=audit.status,
+                auditor_id=audit.auditor_admin_id,
+                audit_time=audit.audit_time,
+                audit_remark=audit.audit_remark
+            ))
+
+        return ResponseModel(code=0, message=LeaveAuditListResponse(audits=audit_list))
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取请假审核列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/audit/leave/{audit_id}", response_model=ResponseModel[Union[LeaveAuditItem, AuthErrorResponse]])
+async def get_leave_audit_detail(
+    audit_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取请假审核详情 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: LeaveAudit, Doctor, MinorDepartment
+        result = await db.execute(
+            select(
+                LeaveAudit,
+                Doctor.name.label("doctor_name"),
+                Doctor.title.label("doctor_title"),
+                MinorDepartment.name.label("department_name"),
+            )
+            .join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .where(LeaveAudit.audit_id == audit_id)
+        )
+        row = result.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="请假申请不存在",
+                status_code=404
+            )
+        
+        audit, doctor_name, doctor_title, dept_name = row
+        leave_days = calculate_leave_days(audit.leave_start_date, audit.leave_end_date)
+        reason_preview = (audit.reason[:50] + '...') if len(audit.reason) > 50 else audit.reason
+        
+        return ResponseModel(code=0, message=LeaveAuditItem(
+            id=audit.audit_id,
+            doctor_id=audit.doctor_id,
+            doctor_name=doctor_name,
+            doctor_title=doctor_title,
+            department_name=dept_name,
+            leave_start_date=audit.leave_start_date,
+            leave_end_date=audit.leave_end_date,
+            leave_days=leave_days,
+            reason=audit.reason,
+            reason_preview=reason_preview,
+            attachments=audit.attachment_data_json or [],
+            submit_time=audit.submit_time,
+            status=audit.status,
+            auditor_id=audit.auditor_admin_id,
+            audit_time=audit.audit_time,
+            audit_remark=audit.audit_remark
+        ))
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取请假审核详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/audit/leave/{audit_id}/approve", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def approve_leave_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """通过请假审核 - 仅管理员可操作，并删除请假期间的排班"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(LeaveAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="请假申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        # 获取审核人 Admin ID
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+
+        # 1. 删除医生在请假期间的排班记录
+        delete_stmt = delete(Schedule).where(
+            and_(
+                Schedule.doctor_id == db_audit.doctor_id,
+                Schedule.date >= db_audit.leave_start_date,
+                Schedule.date <= db_audit.leave_end_date,
+                # 仅删除状态为 'normal' 或 'pending' 的排班，已完成的排班不应被删除
+                # 假设 Schedule 表有 status 字段
+            )
+        )
+        deleted_schedules = await db.execute(delete_stmt)
+        await db.commit() # 先提交删除，确保原子性
+
+        logger.warning(f"请假审核通过，已删除 {deleted_schedules.rowcount} 条排班记录。")
+        
+        # 2. 更新审核表状态
+        db_audit.status = 'approved'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"请假审核通过: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='approved',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"通过请假审核时发生异常: {str(e)}")
+        await db.rollback()
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常: 清除排班或更新审核状态失败",
+            status_code=500
+        )
+
+
+@router.post("/audit/leave/{audit_id}/reject", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def reject_leave_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """拒绝请假审核 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(LeaveAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="请假申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+
+        # 更新审核表状态
+        db_audit.status = 'rejected'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"请假审核拒绝: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='rejected',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"拒绝请假审核时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 通用附件路径二进制数据获取 ======
+@router.get("/audit/attachment/raw", response_model=None)
+async def get_attachment_raw_from_path(
+    path: str,
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """根据附件的本地相对路径返回文件二进制数据（仅管理员）。
+
+    用于获取请假申请等附件中的图片或文件内容。文件路径应存储在 LeaveAudit.attachment_data_json 中。
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 路径解析：基于应用根目录进行拼接，并进行规范化
+        base_dir = os.path.dirname(os.path.dirname(__file__))  # 假设 /app 目录
+        rel_path = path.lstrip("/") 
+        
+        # 归一化路径，防止路径中出现 ../ 等跳转
+        fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+        
+        # 关键安全检查：确保文件路径在应用基础目录内，防止目录遍历攻击 (Directory Traversal)
+        if not fs_path.startswith(os.path.normpath(base_dir)):
+            logger.warning(f"检测到目录遍历尝试: {fs_path}")
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="提供的文件路径不安全或无效",
+                status_code=400
+            )
+
+        # 检查文件是否存在
+        if not os.path.exists(fs_path) or os.path.isdir(fs_path):
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="附件文件不存在或路径错误",
+                status_code=404
+            )
+
+        # 猜测 MIME Type
+        mime_type, _ = mimetypes.guess_type(fs_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        # 异步文件迭代器，适用于 StreamingResponse
+        async def async_file_iterator(path: str, chunk_size: int = 8192):
+            """异步读取文件块的生成器"""
+            try:
+                # 使用 aiofiles 确保文件 I/O 不阻塞主线程
+                async with aiofiles.open(path, "rb") as f:
+                    while True:
+                        chunk = await f.read(chunk_size)
+                        if not chunk:
+                            break
+                        yield chunk
+            except Exception as e:
+                logger.error(f"异步读取文件失败: {path}, 异常: {str(e)}")
+                # 在流中抛出异常会导致连接中断，这里更倾向于记录错误
+
+        logger.info(f"开始流式传输本地附件文件: {fs_path}")
+        return StreamingResponse(async_file_iterator(fs_path), media_type=mime_type)
+
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取附件数据时发生未知异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )

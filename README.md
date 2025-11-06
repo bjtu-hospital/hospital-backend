@@ -941,9 +941,238 @@ Authorization: Bearer <token>
 
 ---
 
-## 3. 门诊管理
+## 3. 审核管理
 
-### 3.1 获取科室门诊列表
+所有审核接口均需管理员权限，请求头需包含：
+```
+Authorization: Bearer <token>
+```
+
+### A. 排班审核（Schedule Audit）
+
+#### 3.1 获取排班审核列表
+- GET `/audit/schedule`
+- 说明：获取所有排班审核申请列表（无分页），按提交时间倒序排列
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audits": [
+            {
+                "id": 1,
+                "department_id": 1,
+                "department_name": "心内科",
+                "clinic_id": 56,
+                "clinic_name": "心血管科门诊",
+                "submitter_id": 10,
+                "submitter_name": "李医生",
+                "submit_time": "2025-11-01T10:30:00",
+                "week_start": "2025-11-04",
+                "week_end": "2025-11-10",
+                "remark": "下周排班申请",
+                "status": "pending",
+                "auditor_id": null,
+                "audit_time": null,
+                "audit_remark": null,
+                "schedule": [[...], [...], ...] // 7x3 排班数据
+            }
+        ]
+    }
+}
+```
+
+#### 3.2 获取排班审核详情
+- GET `/audit/schedule/{audit_id}`
+- 说明：获取指定排班审核申请的详细信息
+
+响应格式同上列表项，包含完整排班 JSON 数据。
+
+#### 3.3 通过排班审核
+- POST `/audit/schedule/{audit_id}/approve`
+- 说明：管理员审核通过排班申请，系统会将排班数据写入 `Schedule` 表，生成实际排班记录
+
+请求体：
+```json
+{
+    "comment": "审核通过，排班合理"
+}
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audit_id": 1,
+        "status": "approved",
+        "auditor_id": 5,
+        "audit_time": "2025-11-01T14:30:00"
+    }
+}
+```
+
+业务逻辑：
+1. 更新审核表状态为 `approved`
+2. 记录审核人和审核时间
+3. 解析排班 JSON 数据，为每个时间段生成 `Schedule` 记录（包括医生、门诊、日期、时段等）
+4. 事务提交，确保数据一致性
+
+#### 3.4 拒绝排班审核
+- POST `/audit/schedule/{audit_id}/reject`
+- 说明：管理员拒绝排班申请
+
+请求体：
+```json
+{
+    "comment": "排班冲突，请重新提交"
+}
+```
+
+响应格式同通过审核。
+
+---
+
+### B. 请假审核（Leave Audit）
+
+#### 3.5 获取请假审核列表
+- GET `/audit/leave`
+- 说明：获取所有请假审核申请列表（无分页），按提交时间倒序排列
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audits": [
+            {
+                "id": 1,
+                "doctor_id": 10,
+                "doctor_name": "李医生",
+                "doctor_title": "主治医师",
+                "department_name": "心内科",
+                "leave_start_date": "2025-11-05",
+                "leave_end_date": "2025-11-07",
+                "leave_days": 3,
+                "reason": "因个人原因需要请假三天...",
+                "reason_preview": "因个人原因需要请假三天...",
+                "attachments": [
+                    "/static/audit/leave_20251101_123456.jpg"
+                ],
+                "submit_time": "2025-11-01T09:00:00",
+                "status": "pending",
+                "auditor_id": null,
+                "audit_time": null,
+                "audit_remark": null
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `leave_days`：自动计算的请假天数（包含起止日期）
+- `reason_preview`：原因前 50 字符的预览（若超出则添加 `...`）
+- `attachments`：附件文件路径列表（可用于后续获取附件内容）
+
+#### 3.6 获取请假审核详情
+- GET `/audit/leave/{audit_id}`
+- 说明：获取指定请假审核申请的详细信息
+
+响应格式同上列表项，包含完整请假原因和附件列表。
+
+#### 3.7 通过请假审核
+- POST `/audit/leave/{audit_id}/approve`
+- 说明：管理员审核通过请假申请，系统会**自动删除医生在请假期间的所有排班记录**
+
+请求体：
+```json
+{
+    "comment": "同意请假申请"
+}
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audit_id": 1,
+        "status": "approved",
+        "auditor_id": 5,
+        "audit_time": "2025-11-01T14:45:00"
+    }
+}
+```
+
+业务逻辑：
+1. 删除医生在请假期间（`leave_start_date` 至 `leave_end_date`）的所有排班记录
+2. 更新审核表状态为 `approved`
+3. 记录审核人和审核时间
+4. 事务提交，确保数据一致性
+
+⚠️ **重要提示**：通过请假审核后，该医生在请假期间的排班将被清空，患者无法再预约这些时段。请谨慎操作。
+
+#### 3.8 拒绝请假审核
+- POST `/audit/leave/{audit_id}/reject`
+- 说明：管理员拒绝请假申请，不会影响现有排班
+
+请求体：
+```json
+{
+    "comment": "请假理由不充分，建议协调其他时间"
+}
+```
+
+响应格式同通过审核。
+
+---
+
+### C. 附件管理
+
+#### 3.9 获取审核附件（二进制数据）
+- GET `/audit/attachment/raw?path={file_path}`
+- 说明：根据附件的相对路径返回文件二进制数据，用于查看请假申请等审核中的附件（图片/文件）
+
+参数：
+- `path`（查询参数）：附件的相对路径（存储在 `LeaveAudit.attachment_data_json` 中）
+  - 示例：`/static/audit/leave_20251101_123456.jpg` 或 `static/audit/leave_20251101_123456.jpg`
+
+响应：
+- 成功时返回文件二进制流（`StreamingResponse`），`Content-Type` 自动根据文件扩展名推断
+  - 示例：`image/jpeg`、`image/png`、`application/pdf` 等
+- 失败时返回统一错误格式：
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "资源错误",
+        "msg": "附件文件不存在或路径错误"
+    }
+}
+```
+
+安全性说明：
+- 路径会经过规范化处理，防止 `../` 等目录遍历攻击
+- 强制校验文件路径必须在应用基础目录内
+- 仅管理员可访问
+
+使用示例（PowerShell）：
+```pwsh
+# 获取附件并保存为本地文件
+$token = "<your_admin_token>"
+$path = "/static/audit/leave_20251101_123456.jpg"
+Invoke-WebRequest -Uri "http://127.0.0.1:8000/audit/attachment/raw?path=$path" `
+    -Headers @{"Authorization"="Bearer $token"} `
+    -OutFile "downloaded_attachment.jpg"
+```
+
+---
+
+## 4. 门诊管理
+
+### 4.1 获取科室门诊列表
 - GET `/admin/clinics?dept_id={dept_id}`
 - 说明：获取门诊列表，可按小科室过滤
 - 参数 `dept_id` 可选，用于按小科室过滤

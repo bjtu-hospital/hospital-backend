@@ -17,3 +17,4 @@ class MinorDepartment(Base):
     major_department = relationship("MajorDepartment", back_populates="minor_departments")
     doctors = relationship("Doctor", back_populates="minor_department")
     clinics = relationship("Clinic", back_populates="minor_department")
+    schedule_audits = relationship("ScheduleAudit", back_populates="minor_department")
