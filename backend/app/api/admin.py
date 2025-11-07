@@ -5,7 +5,7 @@ from sqlalchemy import select, and_, delete
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Optional, Union
 import logging
-from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
+from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicUpdate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
@@ -28,6 +28,198 @@ import mimetypes
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ====== 分级价格管理辅助函数 ======
+
+async def get_hierarchical_price(
+    db: AsyncSession,
+    slot_type: str,
+    doctor_id: Optional[int] = None,
+    clinic_id: Optional[int] = None,
+    minor_dept_id: Optional[int] = None
+) -> Optional[float]:
+    """
+    分级查询挂号价格配置
+    优先级: DOCTOR > CLINIC > MINOR_DEPT > GLOBAL
+    
+    Args:
+        db: 数据库会话
+        slot_type: 号源类型 ("普通", "专家", "特需")
+        doctor_id: 医生ID
+        clinic_id: 诊室ID
+        minor_dept_id: 小科室ID
+    
+    Returns:
+        价格值，如果未找到返回 None
+    """
+    # 映射 slot_type 到配置字段名
+    price_field_map = {
+        "普通": "default_price_normal",
+        "专家": "default_price_expert",
+        "特需": "default_price_special"
+    }
+    
+    price_field = price_field_map.get(slot_type)
+    if not price_field:
+        return None
+    
+    # 按优先级查询：DOCTOR -> CLINIC -> MINOR_DEPT -> GLOBAL
+    search_order = []
+    
+    if doctor_id:
+        search_order.append(("DOCTOR", doctor_id))
+    if clinic_id:
+        search_order.append(("CLINIC", clinic_id))
+    if minor_dept_id:
+        search_order.append(("MINOR_DEPT", minor_dept_id))
+    search_order.append(("GLOBAL", None))
+    
+    for scope_type, scope_id in search_order:
+        query = select(SystemConfig).where(
+            and_(
+                SystemConfig.config_key == "registration.price",
+                SystemConfig.scope_type == scope_type,
+                SystemConfig.is_active == True
+            )
+        )
+        
+        if scope_type == "GLOBAL":
+            query = query.where(SystemConfig.scope_id.is_(None))
+        else:
+            query = query.where(SystemConfig.scope_id == scope_id)
+        
+        result = await db.execute(query)
+        config = result.scalar_one_or_none()
+        
+        if config and config.config_value:
+            price_value = config.config_value.get(price_field)
+            if price_value is not None:  # 找到非 null 的价格配置
+                return float(price_value)
+    
+    return None
+
+
+async def get_entity_prices(
+    db: AsyncSession,
+    scope_type: str,
+    scope_id: Optional[int]
+) -> dict:
+    """
+    获取指定实体（全局/小科室/诊室/医生）的三个价格配置
+    
+    Returns:
+        {
+            "default_price_normal": float | None,
+            "default_price_expert": float | None,
+            "default_price_special": float | None
+        }
+    """
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.scope_type == scope_type,
+            SystemConfig.is_active == True
+        )
+    )
+    
+    if scope_type == "GLOBAL":
+        query = query.where(SystemConfig.scope_id.is_(None))
+    else:
+        query = query.where(SystemConfig.scope_id == scope_id)
+    
+    result = await db.execute(query)
+    config = result.scalar_one_or_none()
+    
+    if config and config.config_value:
+        return {
+            "default_price_normal": float(config.config_value["default_price_normal"]) if config.config_value.get("default_price_normal") is not None else None,
+            "default_price_expert": float(config.config_value["default_price_expert"]) if config.config_value.get("default_price_expert") is not None else None,
+            "default_price_special": float(config.config_value["default_price_special"]) if config.config_value.get("default_price_special") is not None else None
+        }
+    
+    return {
+        "default_price_normal": None,
+        "default_price_expert": None,
+        "default_price_special": None
+    }
+
+
+async def update_entity_prices(
+    db: AsyncSession,
+    scope_type: str,
+    scope_id: Optional[int],
+    default_price_normal: Optional[float] = None,
+    default_price_expert: Optional[float] = None,
+    default_price_special: Optional[float] = None
+) -> None:
+    """
+    更新指定实体的价格配置（有则更新，无则创建）
+    
+    Args:
+        db: 数据库会话
+        scope_type: 范围类型 ("GLOBAL", "MINOR_DEPT", "CLINIC", "DOCTOR")
+        scope_id: 范围ID（GLOBAL时为None）
+        default_price_normal: 普通号价格
+        default_price_expert: 专家号价格
+        default_price_special: 特需号价格
+    """
+    # 查询现有配置
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.scope_type == scope_type
+        )
+    )
+    
+    if scope_type == "GLOBAL":
+        query = query.where(SystemConfig.scope_id.is_(None))
+    else:
+        query = query.where(SystemConfig.scope_id == scope_id)
+    
+    result = await db.execute(query)
+    config = result.scalar_one_or_none()
+    
+    # 构建新的配置值
+    new_config_value = {}
+    if config and config.config_value:
+        new_config_value = dict(config.config_value)
+    
+    # 只更新非 None 的字段
+    if default_price_normal is not None:
+        new_config_value["default_price_normal"] = default_price_normal
+    if default_price_expert is not None:
+        new_config_value["default_price_expert"] = default_price_expert
+    if default_price_special is not None:
+        new_config_value["default_price_special"] = default_price_special
+    
+    if config:
+        # 更新现有配置
+        config.config_value = new_config_value
+        config.update_time = datetime.now()
+        flag_modified(config, "config_value")
+        db.add(config)
+    else:
+        # 创建新配置
+        entity_desc_map = {
+            "GLOBAL": "全局",
+            "MINOR_DEPT": f"小科室{scope_id}",
+            "CLINIC": f"诊室{scope_id}",
+            "DOCTOR": f"医生{scope_id}"
+        }
+        
+        new_config = SystemConfig(
+            config_key="registration.price",
+            scope_type=scope_type,
+            scope_id=scope_id,
+            config_value=new_config_value,
+            data_type="JSON",
+            description=f"{entity_desc_map.get(scope_type, '')}挂号费用配置",
+            is_active=True
+        )
+        db.add(new_config)
+    
+    await db.commit()
 
 
 # ====== 管理员科室管理接口 ======
@@ -309,7 +501,27 @@ async def create_minor_department(
         await db.commit()
         await db.refresh(db_dept)
         
+        # 如果提供了价格配置，则创建价格记录
+        if (dept_data.default_price_normal is not None or 
+            dept_data.default_price_expert is not None or 
+            dept_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="MINOR_DEPT",
+                scope_id=db_dept.minor_dept_id,
+                default_price_normal=dept_data.default_price_normal,
+                default_price_expert=dept_data.default_price_expert,
+                default_price_special=dept_data.default_price_special
+            )
+        
         logger.info(f"创建小科室成功: {dept_data.name}")
+
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="MINOR_DEPT",
+            scope_id=db_dept.minor_dept_id
+        )
         
         return ResponseModel(
             code=0,
@@ -317,7 +529,10 @@ async def create_minor_department(
                 "minor_dept_id": db_dept.minor_dept_id,
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
-                "description": db_dept.description
+                "description": db_dept.description,
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             }
         )
     except AuthHTTPException:
@@ -403,13 +618,36 @@ async def update_minor_department(
         await db.commit()
         await db.refresh(db_dept)
         
+        # 更新价格配置（如果提供了价格字段）
+        if (dept_data.default_price_normal is not None or 
+            dept_data.default_price_expert is not None or 
+            dept_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="MINOR_DEPT",
+                scope_id=minor_dept_id,
+                default_price_normal=dept_data.default_price_normal,
+                default_price_expert=dept_data.default_price_expert,
+                default_price_special=dept_data.default_price_special
+            )
+        
         logger.info(f"更新小科室成功: {db_dept.name}")
+
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="MINOR_DEPT",
+            scope_id=minor_dept_id
+        )
         
         response_message = {
             "minor_dept_id": db_dept.minor_dept_id,
             "major_dept_id": db_dept.major_dept_id,
             "name": db_dept.name,
-            "description": db_dept.description
+            "description": db_dept.description,
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"]
         }
         
         # 如果发生了科室转移，添加转移相关信息
@@ -471,6 +709,24 @@ async def delete_minor_department(
                 status_code=400
             )
 
+        # 删除关联的价格配置（如果存在）
+        try:
+            result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.scope_type == "MINOR_DEPT",
+                        SystemConfig.scope_id == minor_dept_id,
+                        SystemConfig.config_key == "registration.price"
+                    )
+                )
+            )
+            price_config = result.scalar_one_or_none()
+            if price_config:
+                await db.delete(price_config)
+                logger.info(f"删除小科室 {db_dept.name} 的价格配置")
+        except Exception as e:
+            logger.warning(f"删除小科室价格配置时发生异常: {str(e)}")
+        
         # 删除小科室
         await db.delete(db_dept)
         await db.commit()
@@ -517,11 +773,17 @@ async def get_minor_departments(
         
         dept_list = []
         for dept in departments:
+            # 获取小科室的价格配置
+            prices = await get_entity_prices(db, "MINOR_DEPT", dept.minor_dept_id)
+            
             dept_list.append({
                 "minor_dept_id": dept.minor_dept_id,
                 "major_dept_id": dept.major_dept_id,
                 "name": dept.name,
-                "description": dept.description
+                "description": dept.description,
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             })
         
         return ResponseModel(
@@ -602,15 +864,38 @@ async def create_doctor(
         await db.commit()
         await db.refresh(db_doctor)
 
+        # 如果提供了价格配置，则创建价格记录
+        if (doctor_data.default_price_normal is not None or 
+            doctor_data.default_price_expert is not None or 
+            doctor_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="DOCTOR",
+                scope_id=db_doctor.doctor_id,
+                default_price_normal=doctor_data.default_price_normal,
+                default_price_expert=doctor_data.default_price_expert,
+                default_price_special=doctor_data.default_price_special
+            )
+
         logger.info(f"创建医生信息成功: {doctor_data.name}")
 
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="DOCTOR",
+            scope_id=db_doctor.doctor_id
+        )
+        
         response_payload = {
             "doctor_id": db_doctor.doctor_id,
             "dept_id": db_doctor.dept_id,
             "name": db_doctor.name,
             "title": db_doctor.title,
             "specialty": db_doctor.specialty,
-            "introduction": db_doctor.introduction
+            "introduction": db_doctor.introduction,
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"]
         }
 
         # 如果请求体中包含工号和密码，则在此一并创建用户账号并关联
@@ -733,6 +1018,9 @@ async def get_doctors(
                 if u and getattr(u, "is_active", False) and not getattr(u, "is_deleted", False):
                     is_registered = True
 
+            # 获取医生的价格配置
+            prices = await get_entity_prices(db, "DOCTOR", doctor.doctor_id)
+
             doctor_list.append({
                 "doctor_id": doctor.doctor_id,
                 "user_id": doctor.user_id,
@@ -743,7 +1031,10 @@ async def get_doctors(
                 "specialty": doctor.specialty,
                 "introduction": doctor.introduction,
                 "photo_path": doctor.photo_path,
-                "original_photo_url": doctor.original_photo_url
+                "original_photo_url": doctor.original_photo_url,
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             })
         
         return ResponseModel(
@@ -821,8 +1112,28 @@ async def update_doctor(
         await db.commit()
         await db.refresh(db_doctor)
 
+        # 更新价格配置（如果提供了价格字段）
+        if (doctor_data.default_price_normal is not None or 
+            doctor_data.default_price_expert is not None or 
+            doctor_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="DOCTOR",
+                scope_id=doctor_id,
+                default_price_normal=doctor_data.default_price_normal,
+                default_price_expert=doctor_data.default_price_expert,
+                default_price_special=doctor_data.default_price_special
+            )
+
         logger.info(f"更新医生信息成功: {db_doctor.name}")
 
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="DOCTOR",
+            scope_id=doctor_id
+        )
+        
         return ResponseModel(
             code=0,
             message={
@@ -833,7 +1144,10 @@ async def update_doctor(
                 "specialty": db_doctor.specialty,
                 "introduction": db_doctor.introduction,
                 "photo_path": db_doctor.photo_path,
-                "original_photo_url": db_doctor.original_photo_url
+                "original_photo_url": db_doctor.original_photo_url,
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             }
         )
     except AuthHTTPException:
@@ -911,6 +1225,24 @@ async def delete_doctor(
             # 解除医生记录中的关联
             db_doctor.user_id = None
 
+        # 删除关联的价格配置（如果存在）
+        try:
+            result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.scope_type == "DOCTOR",
+                        SystemConfig.scope_id == doctor_id,
+                        SystemConfig.config_key == "registration.price"
+                    )
+                )
+            )
+            price_config = result.scalar_one_or_none()
+            if price_config:
+                await db.delete(price_config)
+                logger.info(f"删除医生 {db_doctor.name} 的价格配置")
+        except Exception as e:
+            logger.warning(f"删除医生价格配置时发生异常: {str(e)}")
+        
         # 删除医生信息
         await db.delete(db_doctor)
         await db.commit()
@@ -1426,13 +1758,19 @@ async def get_clinics(
 
         clinic_list = []
         for c in clinics:
+            # 获取诊室的价格配置
+            prices = await get_entity_prices(db, "CLINIC", c.clinic_id)
+            
             clinic_list.append({
                 "clinic_id": c.clinic_id,
                 "area_id": c.area_id,
                 "name": c.name,
                 "address": c.address,
                 "minor_dept_id": c.minor_dept_id,
-                "clinic_type": c.clinic_type
+                "clinic_type": c.clinic_type,
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             })
 
         return ResponseModel(code=0, message=ClinicListResponse(clinics=clinic_list))
@@ -1487,9 +1825,35 @@ async def create_clinic(
         await db.commit()
         await db.refresh(db_clinic)
 
+        # 如果提供了价格配置，则创建价格记录
+        if (clinic_data.default_price_normal is not None or 
+            clinic_data.default_price_expert is not None or 
+            clinic_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="CLINIC",
+                scope_id=db_clinic.clinic_id,
+                default_price_normal=clinic_data.default_price_normal,
+                default_price_expert=clinic_data.default_price_expert,
+                default_price_special=clinic_data.default_price_special
+            )
+
         logger.info(f"创建门诊成功: {db_clinic.name}")
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="CLINIC",
+            scope_id=db_clinic.clinic_id
+        )
         return ResponseModel(code=0, message={
             "clinic_id": db_clinic.clinic_id,
+            "name": db_clinic.name,
+            "address": db_clinic.address,
+            "minor_dept_id": db_clinic.minor_dept_id,
+            "clinic_type": db_clinic.clinic_type,
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"],
             "detail": "门诊创建成功"
         })
     except AuthHTTPException:
@@ -1500,6 +1864,88 @@ async def create_clinic(
         raise
     except Exception as e:
         logger.error(f"创建门诊时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/clinics/{clinic_id}", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_clinic(
+    clinic_id: int,
+    clinic_data: ClinicUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新门诊信息 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 获取门诊
+        result = await db.execute(select(Clinic).where(Clinic.clinic_id == clinic_id))
+        db_clinic = result.scalar_one_or_none()
+        if not db_clinic:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="门诊不存在",
+                status_code=404
+            )
+
+        # 更新门诊基本信息
+        if clinic_data.name is not None:
+            db_clinic.name = clinic_data.name
+        if clinic_data.address is not None:
+            db_clinic.address = clinic_data.address
+
+        db.add(db_clinic)
+        await db.commit()
+        await db.refresh(db_clinic)
+
+        # 更新价格配置（如果提供了价格字段）
+        if (clinic_data.default_price_normal is not None or 
+            clinic_data.default_price_expert is not None or 
+            clinic_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="CLINIC",
+                scope_id=clinic_id,
+                default_price_normal=clinic_data.default_price_normal,
+                default_price_expert=clinic_data.default_price_expert,
+                default_price_special=clinic_data.default_price_special
+            )
+
+        logger.info(f"更新门诊成功: {db_clinic.name}")
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="CLINIC",
+            scope_id=clinic_id
+        )
+        return ResponseModel(code=0, message={
+            "clinic_id": db_clinic.clinic_id,
+            "name": db_clinic.name,
+            "address": db_clinic.address,
+            "minor_dept_id": db_clinic.minor_dept_id,
+            "clinic_type": db_clinic.clinic_type,
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"],
+            "detail": "门诊信息更新成功"
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新门诊时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
@@ -1790,11 +2236,35 @@ async def create_schedule(
             )
 
         # 基本校验
-        if not (await db.execute(select(Doctor).where(Doctor.doctor_id == schedule_data.doctor_id))).scalar_one_or_none():
+        doctor_result = await db.execute(select(Doctor).where(Doctor.doctor_id == schedule_data.doctor_id))
+        doctor = doctor_result.scalar_one_or_none()
+        if not doctor:
             raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="医生不存在", status_code=400)
-        if not (await db.execute(select(Clinic).where(Clinic.clinic_id == schedule_data.clinic_id))).scalar_one_or_none():
+        
+        clinic_result = await db.execute(select(Clinic).where(Clinic.clinic_id == schedule_data.clinic_id))
+        clinic = clinic_result.scalar_one_or_none()
+        if not clinic:
             raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="门诊不存在", status_code=400)
 
+        # 处理价格：如果 price <= 0，则使用分级价格查询
+        final_price = schedule_data.price
+        if schedule_data.price <= 0:
+            # 分级查询：DOCTOR -> CLINIC -> MINOR_DEPT -> GLOBAL
+            hierarchical_price = await get_hierarchical_price(
+                db=db,
+                slot_type=schedule_data.slot_type,
+                doctor_id=schedule_data.doctor_id,
+                clinic_id=schedule_data.clinic_id,
+                minor_dept_id=doctor.dept_id  # 医生所属小科室
+            )
+            
+            if hierarchical_price is not None:
+                final_price = hierarchical_price
+            else:
+                # 如果分级查询未找到，使用默认价格
+                default_prices = {"普通": 50.0, "专家": 100.0, "特需": 500.0}
+                final_price = default_prices.get(schedule_data.slot_type, 50.0)
+        
         # 计算 week_day (1-7)
         week_day = schedule_data.schedule_date.isoweekday()
 
@@ -1808,7 +2278,7 @@ async def create_schedule(
             total_slots=schedule_data.total_slots,
             remaining_slots=schedule_data.total_slots,
             status=schedule_data.status,
-            price=schedule_data.price
+            price=final_price
         )
         db.add(db_schedule)
         await db.commit()
@@ -1883,7 +2353,32 @@ async def update_schedule(
             db_schedule.status = schedule_data.status
 
         if schedule_data.price is not None:
-            db_schedule.price = schedule_data.price
+            # 如果价格 <= 0，使用分级查询
+            if schedule_data.price <= 0:
+                # 获取当前排班的医生和诊室信息
+                doctor_result = await db.execute(select(Doctor).where(Doctor.doctor_id == db_schedule.doctor_id))
+                doctor = doctor_result.scalar_one_or_none()
+                
+                # 确定号源类型（如果更新了 slot_type 则使用新值，否则使用当前值）
+                current_slot_type = _slot_type_to_str(db_schedule.slot_type)
+                
+                if doctor:
+                    hierarchical_price = await get_hierarchical_price(
+                        db=db,
+                        slot_type=current_slot_type,
+                        doctor_id=db_schedule.doctor_id,
+                        clinic_id=db_schedule.clinic_id,
+                        minor_dept_id=doctor.dept_id
+                    )
+                    
+                    if hierarchical_price is not None:
+                        db_schedule.price = hierarchical_price
+                    else:
+                        # 使用默认价格
+                        default_prices = {"普通": 50.0, "专家": 100.0, "特需": 500.0}
+                        db_schedule.price = default_prices.get(current_slot_type, 50.0)
+            else:
+                db_schedule.price = schedule_data.price
 
         db.add(db_schedule)
         await db.commit()
@@ -2620,7 +3115,7 @@ async def get_attachment_raw_from_path(
         )
 
 
-# ================================== 系统配置接口 ==================================
+# ================================== 系统配置接口(全局) ==================================
 
 @router.get("/config", response_model=ResponseModel[Union[SystemConfigResponse, AuthErrorResponse]])
 async def get_system_config(
@@ -2847,6 +3342,93 @@ async def update_system_config(
     except Exception as e:
         await db.rollback()
         logger.error(f"更新系统配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 全局价格配置接口 ======
+
+@router.get("/global-prices", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_global_prices(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取全局挂号价格配置 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        prices = await get_entity_prices(db, "GLOBAL", None)
+        
+        return ResponseModel(
+            code=0,
+            message={
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
+            }
+        )
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取全局价格配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/global-prices", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_global_prices(
+    default_price_normal: Optional[float] = None,
+    default_price_expert: Optional[float] = None,
+    default_price_special: Optional[float] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新全局挂号价格配置 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 至少需要提供一个价格参数
+        if all(p is None for p in [default_price_normal, default_price_expert, default_price_special]):
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="至少需要提供一个价格参数",
+                status_code=400
+            )
+
+        # 更新全局价格配置
+        await update_entity_prices(
+            db=db,
+            scope_type="GLOBAL",
+            scope_id=None,
+            default_price_normal=default_price_normal,
+            default_price_expert=default_price_expert,
+            default_price_special=default_price_special
+        )
+
+        logger.info("更新全局价格配置成功")
+        return ResponseModel(code=0, message={"detail": "全局价格配置更新成功"})
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新全局价格配置时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",

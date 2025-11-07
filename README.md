@@ -548,11 +548,61 @@ curl -X POST http://127.0.0.1:8000/doctors \
 1. 管理员权限（`current_user.is_admin == true`）
 2. 请求头：`Authorization: Bearer <token>`
 
-## 1. 科室管理
+## 1. 分级价格配置管理
+
+系统实现了四级价格配置体系：**GLOBAL（全局）→ MINOR_DEPT（小科室）→ CLINIC（诊室）→ DOCTOR（医生）**
+
+### 核心特性
+
+1. **分级查询优先级**：创建/更新排班时，若 `price <= 0`，系统按 DOCTOR → CLINIC → MINOR_DEPT → GLOBAL 顺序查询价格配置
+2. **灵活配置**：每个层级可独立配置三种号源价格（普通号、专家号、特需号），未配置则继承上级
+3. **null 语义**：配置值为 `null` 表示该层级不设置该类型价格，继续向上级查找
+
+### 1.1 获取全局价格配置
+- GET `/admin/global-prices`
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "default_price_normal": 50.00,
+        "default_price_expert": 100.00,
+        "default_price_special": 500.00
+    }
+}
+```
+
+### 1.2 更新全局价格配置
+- PUT `/admin/global-prices`
+
+请求参数（Query Parameters，至少提供一个）：
+- `default_price_normal` (float, optional): 普通号默认价格
+- `default_price_expert` (float, optional): 专家号默认价格
+- `default_price_special` (float, optional): 特需号默认价格
+
+请求示例：
+```
+PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
+```
+
+响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "全局价格配置更新成功"
+    }
+}
+```
+
+---
+
+## 2. 科室管理
 
 ### A. 大科室管理
 
-#### 1.1 创建大科室
+#### 2.1 创建大科室
 - POST `/major-departments`
 
 请求体：
@@ -573,7 +623,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-#### 1.2 获取大科室列表
+#### 2.2 获取大科室列表
 - GET `/major-departments`
 
 响应：
@@ -594,7 +644,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-#### 1.3 更新大科室
+#### 2.3 更新大科室
 - PUT `/major-departments/{dept_id}`
 
 请求体：
@@ -615,7 +665,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-#### 1.4 删除大科室
+#### 2.4 删除大科室
 - DELETE `/major-departments/{dept_id}`
 - 注意：若存在关联的小科室，则不允许删除
 
@@ -631,33 +681,42 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ### B. 小科室管理
 
-#### 1.5 创建小科室
+#### 2.5 创建小科室
 - POST `/minor-departments`
 
-请求体：
+请求体（**支持价格配置**）：
 ```json
 {
     "major_dept_id": 1,
     "name": "心内科",
-    "description": "心脏内科"
+    "description": "心脏内科",
+    "default_price_normal": 60.00,     // 可选：普通号价格
+    "default_price_expert": null,      // 可选：null表示不设置，继承上级
+    "default_price_special": 550.00    // 可选：特需号价格
 }
 ```
 
-响应：
+响应（包含价格信息）：
 ```json
 {
     "code": 0,
     "message": {
-        "detail": "成功创建小科室：心内科"
+        "minor_dept_id": 101,
+        "major_dept_id": 1,
+        "name": "心内科",
+        "description": "心脏内科",
+        "default_price_normal": 60.00,
+        "default_price_expert": null,
+        "default_price_special": 550.00
     }
 }
 ```
 
-#### 1.6 获取小科室列表
+#### 2.6 获取小科室列表
 - GET `/minor-departments?major_dept_id={major_dept_id}`
 - 参数 `major_dept_id` 可选，用于按大科室过滤
 
-响应：
+响应（**包含价格信息**）：
 ```json
 {
     "code": 0,
@@ -668,6 +727,9 @@ curl -X POST http://127.0.0.1:8000/doctors \
                 "major_dept_id": 1,
                 "name": "心内科",
                 "description": "心脏内科",
+                "default_price_normal": 60.00,
+                "default_price_expert": null,
+                "default_price_special": 550.00,
                 "create_time": "2024-01-01T10:00:00"
             },
             // ... 其他小科室
@@ -676,31 +738,41 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-#### 1.7 更新小科室
+#### 2.7 更新小科室
 - PUT `/minor-departments/{minor_dept_id}`
 
-请求体：
+请求体（**支持更新价格配置**）：
 ```json
 {
     "major_dept_id": 1,  // 可选，用于调整所属大科室
     "name": "心内科（更新）",
-    "description": "心脏内科相关"
+    "description": "心脏内科相关",
+    "default_price_normal": 65.00,     // 可选：更新普通号价格
+    "default_price_expert": 150.00,    // 可选：更新专家号价格
+    "default_price_special": null      // 可选：设置为null取消该类型价格
 }
 ```
 
-响应：
+响应（包含价格信息）：
 ```json
 {
     "code": 0,
     "message": {
-        "detail": "成功更新小科室信息"
+        "minor_dept_id": 101,
+        "major_dept_id": 1,
+        "name": "心内科（更新）",
+        "description": "心脏内科相关",
+        "default_price_normal": 65.00,
+        "default_price_expert": 150.00,
+        "default_price_special": null
     }
 }
 ```
 
-#### 1.8 删除小科室
+#### 2.8 删除小科室
 - DELETE `/minor-departments/{minor_dept_id}`
 - 注意：若存在关联的医生，则不允许删除
+ - 同时会删除该小科室的价格配置（system_config: scope_type=MINOR_DEPT, config_key=registration.price）
 
 响应：
 ```json
@@ -712,12 +784,12 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-## 2. 医生管理
+## 3. 医生管理
 
-### 2.1 创建医生
+### 3.1 创建医生
 - POST `/doctors`
 
-请求体（可选是否同时创建账号）：
+请求体（**支持价格配置**，可选是否同时创建账号）：
 ```json
 {
     "dept_id": 1,
@@ -728,27 +800,37 @@ curl -X POST http://127.0.0.1:8000/doctors \
     "identifier": "doc1001",  // 可选，工号（若要创建账号）
     "password": "StrongP@ss", // 可选，密码（若要创建账号）
     "email": "zhangsan@example.com",
-    "phonenumber": "13800000000"
+    "phonenumber": "13800000000",
+    "default_price_normal": 80.00,     // 可选：普通号价格
+    "default_price_expert": null,      // 可选：null表示不设置，继承上级
+    "default_price_special": 888.00    // 可选：特需号价格
 }
 ```
 
-响应：
+响应（包含价格信息）：
 ```json
 {
     "code": 0,
     "message": {
-        "detail": "成功创建医生信息",
         "doctor_id": 1,
-        "user_id": 10  // 若同时创建了账号则返回
+        "dept_id": 1,
+        "name": "张三",
+        "title": "主治医师",
+        "specialty": "心血管疾病",
+        "introduction": "从事心血管疾病临床工作多年...",
+        "default_price_normal": 80.00,
+        "default_price_expert": null,
+        "default_price_special": 888.00,
+        "account_provided": false
     }
 }
 ```
 
-### 2.2 获取医生列表
+### 3.2 获取医生列表
 - GET `/doctors?dept_id={dept_id}`
 - 参数 `dept_id` 可选，用于按科室过滤
 
-响应：
+响应（**包含价格信息**）：
 ```json
 {
     "code": 0,
@@ -765,6 +847,9 @@ curl -X POST http://127.0.0.1:8000/doctors \
                 "photo_path": null,
                 "original_photo_url": null,
                 "is_registered": true,
+                "default_price_normal": 80.00,
+                "default_price_expert": null,
+                "default_price_special": 888.00,
                 "create_time": "2024-01-01T10:00:00"
             },
             // ... 其他医生
@@ -778,39 +863,54 @@ curl -X POST http://127.0.0.1:8000/doctors \
   1) `doctor.user_id` 不为空且能在 `User` 表中找到对应记录；
   2) 对应的 `User.is_active` 为 True；
   3) 对应的 `User.is_deleted` 为 False（即未被软删除）。
+- `default_price_normal/expert/special`：三种号源的价格配置，null 表示该层级未配置
 
 示例中 `is_registered: true` 表示张三已有激活且未删除的用户账号；若医生档案存在但未创建账号或账号被停用/删除，则该字段为 `false`。
 
-### 2.3 更新医生信息
+### 3.3 更新医生信息
 - PUT `/doctors/{doctor_id}`
 
-请求体（所有字段可选）：
+请求体（**支持更新价格配置**，所有字段可选）：
 ```json
 {
     "name": "张三（更新）",
     "title": "副主任医师",
     "specialty": "心血管疾病，高血压",
-    "introduction": "更新的简介..."
+    "introduction": "更新的简介...",
+    "default_price_normal": 90.00,
+    "default_price_expert": 200.00,
+    "default_price_special": 999.00
 }
 ```
 
-响应：
+响应（包含价格信息）：
 ```json
 {
     "code": 0,
     "message": {
-        "detail": "成功更新医生信息"
+        "doctor_id": 1,
+        "dept_id": 1,
+        "name": "张三（更新）",
+        "title": "副主任医师",
+        "specialty": "心血管疾病，高血压",
+        "introduction": "更新的简介...",
+        "photo_path": null,
+        "original_photo_url": null,
+        "default_price_normal": 90.00,
+        "default_price_expert": 200.00,
+        "default_price_special": 999.00
     }
 }
 ```
 
-### 2.4 删除医生
+### 3.4 删除医生
 - DELETE `/doctors/{doctor_id}`
 - 说明：如果医生有关联的用户账号，会执行以下操作：
   1. 将用户标记为已删除（`is_deleted=True`）
   2. 停用账号（`is_active=False`）
   3. 清理 Redis 中的 token 映射
   4. 解除医生-用户关联并删除医生记录
+    5. 同时删除该医生的价格配置（system_config: scope_type=DOCTOR, config_key=registration.price）
 
 响应：
 ```json
@@ -1292,7 +1392,7 @@ Authorization: Bearer <token>
 - 说明：获取门诊列表，可按小科室过滤
 - 参数 `dept_id` 可选，用于按小科室过滤
 
-响应：
+响应（**包含价格信息**）：
 ```json
 {
     "code": 0,
@@ -1305,6 +1405,9 @@ Authorization: Bearer <token>
                 "address": "门诊楼2层",
                 "minor_dept_id": 1,
                 "clinic_type": 0,
+                "default_price_normal": 60.00,
+                "default_price_expert": 180.00,
+                "default_price_special": null,
                 "create_time": "2025-10-17T00:51:23"
             }
         ]
@@ -1314,18 +1417,22 @@ Authorization: Bearer <token>
 
 字段说明：
 - `clinic_type`：门诊类型，0-普通，1-国疗，2-特需
+- `default_price_normal/expert/special`：三种号源的价格配置，null 表示该层级未配置
 
 ### 5.2 创建门诊
 - POST `/admin/clinics`
 - 说明：创建新的门诊地点
 
-请求体：
+请求体（**支持价格配置**）：
 ```json
 {
     "minor_dept_id": 1,
     "name": "心血管内科普通门诊",
     "clinic_type": 0,
-    "address": "门诊楼2层"
+    "address": "门诊楼2层",
+    "default_price_normal": 60.00,     // 可选：普通号价格
+    "default_price_expert": 180.00,    // 可选：专家号价格
+    "default_price_special": null      // 可选：null表示不设置，继承上级
 }
 ```
 
@@ -1334,14 +1441,56 @@ Authorization: Bearer <token>
 - `name`：门诊名称（必填）
 - `clinic_type`：门诊类型，0-普通，1-国疗，2-特需（必填，默认0）
 - `address`：门诊地址描述（可选）
+- `default_price_normal/expert/special`：三种号源的价格配置（可选）
 
-响应：
+响应（包含价格信息）：
 ```json
 {
     "code": 0,
     "message": {
         "clinic_id": 123,
+        "name": "心血管内科普通门诊",
+        "address": "门诊楼2层",
+        "minor_dept_id": 1,
+        "clinic_type": 0,
+        "default_price_normal": 60.00,
+        "default_price_expert": 180.00,
+        "default_price_special": null,
         "detail": "门诊创建成功"
+    }
+}
+```
+
+### 5.3 更新门诊信息
+- PUT `/admin/clinics/{clinic_id}`
+- 说明：更新门诊信息
+
+请求体（**支持更新价格配置**，所有字段可选）：
+```json
+{
+    "name": "心内科VIP诊室",
+    "address": "内科楼3楼",
+    "clinic_type": 2,
+    "default_price_normal": 70.00,
+    "default_price_expert": 200.00,
+    "default_price_special": 600.00
+}
+```
+
+响应（包含价格信息）：
+```json
+{
+    "code": 0,
+    "message": {
+        "clinic_id": 123,
+        "name": "心内科VIP诊室",
+        "address": "内科楼3楼",
+        "minor_dept_id": 1,
+        "clinic_type": 2,
+        "default_price_normal": 70.00,
+        "default_price_expert": 200.00,
+        "default_price_special": 600.00,
+        "detail": "门诊信息更新成功"
     }
 }
 ```
@@ -1349,6 +1498,17 @@ Authorization: Bearer <token>
 ---
 
 ## 6. 排班管理
+
+### 排班价格处理逻辑
+
+创建/更新排班时的价格处理规则：
+- **如果 `price > 0`**: 直接使用提供的价格
+- **如果 `price <= 0`**: 自动按优先级查询价格配置
+  1. 查询医生级别配置（DOCTOR）
+  2. 若未找到，查询诊室级别配置（CLINIC）
+  3. 若未找到，查询小科室级别配置（MINOR_DEPT）
+  4. 若未找到，查询全局配置（GLOBAL）
+  5. 若仍未找到，使用系统默认价格（普通50元，专家100元，特需500元）
 
 ### 6.1 获取科室排班
 - GET `/admin/departments/{dept_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
@@ -1419,7 +1579,7 @@ Authorization: Bearer <token>
 - POST `/admin/schedules`
 - 说明：为医生创建新的排班记录
 
-请求体：
+请求体（**支持分级价格查询**）：
 ```json
 {
     "doctor_id": 1,
@@ -1428,7 +1588,7 @@ Authorization: Bearer <token>
     "time_section": "上午",
     "slot_type": "专家",
     "status": "正常",
-    "price": 100.00,
+    "price": 0,            // 0 或负数将触发分级查询价格
     "total_slots": 20
 }
 ```
@@ -1441,7 +1601,17 @@ Authorization: Bearer <token>
 - `slot_type`：号源类型，"普通"/"专家"/"特需"（必填）
 - `status`：排班状态（必填，默认"正常"）
 - `price`：挂号原价，单位元（必填，≥0）
+  - **若 `price > 0`**：直接使用提供的价格
+  - **若 `price <= 0`**：按 DOCTOR → CLINIC → MINOR_DEPT → GLOBAL 顺序查询价格配置
 - `total_slots`：总号源数（必填，≥0）
+
+价格查询示例：
+```
+医生301在诊室201出诊，slot_type="普通"，price=0
+查询顺序：
+1. 医生301的普通号价格 → 找到 80.00 ✓
+2. 最终使用价格：80.00元
+```
 
 注意：创建时系统会自动计算 `week_day`（星期几），并设置 `remaining_slots` 等于 `total_slots`。
 
@@ -1463,7 +1633,7 @@ Authorization: Bearer <token>
 参数：
 - `schedule_id`：排班ID（路径参数）
 
-请求体（所有字段可选，只更新提供的字段）：
+请求体（**支持分级价格查询**，所有字段可选）：
 ```json
 {
     "doctor_id": 1,
@@ -1472,7 +1642,7 @@ Authorization: Bearer <token>
     "time_section": "下午",
     "slot_type": "特需",
     "status": "停诊",
-    "price": 150.00,
+    "price": 0,            // 0 或负数将触发分级查询价格
     "total_slots": 25
 }
 ```
@@ -1480,6 +1650,9 @@ Authorization: Bearer <token>
 字段说明：
 - 更新 `schedule_date` 时，系统会自动重新计算 `week_day`
 - 更新 `total_slots` 时，系统会自动调整 `remaining_slots`（保持差额不变，但不允许为负数）
+- 更新 `price` 时：
+  - **若 `price > 0`**：直接使用提供的价格
+  - **若 `price <= 0`**：按 DOCTOR → CLINIC → MINOR_DEPT → GLOBAL 顺序查询价格配置
 
 响应：
 ```json

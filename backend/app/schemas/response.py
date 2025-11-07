@@ -162,6 +162,9 @@ class DoctorItem(BaseModel):
     introduction: Optional[str] = None
     photo_path: Optional[str] = None
     original_photo_url: Optional[str] = None
+    default_price_normal: Optional[float] = None
+    default_price_expert: Optional[float] = None
+    default_price_special: Optional[float] = None
     create_time: Optional[str] = None
 
 
