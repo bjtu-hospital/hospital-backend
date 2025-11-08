@@ -6,7 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 import traceback
 import logging
 
-from app.schemas.response import ResponseModel, UnknownErrorResponse, HTTPErrorResponse, RequestValidationErrorResponse, AuthErrorResponse, TrafficErrorResponse, StatisticsErrorResponse
+from app.schemas.response import ResponseModel, UnknownErrorResponse, HTTPErrorResponse, RequestValidationErrorResponse, AuthErrorResponse, StatisticsErrorResponse
 from app.core.config import settings
 
 
@@ -32,14 +32,7 @@ class AuthHTTPException(Exception):
         self.status_code = status_code
         self.detail = {"code": code, "msg": msg}
         super().__init__(msg)
-
-class TrafficHTTPException(Exception):
-    """专为交通数据相关接口设计的异常,detail 必须为 dict,包含 code 和 msg 字段"""
-    def __init__(self, code: int, msg: str, status_code: int = 400):
-        self.status_code = status_code
-        self.detail = {"code": code, "msg": msg}
-        super().__init__(msg)
-
+        
 class StatisticsHTTPException(Exception):
     """专为统计信息相关接口设计的异常, detail 必须为 dict, 包含 code 和 msg 字段"""
     def __init__(self, code: int, msg: str, status_code: int = 400):

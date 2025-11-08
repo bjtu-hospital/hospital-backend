@@ -22,3 +22,5 @@ class Doctor(Base):
     user = relationship("User", back_populates="doctor")
     minor_department = relationship("MinorDepartment", back_populates="doctors")
     schedules = relationship("Schedule", back_populates="doctor")
+    schedule_audits = relationship("ScheduleAudit", back_populates="doctor")
+    leave_audits = relationship("LeaveAudit", back_populates="doctor")

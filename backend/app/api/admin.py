@@ -1,27 +1,225 @@
 from fastapi import APIRouter, Depends,UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
+from sqlalchemy.orm.attributes import flag_modified
 from typing import Optional, Union
 import logging
-
-from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
+from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicUpdate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
-from app.db.base import get_db, redis, User, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule
+from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
+from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit
+from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
+from app.schemas.audit import (
+    ScheduleAuditItem, ScheduleAuditListResponse, ScheduleDoctorInfo,AuditAction, AuditActionResponse,LeaveAttachment, LeaveAuditItem, LeaveAuditListResponse 
+)
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 from app.api.auth import get_current_user
 from app.core.security import get_hash_pwd
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import os
 import aiofiles
 import time
-
+import mimetypes
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ====== 分级价格管理辅助函数 ======
+
+async def get_hierarchical_price(
+    db: AsyncSession,
+    slot_type: str,
+    doctor_id: Optional[int] = None,
+    clinic_id: Optional[int] = None,
+    minor_dept_id: Optional[int] = None
+) -> Optional[float]:
+    """
+    分级查询挂号价格配置
+    优先级: DOCTOR > CLINIC > MINOR_DEPT > GLOBAL
+    
+    Args:
+        db: 数据库会话
+        slot_type: 号源类型 ("普通", "专家", "特需")
+        doctor_id: 医生ID
+        clinic_id: 诊室ID
+        minor_dept_id: 小科室ID
+    
+    Returns:
+        价格值，如果未找到返回 None
+    """
+    # 映射 slot_type 到配置字段名
+    price_field_map = {
+        "普通": "default_price_normal",
+        "专家": "default_price_expert",
+        "特需": "default_price_special"
+    }
+    
+    price_field = price_field_map.get(slot_type)
+    if not price_field:
+        return None
+    
+    # 按优先级查询：DOCTOR -> CLINIC -> MINOR_DEPT -> GLOBAL
+    search_order = []
+    
+    if doctor_id:
+        search_order.append(("DOCTOR", doctor_id))
+    if clinic_id:
+        search_order.append(("CLINIC", clinic_id))
+    if minor_dept_id:
+        search_order.append(("MINOR_DEPT", minor_dept_id))
+    search_order.append(("GLOBAL", None))
+    
+    for scope_type, scope_id in search_order:
+        query = select(SystemConfig).where(
+            and_(
+                SystemConfig.config_key == "registration.price",
+                SystemConfig.scope_type == scope_type,
+                SystemConfig.is_active == True
+            )
+        )
+        
+        if scope_type == "GLOBAL":
+            query = query.where(SystemConfig.scope_id.is_(None))
+        else:
+            query = query.where(SystemConfig.scope_id == scope_id)
+        
+        result = await db.execute(query)
+        config = result.scalar_one_or_none()
+        
+        if config and config.config_value:
+            price_value = config.config_value.get(price_field)
+            if price_value is not None:  # 找到非 null 的价格配置
+                return float(price_value)
+    
+    return None
+
+
+async def get_entity_prices(
+    db: AsyncSession,
+    scope_type: str,
+    scope_id: Optional[int]
+) -> dict:
+    """
+    获取指定实体（全局/小科室/诊室/医生）的三个价格配置
+    
+    Returns:
+        {
+            "default_price_normal": float | None,
+            "default_price_expert": float | None,
+            "default_price_special": float | None
+        }
+    """
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.scope_type == scope_type,
+            SystemConfig.is_active == True
+        )
+    )
+    
+    if scope_type == "GLOBAL":
+        query = query.where(SystemConfig.scope_id.is_(None))
+    else:
+        query = query.where(SystemConfig.scope_id == scope_id)
+    
+    result = await db.execute(query)
+    config = result.scalar_one_or_none()
+    
+    if config and config.config_value:
+        return {
+            "default_price_normal": float(config.config_value["default_price_normal"]) if config.config_value.get("default_price_normal") is not None else None,
+            "default_price_expert": float(config.config_value["default_price_expert"]) if config.config_value.get("default_price_expert") is not None else None,
+            "default_price_special": float(config.config_value["default_price_special"]) if config.config_value.get("default_price_special") is not None else None
+        }
+    
+    return {
+        "default_price_normal": None,
+        "default_price_expert": None,
+        "default_price_special": None
+    }
+
+
+async def update_entity_prices(
+    db: AsyncSession,
+    scope_type: str,
+    scope_id: Optional[int],
+    default_price_normal: Optional[float] = None,
+    default_price_expert: Optional[float] = None,
+    default_price_special: Optional[float] = None
+) -> None:
+    """
+    更新指定实体的价格配置（有则更新，无则创建）
+    
+    Args:
+        db: 数据库会话
+        scope_type: 范围类型 ("GLOBAL", "MINOR_DEPT", "CLINIC", "DOCTOR")
+        scope_id: 范围ID（GLOBAL时为None）
+        default_price_normal: 普通号价格
+        default_price_expert: 专家号价格
+        default_price_special: 特需号价格
+    """
+    # 查询现有配置
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.scope_type == scope_type
+        )
+    )
+    
+    if scope_type == "GLOBAL":
+        query = query.where(SystemConfig.scope_id.is_(None))
+    else:
+        query = query.where(SystemConfig.scope_id == scope_id)
+    
+    result = await db.execute(query)
+    config = result.scalar_one_or_none()
+    
+    # 构建新的配置值
+    new_config_value = {}
+    if config and config.config_value:
+        new_config_value = dict(config.config_value)
+    
+    # 只更新非 None 的字段
+    if default_price_normal is not None:
+        new_config_value["default_price_normal"] = default_price_normal
+    if default_price_expert is not None:
+        new_config_value["default_price_expert"] = default_price_expert
+    if default_price_special is not None:
+        new_config_value["default_price_special"] = default_price_special
+    
+    if config:
+        # 更新现有配置
+        config.config_value = new_config_value
+        config.update_time = datetime.now()
+        flag_modified(config, "config_value")
+        db.add(config)
+    else:
+        # 创建新配置
+        entity_desc_map = {
+            "GLOBAL": "全局",
+            "MINOR_DEPT": f"小科室{scope_id}",
+            "CLINIC": f"诊室{scope_id}",
+            "DOCTOR": f"医生{scope_id}"
+        }
+        
+        new_config = SystemConfig(
+            config_key="registration.price",
+            scope_type=scope_type,
+            scope_id=scope_id,
+            config_value=new_config_value,
+            data_type="JSON",
+            description=f"{entity_desc_map.get(scope_type, '')}挂号费用配置",
+            is_active=True
+        )
+        db.add(new_config)
+    
+    await db.commit()
 
 
 # ====== 管理员科室管理接口 ======
@@ -67,8 +265,7 @@ async def create_major_department(
             message={
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
-                "description": db_dept.description,
-                "create_time": db_dept.create_time
+                "description": db_dept.description
             }
         )
     except AuthHTTPException:
@@ -108,8 +305,7 @@ async def get_major_departments(
             dept_list.append({
                 "major_dept_id": dept.major_dept_id,
                 "name": dept.name,
-                "description": dept.description,
-                "create_time": dept.create_time
+                "description": dept.description
             })
         
         return ResponseModel(
@@ -186,8 +382,7 @@ async def update_major_department(
             message={
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
-                "description": db_dept.description,
-                "create_time": db_dept.create_time
+                "description": db_dept.description
             }
         )
     except AuthHTTPException:
@@ -306,7 +501,27 @@ async def create_minor_department(
         await db.commit()
         await db.refresh(db_dept)
         
+        # 如果提供了价格配置，则创建价格记录
+        if (dept_data.default_price_normal is not None or 
+            dept_data.default_price_expert is not None or 
+            dept_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="MINOR_DEPT",
+                scope_id=db_dept.minor_dept_id,
+                default_price_normal=dept_data.default_price_normal,
+                default_price_expert=dept_data.default_price_expert,
+                default_price_special=dept_data.default_price_special
+            )
+        
         logger.info(f"创建小科室成功: {dept_data.name}")
+
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="MINOR_DEPT",
+            scope_id=db_dept.minor_dept_id
+        )
         
         return ResponseModel(
             code=0,
@@ -315,7 +530,9 @@ async def create_minor_department(
                 "major_dept_id": db_dept.major_dept_id,
                 "name": db_dept.name,
                 "description": db_dept.description,
-                "create_time": db_dept.create_time
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             }
         )
     except AuthHTTPException:
@@ -401,14 +618,36 @@ async def update_minor_department(
         await db.commit()
         await db.refresh(db_dept)
         
+        # 更新价格配置（如果提供了价格字段）
+        if (dept_data.default_price_normal is not None or 
+            dept_data.default_price_expert is not None or 
+            dept_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="MINOR_DEPT",
+                scope_id=minor_dept_id,
+                default_price_normal=dept_data.default_price_normal,
+                default_price_expert=dept_data.default_price_expert,
+                default_price_special=dept_data.default_price_special
+            )
+        
         logger.info(f"更新小科室成功: {db_dept.name}")
+
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="MINOR_DEPT",
+            scope_id=minor_dept_id
+        )
         
         response_message = {
             "minor_dept_id": db_dept.minor_dept_id,
             "major_dept_id": db_dept.major_dept_id,
             "name": db_dept.name,
             "description": db_dept.description,
-            "create_time": db_dept.create_time
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"]
         }
         
         # 如果发生了科室转移，添加转移相关信息
@@ -470,6 +709,24 @@ async def delete_minor_department(
                 status_code=400
             )
 
+        # 删除关联的价格配置（如果存在）
+        try:
+            result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.scope_type == "MINOR_DEPT",
+                        SystemConfig.scope_id == minor_dept_id,
+                        SystemConfig.config_key == "registration.price"
+                    )
+                )
+            )
+            price_config = result.scalar_one_or_none()
+            if price_config:
+                await db.delete(price_config)
+                logger.info(f"删除小科室 {db_dept.name} 的价格配置")
+        except Exception as e:
+            logger.warning(f"删除小科室价格配置时发生异常: {str(e)}")
+        
         # 删除小科室
         await db.delete(db_dept)
         await db.commit()
@@ -516,12 +773,17 @@ async def get_minor_departments(
         
         dept_list = []
         for dept in departments:
+            # 获取小科室的价格配置
+            prices = await get_entity_prices(db, "MINOR_DEPT", dept.minor_dept_id)
+            
             dept_list.append({
                 "minor_dept_id": dept.minor_dept_id,
                 "major_dept_id": dept.major_dept_id,
                 "name": dept.name,
                 "description": dept.description,
-                "create_time": dept.create_time
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             })
         
         return ResponseModel(
@@ -602,8 +864,28 @@ async def create_doctor(
         await db.commit()
         await db.refresh(db_doctor)
 
+        # 如果提供了价格配置，则创建价格记录
+        if (doctor_data.default_price_normal is not None or 
+            doctor_data.default_price_expert is not None or 
+            doctor_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="DOCTOR",
+                scope_id=db_doctor.doctor_id,
+                default_price_normal=doctor_data.default_price_normal,
+                default_price_expert=doctor_data.default_price_expert,
+                default_price_special=doctor_data.default_price_special
+            )
+
         logger.info(f"创建医生信息成功: {doctor_data.name}")
 
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="DOCTOR",
+            scope_id=db_doctor.doctor_id
+        )
+        
         response_payload = {
             "doctor_id": db_doctor.doctor_id,
             "dept_id": db_doctor.dept_id,
@@ -611,7 +893,9 @@ async def create_doctor(
             "title": db_doctor.title,
             "specialty": db_doctor.specialty,
             "introduction": db_doctor.introduction,
-            "create_time": db_doctor.create_time
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"]
         }
 
         # 如果请求体中包含工号和密码，则在此一并创建用户账号并关联
@@ -734,6 +1018,9 @@ async def get_doctors(
                 if u and getattr(u, "is_active", False) and not getattr(u, "is_deleted", False):
                     is_registered = True
 
+            # 获取医生的价格配置
+            prices = await get_entity_prices(db, "DOCTOR", doctor.doctor_id)
+
             doctor_list.append({
                 "doctor_id": doctor.doctor_id,
                 "user_id": doctor.user_id,
@@ -745,7 +1032,9 @@ async def get_doctors(
                 "introduction": doctor.introduction,
                 "photo_path": doctor.photo_path,
                 "original_photo_url": doctor.original_photo_url,
-                "create_time": doctor.create_time
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             })
         
         return ResponseModel(
@@ -823,8 +1112,28 @@ async def update_doctor(
         await db.commit()
         await db.refresh(db_doctor)
 
+        # 更新价格配置（如果提供了价格字段）
+        if (doctor_data.default_price_normal is not None or 
+            doctor_data.default_price_expert is not None or 
+            doctor_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="DOCTOR",
+                scope_id=doctor_id,
+                default_price_normal=doctor_data.default_price_normal,
+                default_price_expert=doctor_data.default_price_expert,
+                default_price_special=doctor_data.default_price_special
+            )
+
         logger.info(f"更新医生信息成功: {db_doctor.name}")
 
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="DOCTOR",
+            scope_id=doctor_id
+        )
+        
         return ResponseModel(
             code=0,
             message={
@@ -836,7 +1145,9 @@ async def update_doctor(
                 "introduction": db_doctor.introduction,
                 "photo_path": db_doctor.photo_path,
                 "original_photo_url": db_doctor.original_photo_url,
-                "create_time": db_doctor.create_time
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             }
         )
     except AuthHTTPException:
@@ -914,6 +1225,24 @@ async def delete_doctor(
             # 解除医生记录中的关联
             db_doctor.user_id = None
 
+        # 删除关联的价格配置（如果存在）
+        try:
+            result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.scope_type == "DOCTOR",
+                        SystemConfig.scope_id == doctor_id,
+                        SystemConfig.config_key == "registration.price"
+                    )
+                )
+            )
+            price_config = result.scalar_one_or_none()
+            if price_config:
+                await db.delete(price_config)
+                logger.info(f"删除医生 {db_doctor.name} 的价格配置")
+        except Exception as e:
+            logger.warning(f"删除医生价格配置时发生异常: {str(e)}")
+        
         # 删除医生信息
         await db.delete(db_doctor)
         await db.commit()
@@ -1059,8 +1388,8 @@ async def update_doctor_photo(
             )
 
         new_filename = f"doctor_{doctor_id}_{timestamp}{file_extension}"
-        save_path = os.path.join("app", "static", "image", new_filename)
-        url_path = f"/static/image/{new_filename}"
+        save_path = os.path.join("app", "static", "images", "doctor", new_filename)
+        url_path = f"/static/images/doctor/{new_filename}"
 
         # 保存新文件
         try:
@@ -1176,6 +1505,83 @@ async def delete_doctor_photo(
             status_code=500
         )
 
+# ====== 医生照片二进制获取 ======
+@router.get("/doctors/{doctor_id}/photo")
+async def get_doctor_photo_raw(
+    doctor_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """根据医生ID返回照片二进制数据（仅管理员）。
+
+    - 优先读取 `Doctor.photo_path` 指向的本地文件，例如 `/static/image/xxx.jpg`
+    - 如果不存在或文件缺失，则返回 404
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        result = await db.execute(select(Doctor).where(Doctor.doctor_id == doctor_id))
+        db_doctor = result.scalar_one_or_none()
+        if not db_doctor:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生不存在",
+                status_code=404
+            )
+
+        if not db_doctor.photo_path:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="该医生暂无本地照片",
+                status_code=404
+            )
+
+        # 解析本地文件系统路径（始终使用相对 app 目录的路径）
+        base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+        rel_path = db_doctor.photo_path.lstrip("/")  # e.g. static/image/xxx.jpg 或 app/static/image/xxx.jpg
+        if rel_path.startswith("app/"):
+            # 归一化去掉前缀 app/
+            rel_path = rel_path[4:]
+        fs_path = os.path.normpath(os.path.join(base_dir, rel_path))  # app/<rel_path>
+
+        if not os.path.exists(fs_path) or os.path.isdir(fs_path):
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生照片文件不存在",
+                status_code=404
+            )
+
+        mime_type, _ = mimetypes.guess_type(fs_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        def file_iterator(path: str, chunk_size: int = 8192):
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+
+        return StreamingResponse(file_iterator(fs_path), media_type=mime_type)
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生照片数据时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
 
 # 为医生创建/更新账号
 @router.post("/doctors/{doctor_id}/create-account", response_model=ResponseModel[Union[DoctorAccountCreateResponse, AuthErrorResponse]])
@@ -1352,6 +1758,9 @@ async def get_clinics(
 
         clinic_list = []
         for c in clinics:
+            # 获取诊室的价格配置
+            prices = await get_entity_prices(db, "CLINIC", c.clinic_id)
+            
             clinic_list.append({
                 "clinic_id": c.clinic_id,
                 "area_id": c.area_id,
@@ -1359,7 +1768,9 @@ async def get_clinics(
                 "address": c.address,
                 "minor_dept_id": c.minor_dept_id,
                 "clinic_type": c.clinic_type,
-                "create_time": c.create_time
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
             })
 
         return ResponseModel(code=0, message=ClinicListResponse(clinics=clinic_list))
@@ -1414,9 +1825,35 @@ async def create_clinic(
         await db.commit()
         await db.refresh(db_clinic)
 
+        # 如果提供了价格配置，则创建价格记录
+        if (clinic_data.default_price_normal is not None or 
+            clinic_data.default_price_expert is not None or 
+            clinic_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="CLINIC",
+                scope_id=db_clinic.clinic_id,
+                default_price_normal=clinic_data.default_price_normal,
+                default_price_expert=clinic_data.default_price_expert,
+                default_price_special=clinic_data.default_price_special
+            )
+
         logger.info(f"创建门诊成功: {db_clinic.name}")
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="CLINIC",
+            scope_id=db_clinic.clinic_id
+        )
         return ResponseModel(code=0, message={
             "clinic_id": db_clinic.clinic_id,
+            "name": db_clinic.name,
+            "address": db_clinic.address,
+            "minor_dept_id": db_clinic.minor_dept_id,
+            "clinic_type": db_clinic.clinic_type,
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"],
             "detail": "门诊创建成功"
         })
     except AuthHTTPException:
@@ -1427,6 +1864,88 @@ async def create_clinic(
         raise
     except Exception as e:
         logger.error(f"创建门诊时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/clinics/{clinic_id}", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_clinic(
+    clinic_id: int,
+    clinic_data: ClinicUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新门诊信息 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 获取门诊
+        result = await db.execute(select(Clinic).where(Clinic.clinic_id == clinic_id))
+        db_clinic = result.scalar_one_or_none()
+        if not db_clinic:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="门诊不存在",
+                status_code=404
+            )
+
+        # 更新门诊基本信息
+        if clinic_data.name is not None:
+            db_clinic.name = clinic_data.name
+        if clinic_data.address is not None:
+            db_clinic.address = clinic_data.address
+
+        db.add(db_clinic)
+        await db.commit()
+        await db.refresh(db_clinic)
+
+        # 更新价格配置（如果提供了价格字段）
+        if (clinic_data.default_price_normal is not None or 
+            clinic_data.default_price_expert is not None or 
+            clinic_data.default_price_special is not None):
+            await update_entity_prices(
+                db=db,
+                scope_type="CLINIC",
+                scope_id=clinic_id,
+                default_price_normal=clinic_data.default_price_normal,
+                default_price_expert=clinic_data.default_price_expert,
+                default_price_special=clinic_data.default_price_special
+            )
+
+        logger.info(f"更新门诊成功: {db_clinic.name}")
+        # 获取价格配置
+        prices = await get_entity_prices(
+            db=db,
+            scope_type="CLINIC",
+            scope_id=clinic_id
+        )
+        return ResponseModel(code=0, message={
+            "clinic_id": db_clinic.clinic_id,
+            "name": db_clinic.name,
+            "address": db_clinic.address,
+            "minor_dept_id": db_clinic.minor_dept_id,
+            "clinic_type": db_clinic.clinic_type,
+            "default_price_normal": prices["default_price_normal"],
+            "default_price_expert": prices["default_price_expert"],
+            "default_price_special": prices["default_price_special"],
+            "detail": "门诊信息更新成功"
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新门诊时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
@@ -1526,8 +2045,7 @@ async def get_department_schedules(
                 "total_slots": sch.total_slots,
                 "remaining_slots": sch.remaining_slots,
                 "status": sch.status,
-                "price": float(sch.price),
-                "create_time": sch.create_time,
+                "price": float(sch.price)
             })
 
         return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
@@ -1605,8 +2123,7 @@ async def get_doctor_schedules(
                 "total_slots": sch.total_slots,
                 "remaining_slots": sch.remaining_slots,
                 "status": sch.status,
-                "price": float(sch.price),
-                "create_time": sch.create_time,
+                "price": float(sch.price)
             })
 
         return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
@@ -1684,8 +2201,7 @@ async def get_clinic_schedules(
                 "total_slots": sch.total_slots,
                 "remaining_slots": sch.remaining_slots,
                 "status": sch.status,
-                "price": float(sch.price),
-                "create_time": sch.create_time,
+                "price": float(sch.price)
             })
 
         return ResponseModel(code=0, message=ScheduleListResponse(schedules=data))
@@ -1720,11 +2236,35 @@ async def create_schedule(
             )
 
         # 基本校验
-        if not (await db.execute(select(Doctor).where(Doctor.doctor_id == schedule_data.doctor_id))).scalar_one_or_none():
+        doctor_result = await db.execute(select(Doctor).where(Doctor.doctor_id == schedule_data.doctor_id))
+        doctor = doctor_result.scalar_one_or_none()
+        if not doctor:
             raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="医生不存在", status_code=400)
-        if not (await db.execute(select(Clinic).where(Clinic.clinic_id == schedule_data.clinic_id))).scalar_one_or_none():
+        
+        clinic_result = await db.execute(select(Clinic).where(Clinic.clinic_id == schedule_data.clinic_id))
+        clinic = clinic_result.scalar_one_or_none()
+        if not clinic:
             raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="门诊不存在", status_code=400)
 
+        # 处理价格：如果 price <= 0，则使用分级价格查询
+        final_price = schedule_data.price
+        if schedule_data.price <= 0:
+            # 分级查询：DOCTOR -> CLINIC -> MINOR_DEPT -> GLOBAL
+            hierarchical_price = await get_hierarchical_price(
+                db=db,
+                slot_type=schedule_data.slot_type,
+                doctor_id=schedule_data.doctor_id,
+                clinic_id=schedule_data.clinic_id,
+                minor_dept_id=doctor.dept_id  # 医生所属小科室
+            )
+            
+            if hierarchical_price is not None:
+                final_price = hierarchical_price
+            else:
+                # 如果分级查询未找到，使用默认价格
+                default_prices = {"普通": 50.0, "专家": 100.0, "特需": 500.0}
+                final_price = default_prices.get(schedule_data.slot_type, 50.0)
+        
         # 计算 week_day (1-7)
         week_day = schedule_data.schedule_date.isoweekday()
 
@@ -1738,7 +2278,7 @@ async def create_schedule(
             total_slots=schedule_data.total_slots,
             remaining_slots=schedule_data.total_slots,
             status=schedule_data.status,
-            price=schedule_data.price,
+            price=final_price
         )
         db.add(db_schedule)
         await db.commit()
@@ -1813,7 +2353,32 @@ async def update_schedule(
             db_schedule.status = schedule_data.status
 
         if schedule_data.price is not None:
-            db_schedule.price = schedule_data.price
+            # 如果价格 <= 0，使用分级查询
+            if schedule_data.price <= 0:
+                # 获取当前排班的医生和诊室信息
+                doctor_result = await db.execute(select(Doctor).where(Doctor.doctor_id == db_schedule.doctor_id))
+                doctor = doctor_result.scalar_one_or_none()
+                
+                # 确定号源类型（如果更新了 slot_type 则使用新值，否则使用当前值）
+                current_slot_type = _slot_type_to_str(db_schedule.slot_type)
+                
+                if doctor:
+                    hierarchical_price = await get_hierarchical_price(
+                        db=db,
+                        slot_type=current_slot_type,
+                        doctor_id=db_schedule.doctor_id,
+                        clinic_id=db_schedule.clinic_id,
+                        minor_dept_id=doctor.dept_id
+                    )
+                    
+                    if hierarchical_price is not None:
+                        db_schedule.price = hierarchical_price
+                    else:
+                        # 使用默认价格
+                        default_prices = {"普通": 50.0, "专家": 100.0, "特需": 500.0}
+                        db_schedule.price = default_prices.get(current_slot_type, 50.0)
+            else:
+                db_schedule.price = schedule_data.price
 
         db.add(db_schedule)
         await db.commit()
@@ -1869,6 +2434,1006 @@ async def delete_schedule(
         raise
     except Exception as e:
         logger.error(f"删除排班时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+        
+
+
+async def get_administrator_id(db: AsyncSession, user_id: int) -> int:
+    """根据用户ID获取管理员ID，用于审核人字段的填充"""
+    # 查找关联的 Administrator 记录
+    result = await db.execute(
+        select(Administrator.admin_id).where(Administrator.user_id == user_id)
+    )
+    admin_id = result.scalar_one_or_none()
+    if not admin_id:
+        # 如果是管理员，但 Administrator 表中没有记录，则抛出异常
+        raise AuthHTTPException(
+            code=settings.INSUFFICIENT_AUTHORITY_CODE,
+            msg="管理员身份异常，未找到对应的管理员档案。",
+            status_code=403
+        )
+    return admin_id
+
+
+def calculate_leave_days(start_date: date, end_date: date) -> int:
+    """计算请假天数 (包含头尾两天)"""
+    return (end_date - start_date).days + 1
+
+# ================================== 排班审核接口 ==================================
+
+@router.get("/audit/schedule", response_model=ResponseModel[Union[ScheduleAuditListResponse, AuthErrorResponse]])
+async def get_schedule_audits(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取所有排班审核列表 - 仅管理员可操作 (无分页)"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: ScheduleAudit, MinorDepartment, Clinic, Doctor
+        result = await db.execute(
+            select(
+                ScheduleAudit,
+                MinorDepartment.name.label("department_name"),
+                Clinic.name.label("clinic_name"),
+                Doctor.name.label("submitter_name"),
+            )
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == ScheduleAudit.minor_dept_id)
+            .join(Clinic, Clinic.clinic_id == ScheduleAudit.clinic_id)
+            .join(Doctor, Doctor.doctor_id == ScheduleAudit.submitter_doctor_id)
+            .order_by(ScheduleAudit.submit_time.desc())
+        )
+        
+        audit_list = []
+        for audit, dept_name, clinic_name, submitter_name in result.all():
+            audit_list.append(ScheduleAuditItem(
+                id=audit.audit_id,
+                department_id=audit.minor_dept_id,
+                department_name=dept_name,
+                clinic_id=audit.clinic_id,
+                clinic_name=clinic_name,
+                submitter_id=audit.submitter_doctor_id,
+                submitter_name=submitter_name,
+                submit_time=audit.submit_time,
+                week_start=audit.week_start_date,
+                week_end=audit.week_end_date,
+                remark=audit.remark,
+                status=audit.status,
+                auditor_id=audit.auditor_admin_id,
+                audit_time=audit.audit_time,
+                audit_remark=audit.audit_remark,
+                # 假设 schedule_data_json 结构已符合 ScheduleAuditItem.schedule
+                schedule=audit.schedule_data_json
+            ))
+
+        return ResponseModel(code=0, message=ScheduleAuditListResponse(audits=audit_list))
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取排班审核列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/audit/schedule/{audit_id}", response_model=ResponseModel[Union[ScheduleAuditItem, AuthErrorResponse]])
+async def get_schedule_audit_detail(
+    audit_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取排班审核详情 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: ScheduleAudit, MinorDepartment, Clinic, Doctor
+        result = await db.execute(
+            select(
+                ScheduleAudit,
+                MinorDepartment.name.label("department_name"),
+                Clinic.name.label("clinic_name"),
+                Doctor.name.label("submitter_name"),
+            )
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == ScheduleAudit.minor_dept_id)
+            .join(Clinic, Clinic.clinic_id == ScheduleAudit.clinic_id)
+            .join(Doctor, Doctor.doctor_id == ScheduleAudit.submitter_doctor_id)
+            .where(ScheduleAudit.audit_id == audit_id)
+        )
+        row = result.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="排班申请不存在",
+                status_code=404
+            )
+        
+        audit, dept_name, clinic_name, submitter_name = row
+        
+        return ResponseModel(code=0, message=ScheduleAuditItem(
+            id=audit.audit_id,
+            department_id=audit.minor_dept_id,
+            department_name=dept_name,
+            clinic_id=audit.clinic_id,
+            clinic_name=clinic_name,
+            submitter_id=audit.submitter_doctor_id,
+            submitter_name=submitter_name,
+            submit_time=audit.submit_time,
+            week_start=audit.week_start_date,
+            week_end=audit.week_end_date,
+            remark=audit.remark,
+            status=audit.status,
+            auditor_id=audit.auditor_admin_id,
+            audit_time=audit.audit_time,
+            audit_remark=audit.audit_remark,
+            schedule=audit.schedule_data_json
+        ))
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取排班审核详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/audit/schedule/{audit_id}/approve", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def approve_schedule_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """通过排班审核 - 仅管理员可操作，并写入排班数据到 Schedule 表"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(ScheduleAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        # 获取审核人 Admin ID
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+        
+        # 1. 更新审核表状态
+        db_audit.status = 'approved'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        
+        # 2. 将排班数据写入 Schedule 表 (简化的 JSON 解析和插入逻辑)
+        # 假设 schedule_data_json 是一个 7x3 的列表结构，且已包含必要的 time_section 和 slot_type 信息
+        schedule_data = db_audit.schedule_data_json
+        start_date = db_audit.week_start_date
+        clinic_id = db_audit.clinic_id
+        
+        schedule_records = []
+        # 假设 time_section 依次为 '上午', '下午', '晚上'
+        time_sections = ['上午', '下午', '晚上']
+        # 假设排班 JSON 数据中的 DoctorInfo 包含其他必要信息如 slot_type, total_slots, price，或者使用默认值
+        # ⚠️ 注: 这里的 Schedule 表字段 (如 slot_type, total_slots, price) 缺失，需在实际模型中补充
+        
+        for day_index, day_schedule in enumerate(schedule_data):
+            current_date = start_date + timedelta(days=day_index)
+            week_day = current_date.isoweekday() # 1=Mon, 7=Sun
+            for slot_index, slot_data in enumerate(day_schedule):
+                if slot_data:
+                    # 假设 slot_data 是 ScheduleDoctorInfo: {"doctorId": 1, "doctorName": "李医生"}
+                    # 实际生产中，JSON 应该包含完整的排班信息（号源类型、数量、价格等）
+                    
+                    # 假设默认值，实际应从更详细的 JSON 结构中提取
+                    doctor_id = slot_data.get('doctor_id')
+                    
+                    # 检查医生是否存在 (可选，但推荐)
+                    if not (await db.get(Doctor, doctor_id)):
+                        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"排班数据中医生ID {doctor_id} 不存在", status_code=400)
+                    
+                    # 假设 Schedule 模型中需要这些字段 (您未提供 Schedule 模型，此处按常见结构填充)
+                    new_schedule = Schedule(
+                        doctor_id=doctor_id,
+                        clinic_id=clinic_id,
+                        date=current_date,
+                        week_day=week_day,
+                        time_section=time_sections[slot_index],
+                        slot_type='普通', # 需根据实际业务逻辑确定
+                        total_slots=50,  # 需根据实际业务逻辑确定
+                        remaining_slots=50, # 需根据实际业务逻辑确定
+                        price=10.00, # 需根据实际业务逻辑确定
+                        status='normal'
+                    )
+                    schedule_records.append(new_schedule)
+
+        db.add_all(schedule_records)
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"排班审核通过并写入排班记录: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='approved',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"通过排班审核时发生异常: {str(e)}")
+        await db.rollback()
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常: 写入排班数据失败",
+            status_code=500
+        )
+
+
+@router.post("/audit/schedule/{audit_id}/reject", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def reject_schedule_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """拒绝排班审核 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(ScheduleAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+
+        # 更新审核表状态
+        db_audit.status = 'rejected'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"排班审核拒绝: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='rejected',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"拒绝排班审核时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+# ================================== 请假审核接口 ==================================
+
+@router.get("/audit/leave", response_model=ResponseModel[Union[LeaveAuditListResponse, AuthErrorResponse]])
+async def get_leave_audits(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取所有请假审核列表 - 仅管理员可操作 (无分页)"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: LeaveAudit, Doctor, MinorDepartment
+        result = await db.execute(
+            select(
+                LeaveAudit,
+                Doctor.name.label("doctor_name"),
+                Doctor.title.label("doctor_title"),
+                MinorDepartment.name.label("department_name"),
+            )
+            .join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .order_by(LeaveAudit.submit_time.desc())
+        )
+        
+        audit_list = []
+        for audit, doctor_name, doctor_title, dept_name in result.all():
+            leave_days = calculate_leave_days(audit.leave_start_date, audit.leave_end_date)
+            # 原因预览：截取前 50 个字符
+            reason_preview = (audit.reason[:50] + '...') if len(audit.reason) > 50 else audit.reason
+            
+            audit_list.append(LeaveAuditItem(
+                id=audit.audit_id,
+                doctor_id=audit.doctor_id,
+                doctor_name=doctor_name,
+                doctor_title=doctor_title,
+                department_name=dept_name,
+                leave_start_date=audit.leave_start_date,
+                leave_end_date=audit.leave_end_date,
+                leave_days=leave_days,
+                reason=audit.reason,
+                reason_preview=reason_preview,
+                attachments=audit.attachment_data_json or [], # 确保返回列表
+                submit_time=audit.submit_time,
+                status=audit.status,
+                auditor_id=audit.auditor_admin_id,
+                audit_time=audit.audit_time,
+                audit_remark=audit.audit_remark
+            ))
+
+        return ResponseModel(code=0, message=LeaveAuditListResponse(audits=audit_list))
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取请假审核列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/audit/leave/{audit_id}", response_model=ResponseModel[Union[LeaveAuditItem, AuthErrorResponse]])
+async def get_leave_audit_detail(
+    audit_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取请假审核详情 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 多表查询: LeaveAudit, Doctor, MinorDepartment
+        result = await db.execute(
+            select(
+                LeaveAudit,
+                Doctor.name.label("doctor_name"),
+                Doctor.title.label("doctor_title"),
+                MinorDepartment.name.label("department_name"),
+            )
+            .join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .where(LeaveAudit.audit_id == audit_id)
+        )
+        row = result.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="请假申请不存在",
+                status_code=404
+            )
+        
+        audit, doctor_name, doctor_title, dept_name = row
+        leave_days = calculate_leave_days(audit.leave_start_date, audit.leave_end_date)
+        reason_preview = (audit.reason[:50] + '...') if len(audit.reason) > 50 else audit.reason
+        
+        return ResponseModel(code=0, message=LeaveAuditItem(
+            id=audit.audit_id,
+            doctor_id=audit.doctor_id,
+            doctor_name=doctor_name,
+            doctor_title=doctor_title,
+            department_name=dept_name,
+            leave_start_date=audit.leave_start_date,
+            leave_end_date=audit.leave_end_date,
+            leave_days=leave_days,
+            reason=audit.reason,
+            reason_preview=reason_preview,
+            attachments=audit.attachment_data_json or [],
+            submit_time=audit.submit_time,
+            status=audit.status,
+            auditor_id=audit.auditor_admin_id,
+            audit_time=audit.audit_time,
+            audit_remark=audit.audit_remark
+        ))
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取请假审核详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/audit/leave/{audit_id}/approve", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def approve_leave_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """通过请假审核 - 仅管理员可操作，将请假期间的排班标记为'停诊'状态"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(LeaveAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="请假申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        # 获取审核人 Admin ID
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+
+        # 1. 将医生在请假期间的排班状态标记为"请假"（保留历史记录，便于追溯）
+        from sqlalchemy import update
+        update_stmt = (
+            update(Schedule)
+            .where(
+                and_(
+                    Schedule.doctor_id == db_audit.doctor_id,
+                    Schedule.date >= db_audit.leave_start_date,
+                    Schedule.date <= db_audit.leave_end_date,
+                    Schedule.status.in_(["正常", "待审核"])  # 仅更新正常或待审核的排班
+                )
+            )
+            .values(status="停诊")
+        )
+        result = await db.execute(update_stmt)
+        affected_schedules = result.rowcount
+
+        logger.info(f"请假审核通过，已将 {affected_schedules} 条排班标记为'停诊'状态。")
+        
+        # 2. 更新审核表状态
+        db_audit.status = 'approved'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        
+        # 统一提交（排班更新 + 审核状态更新）
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"请假审核通过: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='approved',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"通过请假审核时发生异常: {str(e)}")
+        await db.rollback()
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常: 更新排班状态或审核状态失败",
+            status_code=500
+        )
+
+
+@router.post("/audit/leave/{audit_id}/reject", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def reject_leave_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """拒绝请假审核 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        db_audit = await db.get(LeaveAudit, audit_id)
+        if not db_audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="请假申请不存在", status_code=404)
+        
+        if db_audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
+        
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        current_time = datetime.now()
+
+        # 更新审核表状态
+        db_audit.status = 'rejected'
+        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.audit_time = current_time
+        db_audit.audit_remark = data.comment
+        db.add(db_audit)
+        await db.commit()
+        await db.refresh(db_audit)
+
+        logger.info(f"请假审核拒绝: Audit ID {audit_id}")
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='rejected',
+            auditor_id=auditor_admin_id,
+            audit_time=current_time
+        ))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"拒绝请假审核时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 通用附件路径二进制数据获取 ======
+@router.get("/audit/attachment/raw", response_model=None)
+async def get_attachment_raw_from_path(
+    path: str,
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """根据附件的本地相对路径返回文件二进制数据（仅管理员）。
+
+    用于获取请假申请等附件中的图片或文件内容。文件路径应存储在 LeaveAudit.attachment_data_json 中。
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 路径解析：基于应用根目录进行拼接，并进行规范化
+        base_dir = os.path.dirname(os.path.dirname(__file__))  # 假设 /app 目录
+        rel_path = path.lstrip("/") 
+        
+        # 归一化路径，防止路径中出现 ../ 等跳转
+        fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+        
+        # 关键安全检查：确保文件路径在应用基础目录内，防止目录遍历攻击 (Directory Traversal)
+        if not fs_path.startswith(os.path.normpath(base_dir)):
+            logger.warning(f"检测到目录遍历尝试: {fs_path}")
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="提供的文件路径不安全或无效",
+                status_code=400
+            )
+
+        # 检查文件是否存在
+        if not os.path.exists(fs_path) or os.path.isdir(fs_path):
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="附件文件不存在或路径错误",
+                status_code=404
+            )
+
+        # 猜测 MIME Type
+        mime_type, _ = mimetypes.guess_type(fs_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        # 异步文件迭代器，适用于 StreamingResponse
+        async def async_file_iterator(path: str, chunk_size: int = 8192):
+            """异步读取文件块的生成器"""
+            try:
+                # 使用 aiofiles 确保文件 I/O 不阻塞主线程
+                async with aiofiles.open(path, "rb") as f:
+                    while True:
+                        chunk = await f.read(chunk_size)
+                        if not chunk:
+                            break
+                        yield chunk
+            except Exception as e:
+                logger.error(f"异步读取文件失败: {path}, 异常: {str(e)}")
+                # 在流中抛出异常会导致连接中断，这里更倾向于记录错误
+
+        logger.info(f"开始流式传输本地附件文件: {fs_path}")
+        return StreamingResponse(async_file_iterator(fs_path), media_type=mime_type)
+
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取附件数据时发生未知异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ================================== 系统配置接口(全局) ==================================
+
+@router.get("/config", response_model=ResponseModel[Union[SystemConfigResponse, AuthErrorResponse]])
+async def get_system_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取系统配置 - 仅管理员可操作
+    
+    返回挂号配置(registration)和排班配置(schedule)的完整信息
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 查询 registration 配置
+        registration_result = await db.execute(
+            select(SystemConfig).where(
+                and_(
+                    SystemConfig.config_key == 'registration',
+                    SystemConfig.scope_type == 'GLOBAL',
+                    SystemConfig.is_active == True
+                )
+            )
+        )
+        registration_config = registration_result.scalar_one_or_none()
+
+        # 查询 schedule 配置
+        schedule_result = await db.execute(
+            select(SystemConfig).where(
+                and_(
+                    SystemConfig.config_key == 'schedule',
+                    SystemConfig.scope_type == 'GLOBAL',
+                    SystemConfig.is_active == True
+                )
+            )
+        )
+        schedule_config = schedule_result.scalar_one_or_none()
+
+        # 如果配置不存在，返回默认值
+        registration_data = registration_config.config_value if registration_config else {
+            "advanceBookingDays": 14,
+            "sameDayDeadline": "08:00",
+            "noShowLimit": 3,
+            "cancelHoursBefore": 24,
+            "sameClinicInterval": 7
+        }
+
+        schedule_data = schedule_config.config_value if schedule_config else {
+            "maxFutureDays": 60,
+            "morningStart": "08:00",
+            "morningEnd": "12:00",
+            "afternoonStart": "14:00",
+            "afternoonEnd": "18:00",
+            "eveningStart": "18:30",
+            "eveningEnd": "21:00",
+            "consultationDuration": 15,
+            "intervalTime": 5
+        }
+
+        logger.info(f"获取系统配置成功")
+        
+        return ResponseModel(
+            code=0,
+            message=SystemConfigResponse(
+                registration=registration_data,
+                schedule=schedule_data
+            )
+        )
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取系统配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/config", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_system_config(
+    config_data: SystemConfigRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新系统配置 - 仅管理员可操作
+    
+    可选择性更新挂号配置(registration)和/或排班配置(schedule)
+    只需传递需要更新的字段即可
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 处理挂号配置更新
+        if config_data.registration is not None:
+            # 验证时间格式逻辑
+            reg_dict = config_data.registration.dict(exclude_none=True)
+            
+            # 查询现有配置
+            registration_result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.config_key == 'registration',
+                        SystemConfig.scope_type == 'GLOBAL'
+                    )
+                )
+            )
+            registration_config = registration_result.scalar_one_or_none()
+
+
+            if registration_config:
+                logger.info(f"现有挂号配置: {registration_config.config_value}")
+                # 更新现有配置（合并字段）
+                current_value = registration_config.config_value or {}
+                current_value.update(reg_dict)
+                registration_config.config_value = current_value
+                registration_config.update_time = datetime.now()
+                # 关键：标记 JSON 字段已修改，确保 SQLAlchemy 追踪到变更
+                flag_modified(registration_config, "config_value")
+                db.add(registration_config)
+            else:
+                logger.info("无现有挂号配置，创建新配置")
+                # 创建新配置
+                new_config = SystemConfig(
+                    config_key='registration',
+                    scope_type='GLOBAL',
+                    scope_id=None,
+                    config_value=reg_dict,
+                    data_type='JSON',
+                    description='挂号配置：包含提前挂号天数、当日挂号截止时间、爽约次数限制、退号提前时间、同科室挂号间隔',
+                    is_active=True
+                )
+                db.add(new_config)
+
+            logger.info(f"更新挂号配置: {reg_dict}")
+
+        # 处理排班配置更新
+        if config_data.schedule is not None:
+            logger.info(f"准备更新排班配置: {config_data.schedule}")
+            # 验证时间段逻辑
+            sch_dict = config_data.schedule.dict(exclude_none=True)
+            
+            # 逻辑验证：各时间段开始时间应小于结束时间
+            if 'morningStart' in sch_dict and 'morningEnd' in sch_dict:
+                if sch_dict['morningStart'] >= sch_dict['morningEnd']:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="上午班开始时间必须小于结束时间",
+                        status_code=400
+                    )
+            
+            if 'afternoonStart' in sch_dict and 'afternoonEnd' in sch_dict:
+                if sch_dict['afternoonStart'] >= sch_dict['afternoonEnd']:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="下午班开始时间必须小于结束时间",
+                        status_code=400
+                    )
+            
+            if 'eveningStart' in sch_dict and 'eveningEnd' in sch_dict:
+                if sch_dict['eveningStart'] >= sch_dict['eveningEnd']:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="晚班开始时间必须小于结束时间",
+                        status_code=400
+                    )
+
+            # 查询现有配置
+            schedule_result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.config_key == 'schedule',
+                        SystemConfig.scope_type == 'GLOBAL'
+                    )
+                )
+            )
+            schedule_config = schedule_result.scalar_one_or_none()
+
+            if schedule_config:
+                # 更新现有配置（合并字段）
+                current_value = schedule_config.config_value or {}
+                current_value.update(sch_dict)
+                schedule_config.config_value = current_value
+                schedule_config.update_time = datetime.now()
+                # 关键：标记 JSON 字段已修改，确保 SQLAlchemy 追踪到变更
+                flag_modified(schedule_config, "config_value")
+                db.add(schedule_config)
+            else:
+                # 创建新配置
+                new_config = SystemConfig(
+                    config_key='schedule',
+                    scope_type='GLOBAL',
+                    scope_id=None,
+                    config_value=sch_dict,
+                    data_type='JSON',
+                    description='排班配置：包含最多排未来天数、上午/下午/晚班时间段、单次就诊时长、就诊间隔时间',
+                    is_active=True
+                )
+                db.add(new_config)
+
+            logger.info(f"更新排班配置: {sch_dict}")
+
+        await db.commit()
+        
+        return ResponseModel(
+            code=0,
+            message={"detail": "配置更新成功"}
+        )
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"更新系统配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ====== 全局价格配置接口 ======
+
+@router.get("/global-prices", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_global_prices(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取全局挂号价格配置 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        prices = await get_entity_prices(db, "GLOBAL", None)
+        
+        return ResponseModel(
+            code=0,
+            message={
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
+            }
+        )
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取全局价格配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/global-prices", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_global_prices(
+    default_price_normal: Optional[float] = None,
+    default_price_expert: Optional[float] = None,
+    default_price_special: Optional[float] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新全局挂号价格配置 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 至少需要提供一个价格参数
+        if all(p is None for p in [default_price_normal, default_price_expert, default_price_special]):
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="至少需要提供一个价格参数",
+                status_code=400
+            )
+
+        # 更新全局价格配置
+        await update_entity_prices(
+            db=db,
+            scope_type="GLOBAL",
+            scope_id=None,
+            default_price_normal=default_price_normal,
+            default_price_expert=default_price_expert,
+            default_price_special=default_price_special
+        )
+
+        logger.info("更新全局价格配置成功")
+        return ResponseModel(code=0, message={"detail": "全局价格配置更新成功"})
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新全局价格配置时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",

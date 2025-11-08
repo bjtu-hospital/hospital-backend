@@ -19,4 +19,6 @@ class Clinic(Base):
     hospital_area = relationship("HospitalArea", back_populates="clinics")
     minor_department = relationship("MinorDepartment", back_populates="clinics")
     schedules = relationship("Schedule", back_populates="clinic")
+    schedule_audits = relationship("ScheduleAudit", back_populates="clinic")
+    
     

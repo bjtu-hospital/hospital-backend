@@ -29,7 +29,6 @@ class MajorDepartmentResponse(BaseModel):
     major_dept_id: int
     name: str
     description: Optional[str]
-    create_time: Optional[datetime]
     
     class Config:
         from_attributes = True
@@ -40,12 +39,18 @@ class MinorDepartmentCreate(BaseModel):
     major_dept_id: int = Field(description="大科室ID")
     name: str = Field(max_length=100, description="小科室名称")
     description: Optional[str] = Field(None, description="描述")
+    default_price_normal: Optional[float] = Field(None, ge=0, description="普通号默认价格")
+    default_price_expert: Optional[float] = Field(None, ge=0, description="专家号默认价格")
+    default_price_special: Optional[float] = Field(None, ge=0, description="特需号默认价格")
 
 
 class MinorDepartmentUpdate(BaseModel):
     major_dept_id: Optional[int] = Field(None, description="大科室ID")
     name: Optional[str] = Field(None, max_length=100, description="小科室名称")
     description: Optional[str] = Field(None, description="描述")
+    default_price_normal: Optional[float] = Field(None, ge=0, description="普通号默认价格")
+    default_price_expert: Optional[float] = Field(None, ge=0, description="专家号默认价格")
+    default_price_special: Optional[float] = Field(None, ge=0, description="特需号默认价格")
 
 
 class MinorDepartmentResponse(BaseModel):
@@ -53,8 +58,10 @@ class MinorDepartmentResponse(BaseModel):
     major_dept_id: int
     name: str
     description: Optional[str]
-    create_time: Optional[datetime]
-    major_department: Optional[MajorDepartmentResponse]
+    default_price_normal: Optional[float] = None
+    default_price_expert: Optional[float] = None
+    default_price_special: Optional[float] = None
+    major_department: Optional[MajorDepartmentResponse] = None
     
     class Config:
         from_attributes = True
@@ -71,6 +78,9 @@ class DoctorCreate(BaseModel):
     introduction: Optional[str] = Field(None, description="个人简介")
     email: Optional[EmailStr] = Field(None, description="邮箱")
     phonenumber: Optional[str] = Field(None, max_length=25, description="手机号")
+    default_price_normal: Optional[float] = Field(None, ge=0, description="普通号默认价格")
+    default_price_expert: Optional[float] = Field(None, ge=0, description="专家号默认价格")
+    default_price_special: Optional[float] = Field(None, ge=0, description="特需号默认价格")
 
 
 class DoctorUpdate(BaseModel):
@@ -81,6 +91,9 @@ class DoctorUpdate(BaseModel):
     introduction: Optional[str] = Field(None, description="个人简介")
     photo_path: Optional[str] = Field(None, max_length=255, description="照片路径")
     original_photo_url: Optional[str] = Field(None, max_length=255, description="原始照片URL")
+    default_price_normal: Optional[float] = Field(None, ge=0, description="普通号默认价格")
+    default_price_expert: Optional[float] = Field(None, ge=0, description="专家号默认价格")
+    default_price_special: Optional[float] = Field(None, ge=0, description="特需号默认价格")
 
 
 class DoctorResponse(BaseModel):
@@ -93,7 +106,9 @@ class DoctorResponse(BaseModel):
     introduction: Optional[str] = None
     photo_path: Optional[str] = None
     original_photo_url: Optional[str] = None
-    create_time: Optional[datetime] = None
+    default_price_normal: Optional[float] = None
+    default_price_expert: Optional[float] = None
+    default_price_special: Optional[float] = None
     minor_department: Optional[MinorDepartmentResponse] = None
     user: Optional[dict] = None  # 用户基本信息
     
@@ -124,6 +139,17 @@ class ClinicCreate(BaseModel):
     name: str = Field(max_length=100, description="门诊名称")
     clinic_type: int = Field(0, description="门诊类型: 0-普通, 1-国疗, 2-特需")
     address: Optional[str] = Field(None, max_length=255, description="门诊地址描述")
+    default_price_normal: Optional[float] = Field(None, ge=0, description="普通号默认价格")
+    default_price_expert: Optional[float] = Field(None, ge=0, description="专家号默认价格")
+    default_price_special: Optional[float] = Field(None, ge=0, description="特需号默认价格")
+
+
+class ClinicUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100, description="门诊名称")
+    address: Optional[str] = Field(None, max_length=255, description="门诊地址")
+    default_price_normal: Optional[float] = Field(None, ge=0, description="普通号默认价格")
+    default_price_expert: Optional[float] = Field(None, ge=0, description="专家号默认价格")
+    default_price_special: Optional[float] = Field(None, ge=0, description="特需号默认价格")
 
 
 class ClinicResponse(BaseModel):
@@ -133,7 +159,9 @@ class ClinicResponse(BaseModel):
     address: Optional[str]
     minor_dept_id: Optional[int]
     clinic_type: int
-    create_time: Optional[datetime]
+    default_price_normal: Optional[float] = None
+    default_price_expert: Optional[float] = None
+    default_price_special: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -181,7 +209,6 @@ class ScheduleItemResponse(BaseModel):
     remaining_slots: int
     status: Optional[str]
     price: float
-    create_time: Optional[datetime]
 
 
 class ScheduleListResponse(BaseModel):
