@@ -2905,7 +2905,7 @@ async def approve_leave_audit(
     db: AsyncSession = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
-    """通过请假审核 - 仅管理员可操作，并删除请假期间的排班"""
+    """通过请假审核 - 仅管理员可操作，将请假期间的排班标记为'停诊'状态"""
     try:
         if not current_user.is_admin:
             raise AuthHTTPException(
@@ -2925,20 +2925,24 @@ async def approve_leave_audit(
         auditor_admin_id = await get_administrator_id(db, current_user.user_id)
         current_time = datetime.now()
 
-        # 1. 删除医生在请假期间的排班记录
-        delete_stmt = delete(Schedule).where(
-            and_(
-                Schedule.doctor_id == db_audit.doctor_id,
-                Schedule.date >= db_audit.leave_start_date,
-                Schedule.date <= db_audit.leave_end_date,
-                # 仅删除状态为 'normal' 或 'pending' 的排班，已完成的排班不应被删除
-                # 假设 Schedule 表有 status 字段
+        # 1. 将医生在请假期间的排班状态标记为"请假"（保留历史记录，便于追溯）
+        from sqlalchemy import update
+        update_stmt = (
+            update(Schedule)
+            .where(
+                and_(
+                    Schedule.doctor_id == db_audit.doctor_id,
+                    Schedule.date >= db_audit.leave_start_date,
+                    Schedule.date <= db_audit.leave_end_date,
+                    Schedule.status.in_(["正常", "待审核"])  # 仅更新正常或待审核的排班
+                )
             )
+            .values(status="停诊")
         )
-        deleted_schedules = await db.execute(delete_stmt)
-        await db.commit() # 先提交删除，确保原子性
+        result = await db.execute(update_stmt)
+        affected_schedules = result.rowcount
 
-        logger.warning(f"请假审核通过，已删除 {deleted_schedules.rowcount} 条排班记录。")
+        logger.info(f"请假审核通过，已将 {affected_schedules} 条排班标记为'停诊'状态。")
         
         # 2. 更新审核表状态
         db_audit.status = 'approved'
@@ -2947,6 +2951,7 @@ async def approve_leave_audit(
         db_audit.audit_remark = data.comment
         db.add(db_audit)
         
+        # 统一提交（排班更新 + 审核状态更新）
         await db.commit()
         await db.refresh(db_audit)
 
@@ -2972,7 +2977,7 @@ async def approve_leave_audit(
         await db.rollback()
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
-            msg="内部服务异常: 清除排班或更新审核状态失败",
+            msg="内部服务异常: 更新排班状态或审核状态失败",
             status_code=500
         )
 

@@ -109,7 +109,7 @@ app.add_middleware(
 #中间件解决跨域(后续需扩展)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5000", "http://47.116.175.206", "http://119.3.239.72"],
+    allow_origins=["http://localhost:5000", "http://localhost:3000","http://47.116.175.206", "http://119.3.239.72"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
