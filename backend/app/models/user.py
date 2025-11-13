@@ -72,6 +72,9 @@ class User(Base):
     # 与patient表为一对一的关系
     patient = relationship("Patient", back_populates="user", uselist=False)
 
+    # 与加号申请的关系（发起者/患者接收）
+    add_slot_applications = relationship("AddSlotAudit", back_populates="applicant", foreign_keys='AddSlotAudit.applicant_id')
+
 
 # 运行时兼容性帮助：将传入的字符串（如来自 API 的 user_type）映射到 UserType
 def parse_user_type(value: str) -> UserType:

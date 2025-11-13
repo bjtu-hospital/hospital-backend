@@ -33,6 +33,7 @@ from app.models.registration_order import RegistrationOrder # noqa
 from app.models.visit_history import VisitHistory # noqa
 from app.models.schedule_audit import ScheduleAudit # noqa
 from app.models.leave_audit import LeaveAudit # noqa
+from app.models.add_slot_audit import AddSlotAudit # noqa
 
 #异步获取事务函数
 async def get_db():
