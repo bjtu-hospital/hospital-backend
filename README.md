@@ -1,6 +1,9 @@
 
 # BJTU 校医院挂号系统（后端）
 
+
+# BJTU 校医院挂号系统（后端）
+
 此仓库为后端服务（FastAPI + 异步 SQLAlchemy + Redis）。本 README 以中文编写，涵盖：统一错误码与格式、主要 API 参考，以及如何部署和维护。
 
 > 备注：README 以仓库当前实现为准（包含 `app/api/auth.py` 与 `app/api/admin.py` 中的路由）。如果你需要额外生成 API 文档（OpenAPI/Swagger），可以通过运行服务后访问 `/docs`。
@@ -1933,3 +1936,59 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+
+
+
+## 四、统计 API 接口 `/statistics`
+
+**概览**
+- 本项目在 `backend/app/api/statistics.py` 提供了一组统计接口，用于运营与统计报表。接口路径前缀为 `/statistics`，统一返回 `ResponseModel`：`{ "code": int, "message": ... }`。
+- 大部分统计接口需登录鉴权（通过 `Authorization: Bearer <token>`），医院/院区/科室/医生级别的统计与排行榜要求用户为管理员（`is_admin==True`）。
+
+**通用参数**
+- `date` (query, string, 格式 `YYYY-MM-DD`): 统计日期。接口签名通常会在文档显示默认值为当天，但建议明确传参以避免 Swagger 自动填充造成误导。
+- `date_range` (query, string): `today` / `7days` / `30days`。若同时传 `date_range`，`date_range` 优先于 `date`。
+
+**注意**: 若 `date` 为空字符串或格式不正确，接口会返回错误提示（不会静默回退到今天）。
+
+### 4.1 医院总体挂号统计
+- `GET /statistics/hospital/registrations`（管理员）
+- 参数: `date`, `date_range`
+- 返回: `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `completed_consultations`
+
+
+### 4.2 院区挂号统计
+- `GET /statistics/areas/{area_id}/registrations`（管理员）
+- 参数: `date`
+- 返回: `area_id`, `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `departments` (每项 `{ minor_dept_id, registrations, revenue }`)
+
+### 4.3 科室挂号统计（含医生分解）
+- `GET /statistics/departments/{minor_dept_id}/registrations`（管理员）
+- 参数: `date`, `date_range`
+- 返回: `minor_dept_id`, `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `completed_consultations`, `doctors` (每项 `{ doctor_id, doctor_name, title, registrations, revenue }`)
+
+### 4.4 医生挂号统计（含排班利用率）
+- `GET /statistics/doctors/{doctor_id}/registrations`（管理员）
+- 参数: `date`, `date_range`
+- 返回: `doctor_id`, `doctor_name`, `title`, `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `completed_consultations`, `by_time_section`, `schedules` (包含 `utilization_rate`)
+
+### 4.5 科室排行榜
+- `GET /statistics/departments/ranking`（管理员）
+- 参数: `date`, `order_by=registrations|revenue`, `limit`
+- 返回: `ranking` 列表（含 `minor_dept_id`, `dept_name`, `registrations`, `revenue`）
+
+### 4.6 医生排行榜
+- `GET /statistics/doctors/ranking`（管理员）
+- 参数: `dept_id` (可选), `date`, `order_by`, `limit`
+- 返回: `ranking` 列表（含 `doctor_id`, `doctor_name`, `title`, `dept_name`, `registrations`, `revenue`）
+
+### 4.7 用户统计
+- `GET /statistics/users`（登录用户）
+- 返回: `UserStatisticsResponse`（例如 `{ total_users: <int> }`）
+
+### 4.8 访问量统计
+- `GET /statistics/visits`（登录用户）
+- 参数: `compare_days`（默认见 `settings.COMPARE_DAYS`）
+- 返回: `VisitStatisticsResponse`（`total_visits`, `growth_percent`, `compare_days`）
+
