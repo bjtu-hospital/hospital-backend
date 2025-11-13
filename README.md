@@ -68,7 +68,7 @@ YUN_URL=https://yun.example.com/verify?token=
 # 在 backend 根目录下
 pip install -r requirements.txt
 # 启动（带热重载）
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload
 ```
 
 启动后：
@@ -221,7 +221,7 @@ YUN_URL=https://yun.example.com/verify?token=
 # 在 backend 根目录下
 pip install -r requirements.txt
 # 启动（带热重载）
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 启动后：
@@ -1229,6 +1229,8 @@ Authorization: Bearer <token>
 
 ---
 
+
+
 ### C. 附件管理
 
 #### 3.9 获取审核附件（二进制数据）
@@ -1257,6 +1259,84 @@ Authorization: Bearer <token>
 - 路径会经过规范化处理，防止 `../` 等目录遍历攻击
 - 强制校验文件路径必须在应用基础目录内
 - 仅管理员可访问
+
+
+### D. 加号申请（AddSlotAudit）
+
+#### 概述
+加号申请用于医生为某患者在已有排班上增加号源或供管理员直接为患者创建加号并生成挂号记录。流程支持：医生发起申请（需管理员审批）或管理员直接执行加号（跳过审批）。
+
+#### 3.10 医生/管理员发起加号 POST: `/schedules/add-slot`  (注意这里是doctor/schedules/add-slot)
+- 权限：需登录；管理员可直接执行加号并同时创建挂号记录，医生仅能提交申请由管理员审批。
+- 请求体（JSON）：
+
+```json
+{
+    "schedule_id": 12345,
+    "patient_id": 67890,
+    "slot_type": "普通",    // 号源类型：普通/专家/特需
+    "reason": "需要加号给病患" // 医生发起时可选
+}
+```
+
+- 行为：
+    - 管理员调用：系统直接在事务内为患者创建 `RegistrationOrder`（同时更新 `Schedule` 的 `total_slots` 与 `remaining_slots`），响应包含新订单 `order_id`。
+    - 医生调用：系统在 `add_slot_audit` 表中创建申请记录，等待管理员审批，响应包含 `audit_id`。
+
+- 成功响应示例（管理员直接创建挂号）：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "加号记录已创建",
+        "order_id": 1001
+    }
+}
+```
+
+- 成功响应示例（医生提交申请）：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "加号申请已提交，等待审核",
+        "audit_id": 2001
+    }
+}
+```
+
+#### 3.11 管理员查看所有加号申请 GET: `/audit/add-slot`
+- 权限：仅管理员。
+- 说明：返回所有 `AddSlotAudit` 记录（当前实现无分页）。建议在记录量大时加入分页与筛选参数（如 status/doctor_id/patient_id/date range）。
+- 响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audits": [
+            {
+                "audit_id": 2001,
+                "schedule_id": 12345,
+                "doctor_id": 10,
+                "patient_id": 67890,
+                "slot_type": "普通",
+                "reason": "病人有特殊情况",
+                "applicant_id": 10,
+                "submit_time": "2025-11-13T10:00:00",
+                "status": "pending",
+                "auditor_admin_id": null,
+                "audit_time": null,
+                "audit_remark": null
+            }
+        ]
+    }
+}
+```
+
+#### 3.12 管理员审批（已有接口）
+- 通过：POST `/audit/add-slot/{audit_id}/approve`（管理员）
+- 拒绝：POST `/audit/add-slot/{audit_id}/reject`（管理员）
+- 说明：审批通过时，系统会在事务内调用加号服务创建 `RegistrationOrder` 并更新对应 `Schedule`；审批结果会写回 `add_slot_audit` 表（status、auditor_admin_id、audit_time、audit_remark）。
 
 ---
 

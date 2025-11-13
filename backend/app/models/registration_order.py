@@ -37,6 +37,9 @@ class RegistrationOrder(Base):
     slot_date = Column(Date, nullable=False, comment="预约日期")
     time_section = Column(String(20), nullable=True, comment="预约时段，如: 上午/下午/晚间")
 
+    # 号别/挂号类型（如：普通/专家/特需/加号/候补等）
+    slot_type = Column(String(50), nullable=True, comment="挂号号别/类型，例如: 普通/专家/特需/加号/候补")
+
     # 允许存储多个就诊时间的扩展字段（JSON 数组的字符串表现形式）
     visit_times = Column(Text, nullable=True, comment="JSON 字符串：用于存储一系列就诊时间")
 

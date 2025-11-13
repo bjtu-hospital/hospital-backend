@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import Union, Optional
 from jose import jwt, JWTError
-from datetime import timedelta
+from datetime import timedelta, date
 import logging
 import time
 
@@ -13,6 +13,7 @@ from app.schemas.user import user as UserSchema, PatientLogin, StaffLogin
 from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleResponse, DeleteResponse, UpdateUserRoleResponse, UserAccessLogPageResponse, AdminRegisterResponse
 from app.db.base import get_db, redis, User, UserAccessLog, Administrator
 from app.models.user import UserType
+from app.models.patient import Patient, PatientType, Gender
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 
@@ -398,6 +399,10 @@ async def register_patient(
     password: str,
     name: str,
     email: Optional[str] = None,
+    patient_type: Optional[str] = None,
+    gender: Optional[str] = None,
+    birth_date: Optional[str] = None,
+    student_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """患者注册接口"""
@@ -414,10 +419,11 @@ async def register_patient(
         # 创建新用户
         new_user = User(
             phonenumber=phonenumber,
-            name=name,
             hashed_password=get_hash_pwd(password),
             email=email,
-            is_admin=False
+            is_admin=False,
+            # 新注册的患者默认不是管理员，user_type 暂设为 EXTERNAL
+            user_type=UserType.EXTERNAL
         )
         db.add(new_user)
         await db.commit()
@@ -429,6 +435,68 @@ async def register_patient(
         # 保存 token 到 Redis
         await redis.set(f"token:{token}", str(new_user.user_id), ex=settings.TOKEN_EXPIRE_TIME * 60)
         await redis.set(f"user_token:{new_user.user_id}", token, ex=settings.TOKEN_EXPIRE_TIME * 60)
+
+        # 若提供了患者详细信息，则同时创建 Patient 记录
+        try:
+            create_patient = any([patient_type, gender, birth_date, student_id])
+            if create_patient:
+                # 解析 patient_type
+                p_type = None
+                if patient_type:
+                    pt = str(patient_type).strip()
+                    # 支持中文/英文输入（如 '学生' 或 'STUDENT'）
+                    if pt in ("学生", "STUDENT", "student", "Student"):
+                        p_type = PatientType.STUDENT
+                    elif pt in ("教师", "TEACHER", "teacher", "Teacher"):
+                        p_type = PatientType.TEACHER
+                    elif pt in ("职工", "STAFF", "staff", "Staff"):
+                        p_type = PatientType.STAFF
+                # 解析 gender
+                g = None
+                if gender:
+                    gg = str(gender).strip()
+                    if gg in ("男", "MALE", "male", "Male"):
+                        g = Gender.MALE
+                    elif gg in ("女", "FEMALE", "female", "Female"):
+                        g = Gender.FEMALE
+                    else:
+                        g = Gender.UNKNOWN
+
+                # 解析 birth_date (YYYY-MM-DD)
+                bdate = None
+                if birth_date:
+                    try:
+                        from datetime import datetime as _dt
+                        bdate = _dt.strptime(birth_date, "%Y-%m-%d").date()
+                    except Exception:
+                        bdate = None
+
+                # 为避免 Enum 存储值/名称与数据库已有 ENUM 定义不一致，直接写入枚举的 value（中文描述）
+                # 插入数据库时传入 Enum 成员（SQLAlchemy 会处理到数据库的表示），
+                # 避免直接写入枚举的 value 导致与数据库列定义不一致的问题。
+                # 将解析结果存入数据库时使用枚举的 value（存储为数据库定义的字符串），
+                # 以兼容数据库中 ENUM 的定义（数据库中使用中文值：'男','女','未知' 等）。
+                patient = Patient(
+                    user_id=new_user.user_id,
+                    name=name,
+                    gender=(g.value if g else Gender.UNKNOWN.value),
+                    birth_date=bdate,
+                    patient_type=(p_type.value if p_type else PatientType.STUDENT.value),
+                    student_id=student_id,
+                    is_verified=False,
+                    create_time=date.today()
+                )
+                db.add(patient)
+                await db.commit()
+                await db.refresh(patient)
+        except Exception:
+            # 如果创建 Patient 失败，不影响用户注册，记录错误并回滚本次子事务以清理 Session 状态
+            logger.exception("创建 Patient 记录失败，已回滚 Patient 子记录，但用户已创建")
+            try:
+                await db.rollback()
+            except Exception:
+                # 忽略回滚期间的错误，至少记录日志
+                logger.exception("回滚 Patient 子记录时发生异常")
 
         return ResponseModel(code=0, message=token)
     except AuthHTTPException:

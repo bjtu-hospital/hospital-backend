@@ -5,12 +5,20 @@ from sqlalchemy import select, and_, delete
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Optional, Union
 import logging
+import os
+import time
+import mimetypes
+import aiofiles
+from app.core.security import get_hash_pwd
+from datetime import datetime, date, timedelta
+from app.api.auth import get_current_user
 from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicUpdate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
+from app.schemas.admin import AddSlotAuditListResponse, AddSlotAuditResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
 from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
-from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit
+from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
 from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
 from app.schemas.audit import (
@@ -18,208 +26,21 @@ from app.schemas.audit import (
 )
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
-from app.api.auth import get_current_user
-from app.core.security import get_hash_pwd
-from datetime import date, datetime, timedelta
-import os
-import aiofiles
-import time
-import mimetypes
+from app.services.admin_helpers import (
+    get_hierarchical_price,
+    get_entity_prices,
+    update_entity_prices,
+    _weekday_to_cn,
+    _slot_type_to_str,
+    _str_to_slot_type,
+    get_administrator_id,
+    calculate_leave_days
+)
+
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-# ====== 分级价格管理辅助函数 ======
-
-async def get_hierarchical_price(
-    db: AsyncSession,
-    slot_type: str,
-    doctor_id: Optional[int] = None,
-    clinic_id: Optional[int] = None,
-    minor_dept_id: Optional[int] = None
-) -> Optional[float]:
-    """
-    分级查询挂号价格配置
-    优先级: DOCTOR > CLINIC > MINOR_DEPT > GLOBAL
-    
-    Args:
-        db: 数据库会话
-        slot_type: 号源类型 ("普通", "专家", "特需")
-        doctor_id: 医生ID
-        clinic_id: 诊室ID
-        minor_dept_id: 小科室ID
-    
-    Returns:
-        价格值，如果未找到返回 None
-    """
-    # 映射 slot_type 到配置字段名
-    price_field_map = {
-        "普通": "default_price_normal",
-        "专家": "default_price_expert",
-        "特需": "default_price_special"
-    }
-    
-    price_field = price_field_map.get(slot_type)
-    if not price_field:
-        return None
-    
-    # 按优先级查询：DOCTOR -> CLINIC -> MINOR_DEPT -> GLOBAL
-    search_order = []
-    
-    if doctor_id:
-        search_order.append(("DOCTOR", doctor_id))
-    if clinic_id:
-        search_order.append(("CLINIC", clinic_id))
-    if minor_dept_id:
-        search_order.append(("MINOR_DEPT", minor_dept_id))
-    search_order.append(("GLOBAL", None))
-    
-    for scope_type, scope_id in search_order:
-        query = select(SystemConfig).where(
-            and_(
-                SystemConfig.config_key == "registration.price",
-                SystemConfig.scope_type == scope_type,
-                SystemConfig.is_active == True
-            )
-        )
-        
-        if scope_type == "GLOBAL":
-            query = query.where(SystemConfig.scope_id.is_(None))
-        else:
-            query = query.where(SystemConfig.scope_id == scope_id)
-        
-        result = await db.execute(query)
-        config = result.scalar_one_or_none()
-        
-        if config and config.config_value:
-            price_value = config.config_value.get(price_field)
-            if price_value is not None:  # 找到非 null 的价格配置
-                return float(price_value)
-    
-    return None
-
-
-async def get_entity_prices(
-    db: AsyncSession,
-    scope_type: str,
-    scope_id: Optional[int]
-) -> dict:
-    """
-    获取指定实体（全局/小科室/诊室/医生）的三个价格配置
-    
-    Returns:
-        {
-            "default_price_normal": float | None,
-            "default_price_expert": float | None,
-            "default_price_special": float | None
-        }
-    """
-    query = select(SystemConfig).where(
-        and_(
-            SystemConfig.config_key == "registration.price",
-            SystemConfig.scope_type == scope_type,
-            SystemConfig.is_active == True
-        )
-    )
-    
-    if scope_type == "GLOBAL":
-        query = query.where(SystemConfig.scope_id.is_(None))
-    else:
-        query = query.where(SystemConfig.scope_id == scope_id)
-    
-    result = await db.execute(query)
-    config = result.scalar_one_or_none()
-    
-    if config and config.config_value:
-        return {
-            "default_price_normal": float(config.config_value["default_price_normal"]) if config.config_value.get("default_price_normal") is not None else None,
-            "default_price_expert": float(config.config_value["default_price_expert"]) if config.config_value.get("default_price_expert") is not None else None,
-            "default_price_special": float(config.config_value["default_price_special"]) if config.config_value.get("default_price_special") is not None else None
-        }
-    
-    return {
-        "default_price_normal": None,
-        "default_price_expert": None,
-        "default_price_special": None
-    }
-
-
-async def update_entity_prices(
-    db: AsyncSession,
-    scope_type: str,
-    scope_id: Optional[int],
-    default_price_normal: Optional[float] = None,
-    default_price_expert: Optional[float] = None,
-    default_price_special: Optional[float] = None
-) -> None:
-    """
-    更新指定实体的价格配置（有则更新，无则创建）
-    
-    Args:
-        db: 数据库会话
-        scope_type: 范围类型 ("GLOBAL", "MINOR_DEPT", "CLINIC", "DOCTOR")
-        scope_id: 范围ID（GLOBAL时为None）
-        default_price_normal: 普通号价格
-        default_price_expert: 专家号价格
-        default_price_special: 特需号价格
-    """
-    # 查询现有配置
-    query = select(SystemConfig).where(
-        and_(
-            SystemConfig.config_key == "registration.price",
-            SystemConfig.scope_type == scope_type
-        )
-    )
-    
-    if scope_type == "GLOBAL":
-        query = query.where(SystemConfig.scope_id.is_(None))
-    else:
-        query = query.where(SystemConfig.scope_id == scope_id)
-    
-    result = await db.execute(query)
-    config = result.scalar_one_or_none()
-    
-    # 构建新的配置值
-    new_config_value = {}
-    if config and config.config_value:
-        new_config_value = dict(config.config_value)
-    
-    # 只更新非 None 的字段
-    if default_price_normal is not None:
-        new_config_value["default_price_normal"] = default_price_normal
-    if default_price_expert is not None:
-        new_config_value["default_price_expert"] = default_price_expert
-    if default_price_special is not None:
-        new_config_value["default_price_special"] = default_price_special
-    
-    if config:
-        # 更新现有配置
-        config.config_value = new_config_value
-        config.update_time = datetime.now()
-        flag_modified(config, "config_value")
-        db.add(config)
-    else:
-        # 创建新配置
-        entity_desc_map = {
-            "GLOBAL": "全局",
-            "MINOR_DEPT": f"小科室{scope_id}",
-            "CLINIC": f"诊室{scope_id}",
-            "DOCTOR": f"医生{scope_id}"
-        }
-        
-        new_config = SystemConfig(
-            config_key="registration.price",
-            scope_type=scope_type,
-            scope_id=scope_id,
-            config_value=new_config_value,
-            data_type="JSON",
-            description=f"{entity_desc_map.get(scope_type, '')}挂号费用配置",
-            is_active=True
-        )
-        db.add(new_config)
-    
-    await db.commit()
 
 
 # ====== 管理员科室管理接口 ======
@@ -1954,28 +1775,7 @@ async def update_clinic(
 
 
 # ====== 排班管理接口 ======
-
-def _weekday_to_cn(week_day: int) -> str:
-    mapping = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
-    return mapping.get(week_day, "")
-
-
-def _slot_type_to_str(slot_type_enum) -> str:
-    # Enum values are Chinese strings in model
-    return slot_type_enum.value if hasattr(slot_type_enum, "value") else str(slot_type_enum)
-
-
-def _str_to_slot_type(value: str):
-    # Accept: 普通/专家/特需
-    from app.models.schedule import SlotType
-    for member in SlotType:
-        if member.value == value:
-            return member
-    raise BusinessHTTPException(
-        code=settings.REQ_ERROR_CODE,
-        msg="无效的号源类型，应为 普通/专家/特需",
-        status_code=400
-    )
+# 排班相关的工具函数已移至 `app.services.admin_helpers`
 
 
 @router.get("/departments/{dept_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
@@ -2442,26 +2242,7 @@ async def delete_schedule(
         
 
 
-async def get_administrator_id(db: AsyncSession, user_id: int) -> int:
-    """根据用户ID获取管理员ID，用于审核人字段的填充"""
-    # 查找关联的 Administrator 记录
-    result = await db.execute(
-        select(Administrator.admin_id).where(Administrator.user_id == user_id)
-    )
-    admin_id = result.scalar_one_or_none()
-    if not admin_id:
-        # 如果是管理员，但 Administrator 表中没有记录，则抛出异常
-        raise AuthHTTPException(
-            code=settings.INSUFFICIENT_AUTHORITY_CODE,
-            msg="管理员身份异常，未找到对应的管理员档案。",
-            status_code=403
-        )
-    return admin_id
-
-
-def calculate_leave_days(start_date: date, end_date: date) -> int:
-    """计算请假天数 (包含头尾两天)"""
-    return (end_date - start_date).days + 1
+# get_administrator_id and calculate_leave_days moved to `app.services.admin_helpers`
 
 # ================================== 排班审核接口 ==================================
 
@@ -2525,6 +2306,44 @@ async def get_schedule_audits(
             msg="内部服务异常",
             status_code=500
         )
+
+
+@router.get("/audit/add-slot", response_model=ResponseModel[Union[AddSlotAuditListResponse, AuthErrorResponse]])
+async def get_add_slot_audits(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取所有加号申请（无分页） - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅管理员可查看加号申请", status_code=403)
+
+        result = await db.execute(select(AddSlotAudit))
+        audits = result.scalars().all()
+
+        audit_list = []
+        for a in audits:
+            audit_list.append({
+                "audit_id": a.audit_id,
+                "schedule_id": a.schedule_id,
+                "doctor_id": a.doctor_id,
+                "patient_id": a.patient_id,
+                "slot_type": a.slot_type,
+                "reason": a.reason,
+                "applicant_id": a.applicant_id,
+                "submit_time": a.submit_time,
+                "status": a.status,
+                "auditor_admin_id": a.auditor_admin_id,
+                "audit_time": a.audit_time,
+                "audit_remark": a.audit_remark,
+            })
+
+        return ResponseModel(code=0, message=AddSlotAuditListResponse(audits=audit_list))
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取加号申请列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="内部服务异常", status_code=500)
 
 
 @router.get("/audit/schedule/{audit_id}", response_model=ResponseModel[Union[ScheduleAuditItem, AuthErrorResponse]])
@@ -3036,6 +2855,135 @@ async def reject_leave_audit(
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/audit/add-slot/{audit_id}/approve", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def approve_add_slot_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """管理员通过加号申请，将加号转换为挂号记录（在事务内）。"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 获取加号申请
+        result = await db.execute(select(AddSlotAudit).where(AddSlotAudit.audit_id == audit_id))
+        audit = result.scalar_one_or_none()
+        if not audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="加号申请不存在", status_code=404)
+
+        if audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {audit.status}，无法重复审核", status_code=400)
+
+        # 执行加号处理逻辑（会在内部创建挂号并更新排班）
+        from app.services.add_slot_service import execute_add_slot_and_register
+
+        order_id = await execute_add_slot_and_register(
+            db=db,
+            schedule_id=audit.schedule_id,
+            patient_id=audit.patient_id,
+            slot_type=audit.slot_type,
+            applicant_user_id=audit.applicant_id
+        )
+
+        # 更新审核记录
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        audit.status = 'approved'
+        audit.auditor_admin_id = auditor_admin_id
+        audit.audit_time = datetime.now()
+        audit.audit_remark = data.comment
+        db.add(audit)
+        await db.commit()
+        await db.refresh(audit)
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='approved',
+            auditor_id=auditor_admin_id,
+            audit_time=audit.audit_time
+        ))
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"通过加号申请时发生异常: {e}")
+        await db.rollback()
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常: 加号处理或更新审核状态失败",
+            status_code=500
+        )
+
+
+@router.post("/audit/add-slot/{audit_id}/reject", response_model=ResponseModel[Union[AuditActionResponse, AuthErrorResponse]])
+async def reject_add_slot_audit(
+    audit_id: int,
+    data: AuditAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """管理员拒绝加号申请"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        result = await db.execute(select(AddSlotAudit).where(AddSlotAudit.audit_id == audit_id))
+        audit = result.scalar_one_or_none()
+        if not audit:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="加号申请不存在", status_code=404)
+
+        if audit.status != 'pending':
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {audit.status}，无法重复审核", status_code=400)
+
+        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        audit.status = 'rejected'
+        audit.auditor_admin_id = auditor_admin_id
+        audit.audit_time = datetime.now()
+        audit.audit_remark = data.comment
+        db.add(audit)
+        await db.commit()
+        await db.refresh(audit)
+
+        return ResponseModel(code=0, message=AuditActionResponse(
+            audit_id=audit_id,
+            status='rejected',
+            auditor_id=auditor_admin_id,
+            audit_time=audit.audit_time
+        ))
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"拒绝加号申请时发生异常: {e}")
+        await db.rollback()
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常: 更新审核状态失败",
             status_code=500
         )
 

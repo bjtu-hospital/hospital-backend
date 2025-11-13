@@ -213,3 +213,33 @@ class ScheduleItemResponse(BaseModel):
 
 class ScheduleListResponse(BaseModel):
     schedules: List[ScheduleItemResponse]
+
+
+# ====== 加号申请（AddSlotAudit）schema ======
+class AddSlotAuditCreate(BaseModel):
+    schedule_id: int = Field(..., description="目标排班ID")
+    patient_id: int = Field(..., description="患者的 patient_id")
+    slot_type: str = Field(..., description="号源类型: 普通/专家/特需")
+    reason: Optional[str] = Field(None, description="申请理由（医生填写）")
+
+
+class AddSlotAuditResponse(BaseModel):
+    audit_id: int
+    schedule_id: int
+    doctor_id: int
+    patient_id: int
+    slot_type: str
+    reason: Optional[str] = None
+    applicant_id: int
+    submit_time: Optional[datetime] = None
+    status: str
+    auditor_admin_id: Optional[int] = None
+    audit_time: Optional[datetime] = None
+    audit_remark: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AddSlotAuditListResponse(BaseModel):
+    audits: List[AddSlotAuditResponse]
