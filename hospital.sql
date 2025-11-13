@@ -11,7 +11,7 @@
  Target Server Version : 80041 (8.0.41)
  File Encoding         : 65001
 
- Date: 13/11/2025 16:32:17
+ Date: 13/11/2025 20:36:39
 */
 
 SET NAMES utf8mb4;
@@ -1349,12 +1349,112 @@ CREATE TABLE `patient`  (
   UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
   UNIQUE INDEX `student_id`(`student_id` ASC) USING BTREE,
   CONSTRAINT `fk_patient_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 103 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of patient
 -- ----------------------------
 INSERT INTO `patient` VALUES (2, 11, 'HHH', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (3, 13, '测试用户001', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (4, 14, '测试用户002', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (5, 15, '测试用户003', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (6, 16, '测试用户004', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (7, 17, '测试用户005', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (8, 18, '测试用户006', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (9, 19, '测试用户007', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (10, 20, '测试用户008', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (11, 21, '测试用户009', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (12, 22, '测试用户010', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (13, 23, '测试用户011', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (14, 24, '测试用户012', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (15, 25, '测试用户013', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (16, 26, '测试用户014', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (17, 27, '测试用户015', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (18, 28, '测试用户016', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (19, 29, '测试用户017', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (20, 30, '测试用户018', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (21, 31, '测试用户019', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (22, 32, '测试用户020', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (23, 33, '测试用户021', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (24, 34, '测试用户022', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (25, 35, '测试用户023', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (26, 36, '测试用户024', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (27, 37, '测试用户025', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (28, 38, '测试用户026', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (29, 39, '测试用户027', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (30, 40, '测试用户028', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (31, 41, '测试用户029', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (32, 42, '测试用户030', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (33, 43, '测试用户031', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (34, 44, '测试用户032', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (35, 45, '测试用户033', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (36, 46, '测试用户034', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (37, 47, '测试用户035', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (38, 48, '测试用户036', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (39, 49, '测试用户037', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (40, 50, '测试用户038', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (41, 51, '测试用户039', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (42, 52, '测试用户040', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (43, 53, '测试用户041', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (44, 54, '测试用户042', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (45, 55, '测试用户043', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (46, 56, '测试用户044', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (47, 57, '测试用户045', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (48, 58, '测试用户046', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (49, 59, '测试用户047', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (50, 60, '测试用户048', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (51, 61, '测试用户049', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (52, 62, '测试用户050', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (53, 63, '测试用户051', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (54, 64, '测试用户052', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (55, 65, '测试用户053', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (56, 66, '测试用户054', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (57, 67, '测试用户055', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (58, 68, '测试用户056', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (59, 69, '测试用户057', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (60, 70, '测试用户058', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (61, 71, '测试用户059', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (62, 72, '测试用户060', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (63, 73, '测试用户061', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (64, 74, '测试用户062', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (65, 75, '测试用户063', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (66, 76, '测试用户064', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (67, 77, '测试用户065', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (68, 78, '测试用户066', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (69, 79, '测试用户067', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (70, 80, '测试用户068', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (71, 81, '测试用户069', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (72, 82, '测试用户070', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (73, 83, '测试用户071', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (74, 84, '测试用户072', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (75, 85, '测试用户073', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (76, 86, '测试用户074', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (77, 87, '测试用户075', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (78, 88, '测试用户076', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (79, 89, '测试用户077', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (80, 90, '测试用户078', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (81, 91, '测试用户079', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (82, 92, '测试用户080', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (83, 93, '测试用户081', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (84, 94, '测试用户082', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (85, 95, '测试用户083', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (86, 96, '测试用户084', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (87, 97, '测试用户085', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (88, 98, '测试用户086', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (89, 99, '测试用户087', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (90, 100, '测试用户088', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (91, 101, '测试用户089', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (92, 102, '测试用户090', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (93, 103, '测试用户091', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (94, 104, '测试用户092', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (95, 105, '测试用户093', '男', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (96, 106, '测试用户094', '女', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (97, 107, '测试用户095', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (98, 108, '测试用户096', '女', NULL, '教师', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (99, 109, '测试用户097', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (100, 110, '测试用户098', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (101, 111, '测试用户099', '男', NULL, '职工', NULL, 0, '2025-11-13 00:00:00');
+INSERT INTO `patient` VALUES (102, 112, '测试用户100', '女', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
 
 -- ----------------------------
 -- Table structure for registration_order
@@ -1385,13 +1485,113 @@ CREATE TABLE `registration_order`  (
   CONSTRAINT `registration_order_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_4` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 104 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of registration_order
 -- ----------------------------
 INSERT INTO `registration_order` VALUES (1, 2, 11, 1, 2955, '2025-11-07', '上午', NULL, 0, NULL, 'confirmed', '加号申请 (由用户 5 发起) | price=150.0', '2025-11-13 07:59:22', '2025-11-13 07:59:22', '普通');
 INSERT INTO `registration_order` VALUES (3, 2, 11, 879, 2956, '2025-11-25', '上午', NULL, 0, NULL, 'pending', '加号申请 (由用户 12 发起) | price=100.0', '2025-11-13 08:21:14', '2025-11-13 08:21:14', '普通');
+INSERT INTO `registration_order` VALUES (4, 3, 13, 619, 37, '2025-10-24', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=1', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (5, 4, 14, 423, 1533, '2025-10-22', '晚间', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=2', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '特需');
+INSERT INTO `registration_order` VALUES (6, 5, 15, 381, 128, '2025-10-23', '下午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=3', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (7, 6, 16, 355, 2047, '2025-10-22', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=4', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '专家');
+INSERT INTO `registration_order` VALUES (8, 7, 17, 285, 746, '2025-10-24', '上午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=5', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (9, 8, 18, 753, 1192, '2025-10-24', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=6', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (10, 9, 19, 395, 160, '2025-10-20', '晚间', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=7', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '特需');
+INSERT INTO `registration_order` VALUES (11, 10, 20, 233, 1295, '2025-10-24', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=8', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (12, 11, 21, 778, 1467, '2025-10-23', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=9', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (13, 12, 22, 623, 2939, '2025-10-27', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=10', '2025-11-13 11:51:12', '2025-11-13 11:51:12', '普通');
+INSERT INTO `registration_order` VALUES (14, 13, 23, 313, 1371, '2025-10-20', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=11', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (15, 14, 24, 290, 1177, '2025-10-27', '下午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=12', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (16, 15, 25, 252, 208, '2025-10-27', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=13', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (17, 16, 26, 241, 2318, '2025-10-21', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=14', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (18, 17, 27, 696, 2816, '2025-10-27', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=15', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (19, 18, 28, 172, 1261, '2025-10-21', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=16', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (20, 19, 29, 376, 2715, '2025-10-22', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=17', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (21, 20, 30, 741, 2905, '2025-10-21', '晚间', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=18', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (22, 21, 31, 685, 2485, '2025-10-27', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=19', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (23, 22, 32, 581, 1789, '2025-10-21', '下午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=20', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (24, 23, 33, 30, 148, '2025-10-24', '下午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=21', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (25, 24, 34, 592, 1970, '2025-10-20', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=22', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (26, 25, 35, 622, 705, '2025-10-24', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=23', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (27, 26, 36, 289, 2524, '2025-10-22', '晚间', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=24', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (28, 27, 37, 605, 2025, '2025-10-27', '下午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=25', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (29, 28, 38, 363, 817, '2025-10-27', '晚间', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=26', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (30, 29, 39, 150, 987, '2025-10-27', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=27', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (31, 30, 40, 539, 1575, '2025-10-24', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=28', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (32, 31, 41, 619, 38, '2025-10-25', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=29', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (33, 32, 42, 680, 1199, '2025-10-25', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=30', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (34, 33, 43, 604, 1914, '2025-10-27', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=31', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (35, 34, 44, 78, 2339, '2025-10-21', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=32', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (36, 35, 45, 301, 293, '2025-10-27', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=33', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (37, 36, 46, 339, 2555, '2025-10-27', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=34', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (38, 37, 47, 666, 1055, '2025-10-23', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=35', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (39, 38, 48, 614, 1136, '2025-10-20', '下午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=36', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (40, 39, 49, 695, 1273, '2025-10-23', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=37', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (41, 40, 50, 697, 2706, '2025-10-20', '上午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=38', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (42, 41, 51, 517, 2943, '2025-10-23', '下午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=39', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (43, 42, 52, 108, 2247, '2025-10-20', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=40', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (44, 43, 53, 130, 2269, '2025-10-25', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=41', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (45, 44, 54, 725, 1209, '2025-10-21', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=42', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (46, 45, 55, 169, 62, '2025-10-24', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=43', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (47, 46, 56, 576, 1559, '2025-10-24', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=44', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (48, 47, 57, 725, 1208, '2025-10-27', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=45', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (49, 48, 58, 555, 309, '2025-10-22', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=46', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (50, 49, 59, 267, 408, '2025-10-27', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=47', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (51, 50, 60, 655, 1676, '2025-10-22', '上午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=48', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (52, 51, 61, 125, 793, '2025-10-20', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=49', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (53, 52, 62, 445, 751, '2025-10-22', '上午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=50', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (54, 53, 63, 670, 2241, '2025-10-21', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=51', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (55, 54, 64, 300, 180, '2025-10-23', '下午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=52', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (56, 55, 65, 245, 2476, '2025-10-23', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=53', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (57, 56, 66, 415, 394, '2025-10-23', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=54', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (58, 57, 67, 78, 2338, '2025-10-21', '下午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=55', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (59, 58, 68, 12, 1696, '2025-10-21', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=56', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (60, 59, 69, 753, 1193, '2025-10-27', '下午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=57', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (61, 60, 70, 652, 145, '2025-10-22', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=58', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (62, 61, 71, 586, 1220, '2025-10-27', '晚间', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=59', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (63, 62, 72, 480, 2326, '2025-10-22', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=60', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (64, 63, 73, 638, 2053, '2025-10-21', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=61', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (65, 64, 74, 237, 682, '2025-10-26', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=62', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (66, 65, 75, 494, 2786, '2025-10-22', '下午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=63', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (67, 66, 76, 700, 2260, '2025-10-20', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=64', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (68, 67, 77, 512, 1750, '2025-10-27', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=65', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (69, 68, 78, 162, 1807, '2025-10-22', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=66', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (70, 69, 79, 453, 1776, '2025-10-22', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=67', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (71, 70, 80, 592, 1975, '2025-10-23', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=68', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (72, 71, 81, 185, 615, '2025-10-24', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=69', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (73, 72, 82, 620, 1500, '2025-10-27', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=70', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (74, 73, 83, 290, 1180, '2025-10-23', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=71', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (75, 74, 84, 409, 370, '2025-10-23', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=72', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (76, 75, 85, 615, 1483, '2025-10-26', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=73', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (77, 76, 86, 28, 2367, '2025-10-20', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=74', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (78, 77, 87, 710, 2779, '2025-10-22', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=75', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (79, 78, 88, 240, 1403, '2025-10-27', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=76', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (80, 79, 89, 673, 2643, '2025-10-23', '晚间', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=77', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (81, 80, 90, 22, 2686, '2025-10-27', '上午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=78', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (82, 81, 91, 680, 1196, '2025-10-23', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=79', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (83, 82, 92, 604, 1923, '2025-10-26', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=80', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (84, 83, 93, 420, 191, '2025-10-22', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=81', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (85, 84, 94, 542, 2132, '2025-10-27', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=82', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (86, 85, 95, 266, 1144, '2025-10-23', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=83', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (87, 86, 96, 177, 1012, '2025-10-20', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=84', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (88, 87, 97, 429, 698, '2025-10-21', '上午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=85', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (89, 88, 98, 592, 1975, '2025-10-23', '下午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=86', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (90, 89, 99, 622, 707, '2025-10-20', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=87', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (91, 90, 100, 662, 1433, '2025-10-23', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=88', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (92, 91, 101, 74, 1968, '2025-10-20', '上午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=89', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (93, 92, 102, 174, 243, '2025-10-22', '上午', NULL, 0, NULL, 'waitlist', '自动生成测试挂号，来源: generated_users.json，手机号=90', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (94, 93, 103, 418, 2536, '2025-10-27', '上午', NULL, 0, NULL, 'no_show', '自动生成测试挂号，来源: generated_users.json，手机号=91', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (95, 94, 104, 543, 2122, '2025-10-27', '下午', NULL, 0, NULL, 'pending', '自动生成测试挂号，来源: generated_users.json，手机号=92', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (96, 95, 105, 588, 99, '2025-10-26', '下午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=93', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (97, 96, 106, 289, 2520, '2025-10-21', '下午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=94', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '特需');
+INSERT INTO `registration_order` VALUES (98, 97, 107, 382, 2597, '2025-10-27', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=95', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (99, 98, 108, 607, 2497, '2025-10-22', '上午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=96', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (100, 99, 109, 295, 175, '2025-10-22', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=97', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (101, 100, 110, 526, 1819, '2025-10-21', '下午', NULL, 0, NULL, 'completed', '自动生成测试挂号，来源: generated_users.json，手机号=98', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '专家');
+INSERT INTO `registration_order` VALUES (102, 101, 111, 669, 736, '2025-10-26', '下午', NULL, 0, NULL, 'confirmed', '自动生成测试挂号，来源: generated_users.json，手机号=99', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
+INSERT INTO `registration_order` VALUES (103, 102, 112, 593, 2791, '2025-10-20', '下午', NULL, 0, NULL, 'cancelled', '自动生成测试挂号，来源: generated_users.json，手机号=100', '2025-11-13 11:56:26', '2025-11-13 11:56:26', '普通');
 
 -- ----------------------------
 -- Table structure for schedule
@@ -1456,8 +1656,8 @@ INSERT INTO `schedule` VALUES (33, 307, 65, '2025-10-27', 1, '晚间', '特需',
 INSERT INTO `schedule` VALUES (34, 619, 79, '2025-10-24', 5, '上午', '特需', 30, 30, '正常', '2025-10-20 23:44:28', 200.00);
 INSERT INTO `schedule` VALUES (35, 619, 79, '2025-10-24', 5, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:28', 200.00);
 INSERT INTO `schedule` VALUES (36, 619, 79, '2025-10-25', 6, '上午', '特需', 30, 30, '正常', '2025-10-20 23:44:28', 300.00);
-INSERT INTO `schedule` VALUES (37, 619, 78, '2025-10-24', 5, '上午', '普通', 2, 2, '正常', '2025-10-20 23:44:28', 600.00);
-INSERT INTO `schedule` VALUES (38, 619, 78, '2025-10-25', 6, '上午', '普通', 2, 2, '正常', '2025-10-20 23:44:28', 900.00);
+INSERT INTO `schedule` VALUES (37, 619, 78, '2025-10-24', 5, '上午', '普通', 2, 1, '正常', '2025-10-20 23:44:28', 600.00);
+INSERT INTO `schedule` VALUES (38, 619, 78, '2025-10-25', 6, '上午', '普通', 2, 1, '正常', '2025-10-20 23:44:28', 900.00);
 INSERT INTO `schedule` VALUES (39, 619, 76, '2025-10-20', 1, '上午', '普通', 70, 70, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (40, 619, 76, '2025-10-20', 1, '下午', '普通', 40, 40, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (41, 619, 76, '2025-10-21', 2, '上午', '普通', 70, 70, '正常', '2025-10-20 23:44:28', 60.00);
@@ -1481,7 +1681,7 @@ INSERT INTO `schedule` VALUES (58, 169, 99, '2025-10-20', 1, '上午', '普通',
 INSERT INTO `schedule` VALUES (59, 169, 99, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (60, 169, 99, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (61, 169, 99, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
-INSERT INTO `schedule` VALUES (62, 169, 99, '2025-10-24', 5, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
+INSERT INTO `schedule` VALUES (62, 169, 99, '2025-10-24', 5, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (63, 169, 99, '2025-10-24', 5, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (64, 169, 99, '2025-10-25', 6, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (65, 169, 99, '2025-10-27', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:28', 60.00);
@@ -1564,7 +1764,7 @@ INSERT INTO `schedule` VALUES (141, 235, 200, '2025-10-21', 2, '下午', '普通
 INSERT INTO `schedule` VALUES (142, 652, 92, '2025-10-21', 2, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
 INSERT INTO `schedule` VALUES (143, 652, 92, '2025-10-24', 5, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
 INSERT INTO `schedule` VALUES (144, 652, 92, '2025-10-26', 7, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
-INSERT INTO `schedule` VALUES (145, 652, 94, '2025-10-22', 3, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:28', 500.00);
+INSERT INTO `schedule` VALUES (145, 652, 94, '2025-10-22', 3, '下午', '特需', 15, 14, '正常', '2025-10-20 23:44:28', 500.00);
 INSERT INTO `schedule` VALUES (146, 30, 56, '2025-10-23', 4, '上午', '专家', 18, 18, '正常', '2025-10-20 23:44:28', 100.00);
 INSERT INTO `schedule` VALUES (147, 30, 56, '2025-10-25', 6, '上午', '专家', 18, 18, '正常', '2025-10-20 23:44:28', 100.00);
 INSERT INTO `schedule` VALUES (148, 30, 57, '2025-10-24', 5, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:28', 500.00);
@@ -1594,7 +1794,7 @@ INSERT INTO `schedule` VALUES (171, 320, 64, '2025-10-22', 3, '下午', '特需'
 INSERT INTO `schedule` VALUES (172, 375, 141, '2025-10-22', 3, '上午', '特需', 20, 20, '正常', '2025-10-20 23:44:28', 500.00);
 INSERT INTO `schedule` VALUES (173, 375, 139, '2025-10-21', 2, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
 INSERT INTO `schedule` VALUES (174, 375, 212, '2025-10-24', 5, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
-INSERT INTO `schedule` VALUES (175, 295, 31, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:28', 60.00);
+INSERT INTO `schedule` VALUES (175, 295, 31, '2025-10-22', 3, '下午', '普通', 20, 19, '正常', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (176, 295, 31, '2025-10-24', 5, '下午', '普通', 0, 0, '停诊', '2025-10-20 23:44:28', 60.00);
 INSERT INTO `schedule` VALUES (177, 14, 56, '2025-10-21', 2, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
 INSERT INTO `schedule` VALUES (178, 14, 56, '2025-10-21', 2, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:28', 100.00);
@@ -1610,7 +1810,7 @@ INSERT INTO `schedule` VALUES (187, 678, 107, '2025-10-20', 1, '下午', '专家
 INSERT INTO `schedule` VALUES (188, 678, 107, '2025-10-23', 4, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:29', 100.00);
 INSERT INTO `schedule` VALUES (189, 678, 107, '2025-10-27', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:29', 100.00);
 INSERT INTO `schedule` VALUES (190, 678, 108, '2025-10-23', 4, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:29', 500.00);
-INSERT INTO `schedule` VALUES (191, 420, 69, '2025-10-22', 3, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:29', 100.00);
+INSERT INTO `schedule` VALUES (191, 420, 69, '2025-10-22', 3, '下午', '专家', 25, 24, '正常', '2025-10-20 23:44:29', 100.00);
 INSERT INTO `schedule` VALUES (192, 420, 69, '2025-10-24', 5, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:29', 100.00);
 INSERT INTO `schedule` VALUES (193, 420, 70, '2025-10-24', 5, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:29', 300.00);
 INSERT INTO `schedule` VALUES (194, 420, 152, '2025-10-22', 3, '上午', '专家', 20, 20, '正常', '2025-10-20 23:44:29', 100.00);
@@ -1789,7 +1989,7 @@ INSERT INTO `schedule` VALUES (366, 598, 46, '2025-10-23', 4, '上午', '普通'
 INSERT INTO `schedule` VALUES (367, 112, 128, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:29', 60.00);
 INSERT INTO `schedule` VALUES (368, 409, 71, '2025-10-21', 2, '下午', '专家', 2, 2, '正常', '2025-10-20 23:44:29', 2000.00);
 INSERT INTO `schedule` VALUES (369, 409, 69, '2025-10-21', 2, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:29', 100.00);
-INSERT INTO `schedule` VALUES (370, 409, 69, '2025-10-23', 4, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:29', 100.00);
+INSERT INTO `schedule` VALUES (370, 409, 69, '2025-10-23', 4, '上午', '专家', 25, 24, '正常', '2025-10-20 23:44:29', 100.00);
 INSERT INTO `schedule` VALUES (371, 409, 70, '2025-10-21', 2, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:29', 500.00);
 INSERT INTO `schedule` VALUES (372, 529, 132, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:29', 80.00);
 INSERT INTO `schedule` VALUES (373, 529, 179, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:29', 80.00);
@@ -2117,7 +2317,7 @@ INSERT INTO `schedule` VALUES (694, 352, 139, '2025-10-21', 2, '上午', '普通
 INSERT INTO `schedule` VALUES (695, 591, 46, '2025-10-22', 3, '上午', '普通', 10, 10, '正常', '2025-10-20 23:44:30', 50.00);
 INSERT INTO `schedule` VALUES (696, 591, 46, '2025-10-22', 3, '下午', '普通', 10, 10, '正常', '2025-10-20 23:44:30', 50.00);
 INSERT INTO `schedule` VALUES (697, 429, 125, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
-INSERT INTO `schedule` VALUES (698, 429, 125, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
+INSERT INTO `schedule` VALUES (698, 429, 125, '2025-10-21', 2, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (699, 429, 125, '2025-10-27', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (700, 429, 126, '2025-10-22', 3, '上午', '特需', 10, 10, '正常', '2025-10-20 23:44:30', 200.00);
 INSERT INTO `schedule` VALUES (701, 429, 161, '2025-10-24', 5, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:30', 60.00);
@@ -2155,7 +2355,7 @@ INSERT INTO `schedule` VALUES (732, 184, 156, '2025-10-27', 1, '上午', '普通
 INSERT INTO `schedule` VALUES (733, 669, 92, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (734, 669, 92, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (735, 669, 92, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
-INSERT INTO `schedule` VALUES (736, 669, 92, '2025-10-26', 7, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
+INSERT INTO `schedule` VALUES (736, 669, 92, '2025-10-26', 7, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (737, 669, 92, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (738, 589, 46, '2025-10-20', 1, '下午', '普通', 10, 10, '正常', '2025-10-20 23:44:30', 50.00);
 INSERT INTO `schedule` VALUES (739, 589, 46, '2025-10-23', 4, '下午', '普通', 10, 10, '正常', '2025-10-20 23:44:30', 50.00);
@@ -2165,12 +2365,12 @@ INSERT INTO `schedule` VALUES (742, 474, 61, '2025-10-23', 4, '下午', '普通'
 INSERT INTO `schedule` VALUES (743, 474, 192, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (744, 285, 120, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (745, 285, 120, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
-INSERT INTO `schedule` VALUES (746, 285, 120, '2025-10-24', 5, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
+INSERT INTO `schedule` VALUES (746, 285, 120, '2025-10-24', 5, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (747, 285, 120, '2025-10-27', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (748, 285, 181, '2025-10-23', 4, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (749, 285, 17, '2025-10-21', 2, '下午', '普通', 0, 0, '停诊', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (750, 445, 53, '2025-10-21', 2, '上午', '普通', 10, 10, '正常', '2025-10-20 23:44:30', 50.00);
-INSERT INTO `schedule` VALUES (751, 445, 53, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 60.00);
+INSERT INTO `schedule` VALUES (751, 445, 53, '2025-10-22', 3, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:30', 60.00);
 INSERT INTO `schedule` VALUES (752, 552, 133, '2025-10-20', 1, '下午', '特需', 10, 10, '正常', '2025-10-20 23:44:30', 500.00);
 INSERT INTO `schedule` VALUES (753, 552, 133, '2025-10-27', 1, '下午', '特需', 10, 10, '正常', '2025-10-20 23:44:30', 500.00);
 INSERT INTO `schedule` VALUES (754, 552, 51, '2025-10-22', 3, '上午', '专家', 0, 0, '停诊', '2025-10-20 23:44:30', 2000.00);
@@ -2430,7 +2630,7 @@ INSERT INTO `schedule` VALUES (1008, 177, 99, '2025-10-22', 3, '下午', '普通
 INSERT INTO `schedule` VALUES (1009, 177, 175, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 80.00);
 INSERT INTO `schedule` VALUES (1010, 177, 175, '2025-10-26', 7, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 80.00);
 INSERT INTO `schedule` VALUES (1011, 177, 175, '2025-10-26', 7, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:30', 80.00);
-INSERT INTO `schedule` VALUES (1012, 177, 176, '2025-10-20', 1, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:30', 300.00);
+INSERT INTO `schedule` VALUES (1012, 177, 176, '2025-10-20', 1, '下午', '特需', 15, 14, '正常', '2025-10-20 23:44:30', 300.00);
 INSERT INTO `schedule` VALUES (1013, 177, 176, '2025-10-27', 1, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:30', 300.00);
 INSERT INTO `schedule` VALUES (1014, 193, 99, '2025-10-20', 1, '上午', '普通', 0, 0, '停诊', '2025-10-20 23:44:30', 50.00);
 INSERT INTO `schedule` VALUES (1015, 193, 99, '2025-10-21', 2, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:30', 50.00);
@@ -2473,7 +2673,7 @@ INSERT INTO `schedule` VALUES (1051, 426, 126, '2025-10-20', 1, '下午', '特�
 INSERT INTO `schedule` VALUES (1052, 426, 126, '2025-10-27', 1, '下午', '特需', 20, 20, '正常', '2025-10-20 23:44:31', 200.00);
 INSERT INTO `schedule` VALUES (1053, 666, 92, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1054, 666, 92, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
-INSERT INTO `schedule` VALUES (1055, 666, 92, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
+INSERT INTO `schedule` VALUES (1055, 666, 92, '2025-10-23', 4, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1056, 666, 92, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1057, 318, 63, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1058, 318, 63, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
@@ -2562,7 +2762,7 @@ INSERT INTO `schedule` VALUES (1140, 614, 76, '2025-10-23', 4, '下午', '普通
 INSERT INTO `schedule` VALUES (1141, 614, 76, '2025-10-25', 6, '上午', '普通', 40, 40, '正常', '2025-10-20 23:44:31', 50.00);
 INSERT INTO `schedule` VALUES (1142, 614, 76, '2025-10-27', 1, '下午', '普通', 0, 0, '停诊', '2025-10-20 23:44:31', 50.00);
 INSERT INTO `schedule` VALUES (1143, 266, 123, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
-INSERT INTO `schedule` VALUES (1144, 266, 123, '2025-10-23', 4, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
+INSERT INTO `schedule` VALUES (1144, 266, 123, '2025-10-23', 4, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1145, 266, 209, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1146, 279, 120, '2025-10-20', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1147, 279, 120, '2025-10-22', 3, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
@@ -2598,7 +2798,7 @@ INSERT INTO `schedule` VALUES (1176, 290, 34, '2025-10-23', 4, '下午', '特需
 INSERT INTO `schedule` VALUES (1177, 290, 34, '2025-10-27', 1, '下午', '特需', 25, 25, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1178, 290, 33, '2025-10-26', 7, '下午', '特需', 20, 20, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1179, 290, 31, '2025-10-21', 2, '下午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
-INSERT INTO `schedule` VALUES (1180, 290, 31, '2025-10-23', 4, '上午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
+INSERT INTO `schedule` VALUES (1180, 290, 31, '2025-10-23', 4, '上午', '专家', 20, 19, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1181, 290, 31, '2025-10-26', 7, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1182, 875, 102, '2025-10-20', 1, '下午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1183, 875, 102, '2025-10-27', 1, '下午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
@@ -2610,14 +2810,14 @@ INSERT INTO `schedule` VALUES (1188, 228, 90, '2025-10-25', 6, '上午', '特需
 INSERT INTO `schedule` VALUES (1189, 228, 200, '2025-10-20', 1, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1190, 228, 200, '2025-10-27', 1, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1191, 753, 56, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
-INSERT INTO `schedule` VALUES (1192, 753, 56, '2025-10-24', 5, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:31', 50.00);
-INSERT INTO `schedule` VALUES (1193, 753, 56, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
+INSERT INTO `schedule` VALUES (1192, 753, 56, '2025-10-24', 5, '上午', '普通', 20, 19, '正常', '2025-10-20 23:44:31', 50.00);
+INSERT INTO `schedule` VALUES (1193, 753, 56, '2025-10-27', 1, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1194, 680, 106, '2025-10-21', 2, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1195, 680, 107, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 80.00);
 INSERT INTO `schedule` VALUES (1196, 680, 107, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 80.00);
 INSERT INTO `schedule` VALUES (1197, 680, 108, '2025-10-21', 2, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1198, 680, 108, '2025-10-25', 6, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 500.00);
-INSERT INTO `schedule` VALUES (1199, 680, 108, '2025-10-25', 6, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 500.00);
+INSERT INTO `schedule` VALUES (1199, 680, 108, '2025-10-25', 6, '下午', '特需', 15, 14, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1200, 129, 75, '2025-10-26', 7, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1201, 129, 73, '2025-10-20', 1, '下午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1202, 129, 73, '2025-10-23', 4, '上午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
@@ -2626,7 +2826,7 @@ INSERT INTO `schedule` VALUES (1204, 725, 63, '2025-10-24', 5, '上午', '普通
 INSERT INTO `schedule` VALUES (1205, 725, 63, '2025-10-24', 5, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1206, 725, 64, '2025-10-20', 1, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 200.00);
 INSERT INTO `schedule` VALUES (1207, 725, 64, '2025-10-26', 7, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 200.00);
-INSERT INTO `schedule` VALUES (1208, 725, 64, '2025-10-27', 1, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 200.00);
+INSERT INTO `schedule` VALUES (1208, 725, 64, '2025-10-27', 1, '下午', '特需', 15, 14, '正常', '2025-10-20 23:44:31', 200.00);
 INSERT INTO `schedule` VALUES (1209, 725, 151, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1210, 574, 48, '2025-10-23', 4, '上午', '特需', 25, 25, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1211, 574, 46, '2025-10-22', 3, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
@@ -2638,7 +2838,7 @@ INSERT INTO `schedule` VALUES (1216, 32, 57, '2025-10-23', 4, '下午', '特需'
 INSERT INTO `schedule` VALUES (1217, 348, 141, '2025-10-21', 2, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1218, 348, 139, '2025-10-23', 4, '上午', '专家', 20, 20, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1219, 586, 45, '2025-10-20', 1, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:31', 500.00);
-INSERT INTO `schedule` VALUES (1220, 586, 45, '2025-10-27', 1, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:31', 500.00);
+INSERT INTO `schedule` VALUES (1220, 586, 45, '2025-10-27', 1, '晚间', '特需', 10, 9, '正常', '2025-10-20 23:44:31', 500.00);
 INSERT INTO `schedule` VALUES (1221, 586, 47, '2025-10-21', 2, '上午', '普通', 10, 10, '正常', '2025-10-20 23:44:31', 600.00);
 INSERT INTO `schedule` VALUES (1222, 586, 46, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1223, 586, 46, '2025-10-23', 4, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
@@ -2713,7 +2913,7 @@ INSERT INTO `schedule` VALUES (1291, 233, 88, '2025-10-20', 1, '上午', '普通
 INSERT INTO `schedule` VALUES (1292, 233, 88, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1293, 233, 88, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1294, 233, 88, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
-INSERT INTO `schedule` VALUES (1295, 233, 88, '2025-10-24', 5, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
+INSERT INTO `schedule` VALUES (1295, 233, 88, '2025-10-24', 5, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1296, 233, 88, '2025-10-27', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1297, 233, 88, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1298, 233, 87, '2025-10-24', 5, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:31', 300.00);
@@ -2789,7 +2989,7 @@ INSERT INTO `schedule` VALUES (1367, 202, 113, '2025-10-25', 6, '上午', '特�
 INSERT INTO `schedule` VALUES (1368, 872, 22, '2025-10-20', 1, '下午', '普通', 10, 10, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1369, 872, 22, '2025-10-27', 1, '下午', '普通', 10, 10, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1370, 872, 183, '2025-10-23', 4, '上午', '普通', 10, 10, '正常', '2025-10-20 23:44:31', 60.00);
-INSERT INTO `schedule` VALUES (1371, 313, 63, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
+INSERT INTO `schedule` VALUES (1371, 313, 63, '2025-10-20', 1, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1372, 313, 63, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1373, 313, 63, '2025-10-27', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1374, 313, 63, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
@@ -2851,7 +3051,7 @@ INSERT INTO `schedule` VALUES (1429, 452, 97, '2025-10-21', 2, '下午', '专家
 INSERT INTO `schedule` VALUES (1430, 452, 204, '2025-10-22', 3, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:31', 100.00);
 INSERT INTO `schedule` VALUES (1431, 662, 92, '2025-10-21', 2, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1432, 662, 92, '2025-10-22', 3, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:31', 60.00);
-INSERT INTO `schedule` VALUES (1433, 662, 94, '2025-10-23', 4, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 200.00);
+INSERT INTO `schedule` VALUES (1433, 662, 94, '2025-10-23', 4, '下午', '特需', 15, 14, '正常', '2025-10-20 23:44:31', 200.00);
 INSERT INTO `schedule` VALUES (1434, 662, 94, '2025-10-25', 6, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1435, 496, 26, '2025-10-21', 2, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:31', 50.00);
 INSERT INTO `schedule` VALUES (1436, 496, 26, '2025-10-24', 5, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:31', 50.00);
@@ -2885,7 +3085,7 @@ INSERT INTO `schedule` VALUES (1463, 778, 99, '2025-10-25', 6, '上午', '普通
 INSERT INTO `schedule` VALUES (1464, 778, 99, '2025-10-25', 6, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1465, 778, 99, '2025-10-27', 1, '上午', '普通', 0, 0, '停诊', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1466, 778, 100, '2025-10-24', 5, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 200.00);
-INSERT INTO `schedule` VALUES (1467, 778, 12, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
+INSERT INTO `schedule` VALUES (1467, 778, 12, '2025-10-23', 4, '上午', '普通', 25, 24, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1468, 778, 202, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:31', 60.00);
 INSERT INTO `schedule` VALUES (1469, 778, 203, '2025-10-22', 3, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:31', 200.00);
 INSERT INTO `schedule` VALUES (1470, 812, 79, '2025-10-22', 3, '上午', '特需', 30, 30, '正常', '2025-10-20 23:44:31', 300.00);
@@ -2918,7 +3118,7 @@ INSERT INTO `schedule` VALUES (1496, 111, 210, '2025-10-27', 1, '下午', '普�
 INSERT INTO `schedule` VALUES (1497, 620, 79, '2025-10-20', 1, '上午', '特需', 30, 30, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1498, 620, 79, '2025-10-20', 1, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1499, 620, 79, '2025-10-26', 7, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:31', 500.00);
-INSERT INTO `schedule` VALUES (1500, 620, 79, '2025-10-27', 1, '上午', '特需', 30, 30, '正常', '2025-10-20 23:44:31', 300.00);
+INSERT INTO `schedule` VALUES (1500, 620, 79, '2025-10-27', 1, '上午', '特需', 30, 29, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1501, 620, 79, '2025-10-27', 1, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:31', 300.00);
 INSERT INTO `schedule` VALUES (1502, 620, 78, '2025-10-20', 1, '上午', '普通', 2, 2, '正常', '2025-10-20 23:44:31', 900.00);
 INSERT INTO `schedule` VALUES (1503, 620, 78, '2025-10-22', 3, '上午', '普通', 0, 0, '停诊', '2025-10-20 23:44:31', 900.00);
@@ -3094,7 +3294,7 @@ INSERT INTO `schedule` VALUES (1672, 655, 92, '2025-10-23', 4, '上午', '专家
 INSERT INTO `schedule` VALUES (1673, 655, 92, '2025-10-25', 6, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1674, 655, 92, '2025-10-25', 6, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1675, 655, 94, '2025-10-21', 2, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 300.00);
-INSERT INTO `schedule` VALUES (1676, 655, 93, '2025-10-22', 3, '上午', '专家', 2, 2, '正常', '2025-10-20 23:44:32', 2000.00);
+INSERT INTO `schedule` VALUES (1676, 655, 93, '2025-10-22', 3, '上午', '专家', 2, 1, '正常', '2025-10-20 23:44:32', 2000.00);
 INSERT INTO `schedule` VALUES (1677, 477, 102, '2025-10-23', 4, '上午', '普通', 12, 12, '正常', '2025-10-20 23:44:32', 80.00);
 INSERT INTO `schedule` VALUES (1678, 477, 59, '2025-10-21', 2, '晚间', '特需', 8, 8, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1679, 679, 107, '2025-10-20', 1, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
@@ -3194,7 +3394,7 @@ INSERT INTO `schedule` VALUES (1772, 283, 120, '2025-10-24', 5, '上午', '普�
 INSERT INTO `schedule` VALUES (1773, 283, 119, '2025-10-23', 4, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 300.00);
 INSERT INTO `schedule` VALUES (1774, 283, 117, '2025-10-22', 3, '晚间', '特需', 0, 0, '停诊', '2025-10-20 23:44:32', 300.00);
 INSERT INTO `schedule` VALUES (1775, 283, 208, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 80.00);
-INSERT INTO `schedule` VALUES (1776, 453, 97, '2025-10-22', 3, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
+INSERT INTO `schedule` VALUES (1776, 453, 97, '2025-10-22', 3, '下午', '专家', 25, 24, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1777, 578, 24, '2025-10-23', 4, '上午', '特需', 10, 10, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1778, 578, 23, '2025-10-21', 2, '上午', '专家', 8, 8, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1779, 578, 23, '2025-10-21', 2, '下午', '专家', 8, 8, '正常', '2025-10-20 23:44:32', 100.00);
@@ -3207,7 +3407,7 @@ INSERT INTO `schedule` VALUES (1785, 581, 46, '2025-10-22', 3, '上午', '普通
 INSERT INTO `schedule` VALUES (1786, 581, 46, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (1787, 581, 46, '2025-10-24', 5, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (1788, 581, 149, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
-INSERT INTO `schedule` VALUES (1789, 581, 149, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
+INSERT INTO `schedule` VALUES (1789, 581, 149, '2025-10-21', 2, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (1790, 331, 64, '2025-10-21', 2, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 300.00);
 INSERT INTO `schedule` VALUES (1791, 691, 107, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (1792, 691, 107, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
@@ -3237,7 +3437,7 @@ INSERT INTO `schedule` VALUES (1815, 88, 115, '2025-10-20', 1, '上午', '专家
 INSERT INTO `schedule` VALUES (1816, 88, 115, '2025-10-27', 1, '上午', '专家', 17, 17, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1817, 88, 114, '2025-10-20', 1, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:32', 300.00);
 INSERT INTO `schedule` VALUES (1818, 88, 114, '2025-10-27', 1, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:32', 300.00);
-INSERT INTO `schedule` VALUES (1819, 526, 132, '2025-10-21', 2, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
+INSERT INTO `schedule` VALUES (1819, 526, 132, '2025-10-21', 2, '下午', '专家', 25, 24, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1820, 526, 132, '2025-10-23', 4, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1821, 526, 131, '2025-10-21', 2, '上午', '专家', 15, 15, '正常', '2025-10-20 23:44:32', 2000.00);
 INSERT INTO `schedule` VALUES (1822, 456, 98, '2025-10-21', 2, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 200.00);
@@ -3332,7 +3532,7 @@ INSERT INTO `schedule` VALUES (1910, 77, 185, '2025-10-24', 5, '上午', '专家
 INSERT INTO `schedule` VALUES (1911, 77, 186, '2025-10-24', 5, '下午', '特需', 0, 0, '停诊', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1912, 604, 79, '2025-10-20', 1, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1913, 604, 79, '2025-10-23', 4, '上午', '特需', 25, 25, '正常', '2025-10-20 23:44:32', 500.00);
-INSERT INTO `schedule` VALUES (1914, 604, 79, '2025-10-27', 1, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:32', 500.00);
+INSERT INTO `schedule` VALUES (1914, 604, 79, '2025-10-27', 1, '下午', '特需', 30, 29, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1915, 604, 78, '2025-10-20', 1, '下午', '专家', 2, 2, '正常', '2025-10-20 23:44:32', 2000.00);
 INSERT INTO `schedule` VALUES (1916, 604, 78, '2025-10-21', 2, '下午', '专家', 3, 3, '正常', '2025-10-20 23:44:32', 2000.00);
 INSERT INTO `schedule` VALUES (1917, 604, 78, '2025-10-23', 4, '上午', '专家', 2, 2, '正常', '2025-10-20 23:44:32', 2000.00);
@@ -3341,7 +3541,7 @@ INSERT INTO `schedule` VALUES (1919, 604, 78, '2025-10-27', 1, '下午', '专家
 INSERT INTO `schedule` VALUES (1920, 604, 76, '2025-10-20', 1, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1921, 604, 76, '2025-10-22', 3, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1922, 604, 76, '2025-10-22', 3, '下午', '专家', 30, 30, '正常', '2025-10-20 23:44:32', 100.00);
-INSERT INTO `schedule` VALUES (1923, 604, 76, '2025-10-26', 7, '下午', '专家', 10, 10, '正常', '2025-10-20 23:44:32', 100.00);
+INSERT INTO `schedule` VALUES (1923, 604, 76, '2025-10-26', 7, '下午', '专家', 10, 9, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1924, 604, 76, '2025-10-27', 1, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (1925, 455, 98, '2025-10-20', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1926, 455, 98, '2025-10-27', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 500.00);
@@ -3388,12 +3588,12 @@ INSERT INTO `schedule` VALUES (1966, 74, 36, '2025-10-22', 3, '晚间', '特需'
 INSERT INTO `schedule` VALUES (1967, 74, 36, '2025-10-27', 1, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (1968, 74, 3, '2025-10-20', 1, '上午', '普通', 15, 15, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (1969, 74, 3, '2025-10-27', 1, '上午', '普通', 15, 15, '正常', '2025-10-20 23:44:32', 60.00);
-INSERT INTO `schedule` VALUES (1970, 592, 46, '2025-10-20', 1, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
+INSERT INTO `schedule` VALUES (1970, 592, 46, '2025-10-20', 1, '上午', '普通', 20, 19, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1971, 592, 46, '2025-10-20', 1, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1972, 592, 46, '2025-10-22', 3, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1973, 592, 46, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1974, 592, 46, '2025-10-23', 4, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
-INSERT INTO `schedule` VALUES (1975, 592, 46, '2025-10-23', 4, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
+INSERT INTO `schedule` VALUES (1975, 592, 46, '2025-10-23', 4, '下午', '普通', 20, 19, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1976, 592, 46, '2025-10-25', 6, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1977, 592, 46, '2025-10-25', 6, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
 INSERT INTO `schedule` VALUES (1978, 592, 46, '2025-10-26', 7, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 50.00);
@@ -3443,7 +3643,7 @@ INSERT INTO `schedule` VALUES (2021, 605, 76, '2025-10-22', 3, '上午', '专家
 INSERT INTO `schedule` VALUES (2022, 605, 76, '2025-10-22', 3, '下午', '专家', 30, 30, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (2023, 605, 76, '2025-10-26', 7, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (2024, 605, 76, '2025-10-27', 1, '上午', '专家', 20, 20, '正常', '2025-10-20 23:44:32', 100.00);
-INSERT INTO `schedule` VALUES (2025, 605, 76, '2025-10-27', 1, '下午', '专家', 30, 30, '正常', '2025-10-20 23:44:32', 100.00);
+INSERT INTO `schedule` VALUES (2025, 605, 76, '2025-10-27', 1, '下午', '专家', 30, 29, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (2026, 605, 77, '2025-10-20', 1, '晚间', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (2027, 609, 79, '2025-10-21', 2, '上午', '特需', 30, 30, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (2028, 609, 79, '2025-10-21', 2, '下午', '特需', 30, 30, '正常', '2025-10-20 23:44:32', 500.00);
@@ -3465,7 +3665,7 @@ INSERT INTO `schedule` VALUES (2043, 609, 76, '2025-10-27', 1, '下午', '专家
 INSERT INTO `schedule` VALUES (2044, 609, 77, '2025-10-22', 3, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (2045, 101, 115, '2025-10-22', 3, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2046, 101, 115, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:32', 60.00);
-INSERT INTO `schedule` VALUES (2047, 355, 140, '2025-10-22', 3, '下午', '专家', 15, 15, '正常', '2025-10-20 23:44:32', 2000.00);
+INSERT INTO `schedule` VALUES (2047, 355, 140, '2025-10-22', 3, '下午', '专家', 15, 14, '正常', '2025-10-20 23:44:32', 2000.00);
 INSERT INTO `schedule` VALUES (2048, 355, 141, '2025-10-23', 4, '上午', '特需', 20, 20, '正常', '2025-10-20 23:44:32', 500.00);
 INSERT INTO `schedule` VALUES (2049, 355, 139, '2025-10-20', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (2050, 355, 139, '2025-10-22', 3, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
@@ -3540,7 +3740,7 @@ INSERT INTO `schedule` VALUES (2118, 39, 190, '2025-10-21', 2, '上午', '普通
 INSERT INTO `schedule` VALUES (2119, 543, 132, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2120, 543, 132, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2121, 543, 132, '2025-10-27', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
-INSERT INTO `schedule` VALUES (2122, 543, 132, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
+INSERT INTO `schedule` VALUES (2122, 543, 132, '2025-10-27', 1, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2123, 543, 179, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2124, 543, 179, '2025-10-23', 4, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2125, 66, 43, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 80.00);
@@ -3550,7 +3750,7 @@ INSERT INTO `schedule` VALUES (2128, 542, 133, '2025-10-20', 1, '上午', '特�
 INSERT INTO `schedule` VALUES (2129, 542, 133, '2025-10-27', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:32', 200.00);
 INSERT INTO `schedule` VALUES (2130, 542, 132, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2131, 542, 132, '2025-10-24', 5, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
-INSERT INTO `schedule` VALUES (2132, 542, 132, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:32', 60.00);
+INSERT INTO `schedule` VALUES (2132, 542, 132, '2025-10-27', 1, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:32', 60.00);
 INSERT INTO `schedule` VALUES (2133, 542, 131, '2025-10-22', 3, '上午', '普通', 10, 10, '正常', '2025-10-20 23:44:32', 600.00);
 INSERT INTO `schedule` VALUES (2134, 146, 136, '2025-10-22', 3, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:32', 100.00);
 INSERT INTO `schedule` VALUES (2135, 146, 136, '2025-10-22', 3, '下午', '普通', 5, 5, '正常', '2025-10-20 23:44:32', 50.00);
@@ -3659,7 +3859,7 @@ INSERT INTO `schedule` VALUES (2237, 647, 92, '2025-10-20', 1, '上午', '普通
 INSERT INTO `schedule` VALUES (2238, 647, 92, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:33', 80.00);
 INSERT INTO `schedule` VALUES (2239, 647, 92, '2025-10-27', 1, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:33', 80.00);
 INSERT INTO `schedule` VALUES (2240, 647, 94, '2025-10-26', 7, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:33', 500.00);
-INSERT INTO `schedule` VALUES (2241, 670, 92, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
+INSERT INTO `schedule` VALUES (2241, 670, 92, '2025-10-21', 2, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2242, 670, 92, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2243, 670, 92, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2244, 670, 92, '2025-10-24', 5, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
@@ -3678,7 +3878,7 @@ INSERT INTO `schedule` VALUES (2256, 417, 171, '2025-10-22', 3, '下午', '普�
 INSERT INTO `schedule` VALUES (2257, 417, 171, '2025-10-23', 4, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2258, 417, 171, '2025-10-23', 4, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2259, 417, 195, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
-INSERT INTO `schedule` VALUES (2260, 700, 40, '2025-10-20', 1, '下午', '普通', 7, 7, '正常', '2025-10-20 23:44:33', 60.00);
+INSERT INTO `schedule` VALUES (2260, 700, 40, '2025-10-20', 1, '下午', '普通', 7, 6, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2261, 700, 40, '2025-10-26', 7, '上午', '普通', 5, 5, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2262, 700, 40, '2025-10-27', 1, '下午', '普通', 7, 7, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2263, 700, 41, '2025-10-21', 2, '上午', '特需', 5, 5, '正常', '2025-10-20 23:44:33', 200.00);
@@ -3687,7 +3887,7 @@ INSERT INTO `schedule` VALUES (2265, 470, 60, '2025-10-24', 5, '下午', '专家
 INSERT INTO `schedule` VALUES (2266, 470, 102, '2025-10-22', 3, '下午', '专家', 20, 20, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2267, 470, 61, '2025-10-23', 4, '上午', '专家', 20, 20, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2268, 130, 72, '2025-10-21', 2, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:33', 300.00);
-INSERT INTO `schedule` VALUES (2269, 130, 75, '2025-10-25', 6, '上午', '特需', 20, 20, '正常', '2025-10-20 23:44:33', 300.00);
+INSERT INTO `schedule` VALUES (2269, 130, 75, '2025-10-25', 6, '上午', '特需', 20, 19, '正常', '2025-10-20 23:44:33', 300.00);
 INSERT INTO `schedule` VALUES (2270, 130, 73, '2025-10-20', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2271, 130, 73, '2025-10-27', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2272, 130, 197, '2025-10-22', 3, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
@@ -3736,7 +3936,7 @@ INSERT INTO `schedule` VALUES (2314, 684, 107, '2025-10-25', 6, '下午', '普�
 INSERT INTO `schedule` VALUES (2315, 684, 107, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2316, 472, 102, '2025-10-21', 2, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2317, 241, 88, '2025-10-20', 1, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
-INSERT INTO `schedule` VALUES (2318, 241, 88, '2025-10-21', 2, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
+INSERT INTO `schedule` VALUES (2318, 241, 88, '2025-10-21', 2, '上午', '专家', 25, 24, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2319, 241, 88, '2025-10-23', 4, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2320, 241, 88, '2025-10-27', 1, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2321, 241, 87, '2025-10-20', 1, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:33', 500.00);
@@ -3744,7 +3944,7 @@ INSERT INTO `schedule` VALUES (2322, 241, 87, '2025-10-27', 1, '晚间', '特需
 INSERT INTO `schedule` VALUES (2323, 241, 89, '2025-10-22', 3, '上午', '专家', 12, 12, '正常', '2025-10-20 23:44:33', 2000.00);
 INSERT INTO `schedule` VALUES (2324, 241, 90, '2025-10-21', 2, '下午', '特需', 25, 25, '正常', '2025-10-20 23:44:33', 500.00);
 INSERT INTO `schedule` VALUES (2325, 241, 90, '2025-10-26', 7, '下午', '特需', 25, 25, '正常', '2025-10-20 23:44:33', 500.00);
-INSERT INTO `schedule` VALUES (2326, 480, 102, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:33', 60.00);
+INSERT INTO `schedule` VALUES (2326, 480, 102, '2025-10-22', 3, '下午', '普通', 20, 19, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2327, 480, 102, '2025-10-25', 6, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2328, 480, 61, '2025-10-22', 3, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2329, 683, 107, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
@@ -3756,7 +3956,7 @@ INSERT INTO `schedule` VALUES (2334, 78, 37, '2025-10-23', 4, '上午', '普通'
 INSERT INTO `schedule` VALUES (2335, 78, 37, '2025-10-25', 6, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2336, 78, 37, '2025-10-25', 6, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2337, 78, 38, '2025-10-24', 5, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:33', 200.00);
-INSERT INTO `schedule` VALUES (2338, 78, 166, '2025-10-21', 2, '下午', '特需', 15, 15, '正常', '2025-10-20 23:44:33', 200.00);
+INSERT INTO `schedule` VALUES (2338, 78, 166, '2025-10-21', 2, '下午', '特需', 15, 14, '正常', '2025-10-20 23:44:33', 200.00);
 INSERT INTO `schedule` VALUES (2339, 78, 165, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2340, 584, 48, '2025-10-23', 4, '下午', '特需', 20, 20, '正常', '2025-10-20 23:44:33', 200.00);
 INSERT INTO `schedule` VALUES (2341, 584, 48, '2025-10-25', 6, '上午', '特需', 20, 20, '正常', '2025-10-20 23:44:33', 500.00);
@@ -3785,7 +3985,7 @@ INSERT INTO `schedule` VALUES (2363, 486, 184, '2025-10-21', 2, '上午', '专�
 INSERT INTO `schedule` VALUES (2364, 28, 56, '2025-10-20', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2365, 28, 56, '2025-10-21', 2, '下午', '专家', 20, 20, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2366, 28, 56, '2025-10-27', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
-INSERT INTO `schedule` VALUES (2367, 28, 57, '2025-10-20', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:33', 300.00);
+INSERT INTO `schedule` VALUES (2367, 28, 57, '2025-10-20', 1, '上午', '特需', 15, 14, '正常', '2025-10-20 23:44:33', 300.00);
 INSERT INTO `schedule` VALUES (2368, 28, 57, '2025-10-27', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:33', 300.00);
 INSERT INTO `schedule` VALUES (2369, 28, 169, '2025-10-23', 4, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2370, 535, 132, '2025-10-21', 2, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 80.00);
@@ -3894,7 +4094,7 @@ INSERT INTO `schedule` VALUES (2472, 245, 20, '2025-10-20', 1, '上午', '普通
 INSERT INTO `schedule` VALUES (2473, 245, 20, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2474, 245, 20, '2025-10-21', 2, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2475, 245, 20, '2025-10-23', 4, '上午', '普通', 30, 30, '正常', '2025-10-20 23:44:33', 60.00);
-INSERT INTO `schedule` VALUES (2476, 245, 20, '2025-10-23', 4, '下午', '普通', 15, 15, '正常', '2025-10-20 23:44:33', 60.00);
+INSERT INTO `schedule` VALUES (2476, 245, 20, '2025-10-23', 4, '下午', '普通', 15, 14, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2477, 245, 20, '2025-10-24', 5, '上午', '普通', 30, 30, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2478, 245, 20, '2025-10-24', 5, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:33', 60.00);
 INSERT INTO `schedule` VALUES (2479, 245, 20, '2025-10-27', 1, '上午', '普通', 30, 30, '正常', '2025-10-20 23:44:33', 60.00);
@@ -3915,7 +4115,7 @@ INSERT INTO `schedule` VALUES (2493, 607, 78, '2025-10-21', 2, '上午', '专家
 INSERT INTO `schedule` VALUES (2494, 607, 78, '2025-10-24', 5, '下午', '专家', 3, 3, '正常', '2025-10-20 23:44:33', 2000.00);
 INSERT INTO `schedule` VALUES (2495, 607, 78, '2025-10-25', 6, '下午', '专家', 2, 2, '正常', '2025-10-20 23:44:33', 2000.00);
 INSERT INTO `schedule` VALUES (2496, 607, 78, '2025-10-27', 1, '上午', '专家', 2, 2, '正常', '2025-10-20 23:44:33', 2000.00);
-INSERT INTO `schedule` VALUES (2497, 607, 76, '2025-10-22', 3, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:33', 100.00);
+INSERT INTO `schedule` VALUES (2497, 607, 76, '2025-10-22', 3, '上午', '专家', 10, 9, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2498, 607, 76, '2025-10-22', 3, '下午', '专家', 30, 30, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2499, 607, 76, '2025-10-23', 4, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:33', 100.00);
 INSERT INTO `schedule` VALUES (2500, 607, 76, '2025-10-24', 5, '上午', '专家', 10, 10, '正常', '2025-10-20 23:44:33', 100.00);
@@ -4015,7 +4215,7 @@ INSERT INTO `schedule` VALUES (2593, 364, 139, '2025-10-27', 1, '下午', '专�
 INSERT INTO `schedule` VALUES (2594, 364, 212, '2025-10-21', 2, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
 INSERT INTO `schedule` VALUES (2595, 382, 139, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
 INSERT INTO `schedule` VALUES (2596, 382, 139, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
-INSERT INTO `schedule` VALUES (2597, 382, 139, '2025-10-27', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
+INSERT INTO `schedule` VALUES (2597, 382, 139, '2025-10-27', 1, '下午', '普通', 25, 24, '正常', '2025-10-20 23:44:34', 60.00);
 INSERT INTO `schedule` VALUES (2598, 272, 123, '2025-10-20', 1, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2599, 272, 123, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2600, 272, 123, '2025-10-27', 1, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:34', 50.00);
@@ -4104,7 +4304,7 @@ INSERT INTO `schedule` VALUES (2682, 22, 56, '2025-10-24', 5, '上午', '专家'
 INSERT INTO `schedule` VALUES (2683, 22, 57, '2025-10-21', 2, '下午', '特需', 0, 0, '停诊', '2025-10-20 23:44:34', 500.00);
 INSERT INTO `schedule` VALUES (2684, 22, 54, '2025-10-21', 2, '晚间', '特需', 10, 10, '正常', '2025-10-20 23:44:34', 500.00);
 INSERT INTO `schedule` VALUES (2685, 22, 191, '2025-10-20', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:34', 500.00);
-INSERT INTO `schedule` VALUES (2686, 22, 191, '2025-10-27', 1, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:34', 500.00);
+INSERT INTO `schedule` VALUES (2686, 22, 191, '2025-10-27', 1, '上午', '特需', 15, 14, '正常', '2025-10-20 23:44:34', 500.00);
 INSERT INTO `schedule` VALUES (2687, 38, 56, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
 INSERT INTO `schedule` VALUES (2688, 38, 56, '2025-10-22', 3, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2689, 38, 56, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:34', 50.00);
@@ -4124,7 +4324,7 @@ INSERT INTO `schedule` VALUES (2702, 637, 92, '2025-10-23', 4, '下午', '专家
 INSERT INTO `schedule` VALUES (2703, 637, 92, '2025-10-24', 5, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
 INSERT INTO `schedule` VALUES (2704, 637, 92, '2025-10-25', 6, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
 INSERT INTO `schedule` VALUES (2705, 697, 40, '2025-10-21', 2, '上午', '普通', 5, 5, '正常', '2025-10-20 23:44:34', 60.00);
-INSERT INTO `schedule` VALUES (2706, 697, 41, '2025-10-20', 1, '上午', '特需', 5, 5, '正常', '2025-10-20 23:44:34', 200.00);
+INSERT INTO `schedule` VALUES (2706, 697, 41, '2025-10-20', 1, '上午', '特需', 5, 4, '正常', '2025-10-20 23:44:34', 200.00);
 INSERT INTO `schedule` VALUES (2707, 697, 41, '2025-10-20', 1, '下午', '特需', 5, 5, '正常', '2025-10-20 23:44:34', 200.00);
 INSERT INTO `schedule` VALUES (2708, 697, 41, '2025-10-27', 1, '上午', '特需', 5, 5, '正常', '2025-10-20 23:44:34', 200.00);
 INSERT INTO `schedule` VALUES (2709, 697, 41, '2025-10-27', 1, '下午', '特需', 5, 5, '正常', '2025-10-20 23:44:34', 200.00);
@@ -4197,7 +4397,7 @@ INSERT INTO `schedule` VALUES (2775, 286, 31, '2025-10-24', 5, '上午', '专家
 INSERT INTO `schedule` VALUES (2776, 286, 30, '2025-10-26', 7, '晚间', '特需', 0, 0, '停诊', '2025-10-20 23:44:34', 500.00);
 INSERT INTO `schedule` VALUES (2777, 286, 32, '2025-10-20', 1, '上午', '专家', 15, 15, '正常', '2025-10-20 23:44:34', 2000.00);
 INSERT INTO `schedule` VALUES (2778, 286, 32, '2025-10-27', 1, '上午', '专家', 15, 15, '正常', '2025-10-20 23:44:34', 2000.00);
-INSERT INTO `schedule` VALUES (2779, 710, 144, '2025-10-22', 3, '上午', '普通', 20, 20, '正常', '2025-10-20 23:44:34', 50.00);
+INSERT INTO `schedule` VALUES (2779, 710, 144, '2025-10-22', 3, '上午', '普通', 20, 19, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2780, 16, 56, '2025-10-20', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
 INSERT INTO `schedule` VALUES (2781, 16, 56, '2025-10-23', 4, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
 INSERT INTO `schedule` VALUES (2782, 16, 56, '2025-10-27', 1, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
@@ -4234,7 +4434,7 @@ INSERT INTO `schedule` VALUES (2812, 523, 132, '2025-10-27', 1, '下午', '专�
 INSERT INTO `schedule` VALUES (2813, 434, 125, '2025-10-20', 1, '下午', '普通', 30, 30, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2814, 434, 125, '2025-10-27', 1, '下午', '普通', 30, 30, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2815, 696, 40, '2025-10-20', 1, '下午', '普通', 3, 3, '正常', '2025-10-20 23:44:34', 60.00);
-INSERT INTO `schedule` VALUES (2816, 696, 40, '2025-10-27', 1, '下午', '普通', 3, 3, '正常', '2025-10-20 23:44:34', 60.00);
+INSERT INTO `schedule` VALUES (2816, 696, 40, '2025-10-27', 1, '下午', '普通', 3, 2, '正常', '2025-10-20 23:44:34', 60.00);
 INSERT INTO `schedule` VALUES (2817, 696, 41, '2025-10-22', 3, '上午', '特需', 5, 5, '正常', '2025-10-20 23:44:34', 200.00);
 INSERT INTO `schedule` VALUES (2818, 696, 41, '2025-10-26', 7, '下午', '特需', 5, 5, '正常', '2025-10-20 23:44:34', 500.00);
 INSERT INTO `schedule` VALUES (2819, 696, 167, '2025-10-21', 2, '上午', '普通', 5, 5, '正常', '2025-10-20 23:44:34', 60.00);
@@ -4323,7 +4523,7 @@ INSERT INTO `schedule` VALUES (2901, 522, 130, '2025-10-23', 4, '晚间', '特�
 INSERT INTO `schedule` VALUES (2902, 599, 46, '2025-10-22', 3, '下午', '普通', 20, 20, '正常', '2025-10-20 23:44:34', 50.00);
 INSERT INTO `schedule` VALUES (2903, 741, 86, '2025-10-22', 3, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
 INSERT INTO `schedule` VALUES (2904, 741, 86, '2025-10-22', 3, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
-INSERT INTO `schedule` VALUES (2905, 741, 84, '2025-10-21', 2, '晚间', '特需', 6, 6, '正常', '2025-10-20 23:44:34', 300.00);
+INSERT INTO `schedule` VALUES (2905, 741, 84, '2025-10-21', 2, '晚间', '特需', 6, 5, '正常', '2025-10-20 23:44:34', 300.00);
 INSERT INTO `schedule` VALUES (2906, 741, 84, '2025-10-22', 3, '晚间', '特需', 6, 6, '正常', '2025-10-20 23:44:34', 300.00);
 INSERT INTO `schedule` VALUES (2907, 741, 199, '2025-10-20', 1, '上午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
 INSERT INTO `schedule` VALUES (2908, 741, 199, '2025-10-20', 1, '下午', '普通', 25, 25, '正常', '2025-10-20 23:44:34', 60.00);
@@ -4361,7 +4561,7 @@ INSERT INTO `schedule` VALUES (2939, 623, 76, '2025-10-27', 1, '上午', '普通
 INSERT INTO `schedule` VALUES (2940, 517, 133, '2025-10-23', 4, '上午', '特需', 15, 15, '正常', '2025-10-20 23:44:34', 500.00);
 INSERT INTO `schedule` VALUES (2941, 517, 132, '2025-10-21', 2, '上午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
 INSERT INTO `schedule` VALUES (2942, 517, 132, '2025-10-21', 2, '下午', '专家', 25, 25, '正常', '2025-10-20 23:44:34', 100.00);
-INSERT INTO `schedule` VALUES (2943, 517, 131, '2025-10-23', 4, '下午', '专家', 15, 15, '正常', '2025-10-20 23:44:34', 2000.00);
+INSERT INTO `schedule` VALUES (2943, 517, 131, '2025-10-23', 4, '下午', '专家', 15, 14, '正常', '2025-10-20 23:44:34', 2000.00);
 INSERT INTO `schedule` VALUES (2947, 301, 1, '2025-11-17', 1, '上午', '普通', 50, 50, 'normal', NULL, 10.00);
 INSERT INTO `schedule` VALUES (2948, 302, 1, '2025-11-18', 2, '下午', '普通', 50, 50, 'normal', NULL, 10.00);
 INSERT INTO `schedule` VALUES (2949, 301, 1, '2025-11-19', 3, '上午', '普通', 50, 50, 'normal', NULL, 10.00);
@@ -4471,7 +4671,7 @@ CREATE TABLE `user`  (
   UNIQUE INDEX `email_3`(`email` ASC) USING BTREE,
   UNIQUE INDEX `phonenumber`(`phonenumber` ASC) USING BTREE,
   UNIQUE INDEX `identifier_2`(`identifier` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 113 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user
@@ -4482,6 +4682,106 @@ INSERT INTO `user` VALUES (5, NULL, 'admin4', 'admin', NULL, '$2b$12$LxMwicjzXAc
 INSERT INTO `user` VALUES (10, '10087', NULL, 'external', NULL, '$2b$12$VsEvTjGz1ZDSxY2gr5e85.S01Lg6WX70CsXKDSrPkG0E4Yne3JKB.', NULL, 1, 0, 0, 0, NULL, NULL);
 INSERT INTO `user` VALUES (11, '10088', NULL, 'external', NULL, '$2b$12$YWf6hcgSVvK/.hcP8OGRXefrSzDpam/Co6ieifvZZ//Ii4YaQv13.', NULL, 1, 0, 0, 0, NULL, NULL);
 INSERT INTO `user` VALUES (12, NULL, 'doctor1', 'doctor', NULL, '$2b$12$v66nWbC2Z4MU1mTC6X.JJOvpXACHMtRFXJ68z5G18OJetQPsU2beq', NULL, 1, 0, 0, 1, NULL, NULL);
+INSERT INTO `user` VALUES (13, '1', NULL, 'external', '1@example.com', '$2b$12$dKo0W.KrRpRrwqWsA5higuihENt8uipEzkhJ8IcYM.59QJv9DzeRu', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (14, '2', NULL, 'external', '2@example.com', '$2b$12$TKbZ2IN24RP9JyEkfCYDKuZmNNWSUxMSDFIHAZDUWP9RHjquHgWG6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (15, '3', NULL, 'external', '3@example.com', '$2b$12$YYF6cXHtXaak9yDnrWzCw.t/GWr./V2uimzoz638NjDTio5VQQo6C', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (16, '4', NULL, 'external', '4@example.com', '$2b$12$4fr36w97tPuX2NNtbsTCQeMArUPAfsNaGC7UmGNmAw5AbB1iyVM/K', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (17, '5', NULL, 'external', '5@example.com', '$2b$12$WfHs8gFVKoMdVfFkyw0JnOFjvCbPYcpb1E3OlIHiHP.Zvw2gpa0gS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (18, '6', NULL, 'external', '6@example.com', '$2b$12$Gn/p.KO7ZqJOwif7qTCnaOhZXuZgHs99eqasYffk9VOayDStUhiXi', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (19, '7', NULL, 'external', '7@example.com', '$2b$12$HFffbraBohN5jbkVHnSPbOI79C365fah4c3xDgCT9eqO0dWF8mbwu', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (20, '8', NULL, 'external', '8@example.com', '$2b$12$XROKz9wHCAg1kcFR0H87EuuX1WGa.WgpHQBbDUiutkGmokRig1PPC', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (21, '9', NULL, 'external', '9@example.com', '$2b$12$oAvbVfL2AdtrxQaiNqfPLea.wNurfGL6OL19E7U8dZt.7dLmcZ.Cm', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (22, '10', NULL, 'external', '10@example.com', '$2b$12$24LeV05WSnEs2jgJ.4CwP.T1lESin2QM8ESqkMj2Wtf0FvEjAktLm', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (23, '11', NULL, 'external', '11@example.com', '$2b$12$v6hp5s0Kd0UOcOOOAtzDf.8FnsAWaVaAh8sKx5bou2W9H2QUmuZy6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (24, '12', NULL, 'external', '12@example.com', '$2b$12$nDLU.IQq0lY0wir9DsdxeOSFJgVCUIoSaZryLEWZ44KNrApTW70me', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (25, '13', NULL, 'external', '13@example.com', '$2b$12$/7A81dhcOtvvhsXrYPKgF.tvkFKAJ3NaYFmWVG/mesXdfJN1zHVT.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (26, '14', NULL, 'external', '14@example.com', '$2b$12$aip0WAYhxFx4sES8lbjhBuX3mEi99VKsjZMDzajl.55awI2HWfvc6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (27, '15', NULL, 'external', '15@example.com', '$2b$12$GKqI.7Fu2pRHXDigACPCy.aRbc0ivqK.EBT9.9ceX7UxmANr5/p/q', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (28, '16', NULL, 'external', '16@example.com', '$2b$12$2HXR7BJ3Sw5rZ6kvlbGynuU6tDaqkMIJSeAJd5AP8XLVep5cd1BqK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (29, '17', NULL, 'external', '17@example.com', '$2b$12$1i38pUMkVOugd1g3gbscfeq/M8bB/u9oCxYuFPA.u7A2zbe62w3aa', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (30, '18', NULL, 'external', '18@example.com', '$2b$12$aGhdr2MWEFvbg11OmO9AiuFB4hgdjH2UsSlyxu5LfrJ7hXWeBPCNS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (31, '19', NULL, 'external', '19@example.com', '$2b$12$VZJJgfhKoK3JO9ioQQifIeNRTp3b/P94dQlSQ2.mt7NCSF5nqDDVO', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (32, '20', NULL, 'external', '20@example.com', '$2b$12$84IkUxPkJbleqN4KUQ.wUeb8hTPq6rcenTB1Tm323eo2U35mp2S/2', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (33, '21', NULL, 'external', '21@example.com', '$2b$12$haGOBZLbkket.zNJr6EyqO3dUi0gwSStaYhm.aLuN4TTubxRKVvR.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (34, '22', NULL, 'external', '22@example.com', '$2b$12$mRWWQ3guwjuAPuGgp/9tQ.54KcOQLJRQNTDU8mpkvqmfzYEcwmpd2', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (35, '23', NULL, 'external', '23@example.com', '$2b$12$DWOOcKcefaidYX1qcAJhXOThHWB6nlcgoT2DlQcdWFlyVvADD5ope', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (36, '24', NULL, 'external', '24@example.com', '$2b$12$FUVvDBZOvv/hnj3LQ7SSh.2tWlaMhylaPZl2nLTFP1BXpYzZOk9wS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (37, '25', NULL, 'external', '25@example.com', '$2b$12$KjGKWYrlSsWcJUH3t0wKMem6mSEROkY2tpk0D0rzVheizQSthQEfK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (38, '26', NULL, 'external', '26@example.com', '$2b$12$ljC5rwmc7dVHv5RV6mBPYOrKtGZWt7AXXMXezRrpR4R0h93dIADa6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (39, '27', NULL, 'external', '27@example.com', '$2b$12$7vvZPl4p5hiQmDGCfMYH3uVR0xdiBKxrzx0UqzDhVCP1WLW6HBa4q', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (40, '28', NULL, 'external', '28@example.com', '$2b$12$eTU0Ue2O.gPjBA9Xmeh8cOrbeAUaqCuS9ZV/J1nhvz2jH29M3MUEe', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (41, '29', NULL, 'external', '29@example.com', '$2b$12$vUo/Fj.7OE8QxEgffbz8I.QzTvLU4fhBZsLrXaf9woQMy.aXKAce.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (42, '30', NULL, 'external', '30@example.com', '$2b$12$M9FWKGt6pkv22ZkJHKAdse.A.NLF84FG4EPb6lt.s.KcGF9xxj9pS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (43, '31', NULL, 'external', '31@example.com', '$2b$12$HM1jsD1Mv6K3pZcUD.nl7OC/PSVastrD2MpR9ja5ICLGImApdJlhG', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (44, '32', NULL, 'external', '32@example.com', '$2b$12$Gx8lPtKGyVozXtJl.rcD1.3ZsMrg/XMDVbhocOVv9UohXsHSZAsiK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (45, '33', NULL, 'external', '33@example.com', '$2b$12$zvJhGhhT0T0/A0X1D2skUOFkOSW/byADNGMSAdhgQHDKEHSds5a5a', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (46, '34', NULL, 'external', '34@example.com', '$2b$12$iwE/SHngAJ6of.N4LmHOouTvbraYQagZx8XvXfDz4ABNQPtSu9yYG', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (47, '35', NULL, 'external', '35@example.com', '$2b$12$aU.3/dQJJpeLyLJFidVJmOiQV.avek58H6O2EODwM5GTvaDIJqIR6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (48, '36', NULL, 'external', '36@example.com', '$2b$12$fyCOdrXBN2O3f6sLB5ZDAeo/.GAT/WLGyst0zTnzRAJ/KYtqB/BuK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (49, '37', NULL, 'external', '37@example.com', '$2b$12$9IF.S6laGOrsnUKTPU7n4usZbdIM3wQXSxACZG8ApQAQ2co/rBkam', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (50, '38', NULL, 'external', '38@example.com', '$2b$12$Ipme1mVBMBQ07YEnEJhDeOr8YehqaiHdiS7H2.k/gwh8eQ7xgmB1O', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (51, '39', NULL, 'external', '39@example.com', '$2b$12$Dkkzdy8E5xZXq4cJkffjMeePOJCiBWHcTuUoIB5K1v1jno/JdFtcS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (52, '40', NULL, 'external', '40@example.com', '$2b$12$sr/n0lmFhWHVvxAQ7Hq.QuSVykJLmHF1kb0jRZtikJ/wAd5Y/gCGu', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (53, '41', NULL, 'external', '41@example.com', '$2b$12$/g0EPc8De0PX34xeja0jaesT8.XwMRhvbUxmQnEIsgtOmG4W2neD.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (54, '42', NULL, 'external', '42@example.com', '$2b$12$RhkG9/xY95.39NLbHMSBguYW2CQvLCIP6pRhNDVGkINjm3Rqam2JS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (55, '43', NULL, 'external', '43@example.com', '$2b$12$0G9OUyux2NoP.Qe8YuruXOU9csQsnLNG2.DMkK1F6U51YkGjGFWRq', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (56, '44', NULL, 'external', '44@example.com', '$2b$12$hE89nNvO01m7hpB.hFUi1.aB8H2dzDxaYyoUbmi8IaNnCX4cUmDk.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (57, '45', NULL, 'external', '45@example.com', '$2b$12$hdhwFgiKRDMGMUKgHtt3/uTJFHRvgeOjj.9jj6ZMPDbIOeSAqGeFa', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (58, '46', NULL, 'external', '46@example.com', '$2b$12$oWc0hPzDiOYLIZ2mt6bK3u6Lf2/KtSCgMpobj53j.vJ8gStPbwLNm', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (59, '47', NULL, 'external', '47@example.com', '$2b$12$6tsWh4pRiUcq8udHLRzFoepLZl83ECl5JQZ6u0zvLdMsLMpSklvrC', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (60, '48', NULL, 'external', '48@example.com', '$2b$12$bGptx3/1nGuvCRLAumu6CeqtPUhKocL2.RSO.ilEm2AwK21N.zMV.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (61, '49', NULL, 'external', '49@example.com', '$2b$12$9KJQMdKSvSIoG.UGk46dP.gZERcpNQ0AopHXiGxUs/eEz/Df3PY3y', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (62, '50', NULL, 'external', '50@example.com', '$2b$12$zFmOzj/ZysShuX5iEmdvkOf2PFGMcprC/I3eFAhnK/AJhef9/PlJq', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (63, '51', NULL, 'external', '51@example.com', '$2b$12$WDBgNlKNGRe1iE.Kn6YTceS4NfP7ZXHUjXnFA29sB.bFVAvEV7sqm', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (64, '52', NULL, 'external', '52@example.com', '$2b$12$bN9lv78z/wG2hHCU/INpsug9q8paCrVeZT0/qj1m8lp0NMsMjyUn.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (65, '53', NULL, 'external', '53@example.com', '$2b$12$3NrY4QlZrjVhxOyoQ9Rev.aybbWagYI2dz87KegMp3E0DHec4C.fO', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (66, '54', NULL, 'external', '54@example.com', '$2b$12$dHbgjNj4sqclBls2LGfE0OJnuKBKiBbjR4hC0u4DGwxtg1wKUNxOu', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (67, '55', NULL, 'external', '55@example.com', '$2b$12$MfHjsr0n2dKm6UZahPtRPeXKyP0ay5H6cIFBtqRJd5nrW7NVU0WQe', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (68, '56', NULL, 'external', '56@example.com', '$2b$12$g2futmXOTje5Zf1aDX7izeNoh3reK4/RCE3X9/eu9znGWPEZqED7q', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (69, '57', NULL, 'external', '57@example.com', '$2b$12$fUGsu7L/HOtQvQThBZ4wOOh0XnAep0kDLUAeZoMi7wgxjdw55GFz.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (70, '58', NULL, 'external', '58@example.com', '$2b$12$T7ktczP4E1dgyMT5EycG9O9wMfjrv5aB/WEHPJK/66ylxhM2Shl7q', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (71, '59', NULL, 'external', '59@example.com', '$2b$12$851Kmp8C.5on74ZC1fpw0uRj3UmoLgbizpwK0VSyfbHUYm1gafTva', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (72, '60', NULL, 'external', '60@example.com', '$2b$12$BSbUscl4SIXT2mQwOwtfpeSv7WZBJ2JQycDbjFyJ1UtDZPPF77KR6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (73, '61', NULL, 'external', '61@example.com', '$2b$12$L/u/GekIfm8cPnp6t1yWUOUgsbfCz1wg.CL.gEV.uXuadgaanl48q', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (74, '62', NULL, 'external', '62@example.com', '$2b$12$5bSm58.C5fJLN0sdTyVmTe6HNOLRz6OkCMBgu/.yaIWezU8Z7x2XS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (75, '63', NULL, 'external', '63@example.com', '$2b$12$RmFUeglJR6q8WgjXr49GOugBzcR4Cox8sEnMFS/u.gO8QiS//3TZS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (76, '64', NULL, 'external', '64@example.com', '$2b$12$onHKvjNP9e4SYvs01atwm.HrPq9BOUOMWouh.zB76Q7DK4A8cRF8W', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (77, '65', NULL, 'external', '65@example.com', '$2b$12$1Pd6VdrUqG2on4iOsfVgkOOiIY4ghRDNmsU5rA5Ycwq2RxYEkMBty', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (78, '66', NULL, 'external', '66@example.com', '$2b$12$D94HpgMaUaqB.E4zHlieOO8NyPAw4zBgTJXASVDa36o959HeWR.kG', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (79, '67', NULL, 'external', '67@example.com', '$2b$12$uMdyBdTk30A3xovSuWnouuMIwn9CCDfLOpAMSTjvnlnjsQqbiyH5e', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (80, '68', NULL, 'external', '68@example.com', '$2b$12$6.FP5KKzXJ1dQtyfIygwm.1gzBhmAwgdEBTnDTiAJFyAyVcLo75ke', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (81, '69', NULL, 'external', '69@example.com', '$2b$12$k8dhuplKJcsROgIZ0oJxB.i.axUzJX5ETBLYpMyVZ9igyEwW6nWaa', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (82, '70', NULL, 'external', '70@example.com', '$2b$12$fX0lXPHcHZ4dclXlaAPWP.4XndWE3CMR1FiwrT4yrWIjpZEM7G2mq', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (83, '71', NULL, 'external', '71@example.com', '$2b$12$GmrKRWhrGBV0ISw6x/oTQO/vW0qx4v54IhOab6ZDvbKVtfQos./22', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (84, '72', NULL, 'external', '72@example.com', '$2b$12$IRhNZy23omRU7oXPR/eU4eKMpLgdnkQQzXbKhR7gISQuiFXFoAJV6', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (85, '73', NULL, 'external', '73@example.com', '$2b$12$Q.y6E3QOww2GK1vmloroaeq0tfS61.47kiaxGtuggfGLBzJi4Hv7O', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (86, '74', NULL, 'external', '74@example.com', '$2b$12$LKXn6d0q9hIfAJpxAIPUTepCvd.LbDTqSmUeS1Rug6L7EDH9tZ3ay', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (87, '75', NULL, 'external', '75@example.com', '$2b$12$qN8KqxgftaUwIcR3gLL1LOdjPGee83E.NPC.2Os2ecmNEsrEZ2eNK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (88, '76', NULL, 'external', '76@example.com', '$2b$12$BzvZD35UUoHitD25UxJ5b.NuBDdgFuLFOGAfJRM9i92IkMi3gJBLe', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (89, '77', NULL, 'external', '77@example.com', '$2b$12$j8lr0g/kKp4RB4tUWZUQ2.1W0Amtiasq/y7YBLtGL/iio7g..YeYK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (90, '78', NULL, 'external', '78@example.com', '$2b$12$0C.zPvrENojen6rlBNgT7./x3KHylrH3WPzo8c4IiMOzArPWtXrFa', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (91, '79', NULL, 'external', '79@example.com', '$2b$12$zXhvoqYdixOtQ4Ix1W99fOyg20OxV8FlHFEZHkKYepaKHOAOkf78G', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (92, '80', NULL, 'external', '80@example.com', '$2b$12$.MSiCEgRLybk/UOjbi6ZC.BzNpHwQ.Y5kxKIOLEqeLJtVm7M9q5gW', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (93, '81', NULL, 'external', '81@example.com', '$2b$12$5vIX1FeAQp7c5u3y5a8/uOWKhMKE7bDA8H7zOU9B67QjoAphMTSC.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (94, '82', NULL, 'external', '82@example.com', '$2b$12$hyI0TzMoYnqCFSkubtR7CekjODGqUR2a44piYmnTIReP8E.XenbuW', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (95, '83', NULL, 'external', '83@example.com', '$2b$12$/hvnhN7nGRVxisbXsIwSJe7Pkw93stihmdrir8.eNzhu4pexAuyha', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (96, '84', NULL, 'external', '84@example.com', '$2b$12$Oy1nSqAYN7m7AqfJs2WgX.aApVYZgmQtIb2.bs7zQlit9LKMLEtim', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (97, '85', NULL, 'external', '85@example.com', '$2b$12$L2vqi2M/KPbsJApC.7fGe.MDi1adYTqNOfiQ1SiQ/PJ7pjG3abkDG', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (98, '86', NULL, 'external', '86@example.com', '$2b$12$S/0BPGRPmVDTGcFXf5l6H.ppFISzlMOQ0p9uNoUHmvceM0WZnJv3O', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (99, '87', NULL, 'external', '87@example.com', '$2b$12$Ina/7T/.SqxWzAYy8ixw.uFibGoyt9Hw.9LchvUPmsku/1jquFEBe', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (100, '88', NULL, 'external', '88@example.com', '$2b$12$FlDbVftnVih4pyNH11./2uiAudm8dWHa9ehCYWpftq2nL42dw8L4m', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (101, '89', NULL, 'external', '89@example.com', '$2b$12$uxj5FdyRsgU/hgr.Las5..Ieb5eHSVUk2DGamcnuxWjhBiy9lhC3e', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (102, '90', NULL, 'external', '90@example.com', '$2b$12$gTTtMqSd/G3UKEYMkRz.V.RBM1OOO77L3glY0aDwRCtG1.WM1KJPq', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (103, '91', NULL, 'external', '91@example.com', '$2b$12$GtaSI9BzC0S.O9MwgOjDUuTjY70S7byVVF9KMmjoqALJZGypRWp.O', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (104, '92', NULL, 'external', '92@example.com', '$2b$12$duUMrdWeBC12MU1YbbIdP.g1Yy4JHId.xR4XRcZHDOxwlXjPN7PJS', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (105, '93', NULL, 'external', '93@example.com', '$2b$12$ON1C2tL.gx.pwAAhbwCF0.kkNboWtLk4pYWHCjH7mAsqJxbUOI1WC', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (106, '94', NULL, 'external', '94@example.com', '$2b$12$2bZXWU5MsbIa2gFPxnJ5LeVvxfMt0M5GMzvnc1ok6O9IuS3Jv.PyK', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (107, '95', NULL, 'external', '95@example.com', '$2b$12$eQLiFgcdZfJ9zou1vl.1guqImBCjnQ2NwnLY4adfLsP30t4dsIGwu', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (108, '96', NULL, 'external', '96@example.com', '$2b$12$fYpsxklopy.DwhJvXaQfo.H5AJZ1gAPk8BQWdedqFFCpSnFq93fum', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (109, '97', NULL, 'external', '97@example.com', '$2b$12$TPSUq/8TQA0or/G6nv4KAuh3gQVrexqa0K6nnOXxnxRmqXzb/tBCe', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (110, '98', NULL, 'external', '98@example.com', '$2b$12$N/cyVhHprHv43zFOvCDps.eVKaFj/Yom29.b/keJIqPf.Q8L3RFXO', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (111, '99', NULL, 'external', '99@example.com', '$2b$12$LAJoudPMwYm9q6M0Qi1enOxiivxCRgP/sPyvMqg105wTQBKy7PGOq', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (112, '100', NULL, 'external', '100@example.com', '$2b$12$dI4Lbwpvy.YMfKE7AW6f1O28OmxkDCxjNgbZ6B6GVkiBkv9pgrUKC', NULL, 1, 0, 0, 0, NULL, NULL);
 
 -- ----------------------------
 -- Table structure for user_access_log
@@ -4501,7 +4801,7 @@ CREATE TABLE `user_access_log`  (
   PRIMARY KEY (`user_access_log_id`) USING BTREE,
   INDEX `user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `user_access_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 449 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 519 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_access_log
@@ -4954,6 +5254,76 @@ INSERT INTO `user_access_log` VALUES (445, 5, '127.0.0.1', 'Mozilla/5.0 (Windows
 INSERT INTO `user_access_log` VALUES (446, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/reject', 'POST', 200, 0, '2025-11-13 16:19:38', 44);
 INSERT INTO `user_access_log` VALUES (447, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/approve', 'POST', 200, 99, '2025-11-13 16:20:21', 29);
 INSERT INTO `user_access_log` VALUES (448, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/approve', 'POST', 200, 0, '2025-11-13 16:21:13', 70);
+INSERT INTO `user_access_log` VALUES (449, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-11-13 19:16:31', 1);
+INSERT INTO `user_access_log` VALUES (450, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-11-13 19:16:31', 3);
+INSERT INTO `user_access_log` VALUES (451, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 19:16:33', 1);
+INSERT INTO `user_access_log` VALUES (452, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 19:16:33', 64);
+INSERT INTO `user_access_log` VALUES (453, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 19:16:42', 511);
+INSERT INTO `user_access_log` VALUES (454, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations', 'GET', 200, 0, '2025-11-13 19:16:49', 77);
+INSERT INTO `user_access_log` VALUES (455, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-10-1', 'GET', 200, 0, '2025-11-13 19:19:43', 42);
+INSERT INTO `user_access_log` VALUES (456, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-10-17', 'GET', 200, 0, '2025-11-13 19:19:57', 45);
+INSERT INTO `user_access_log` VALUES (457, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-11-25', 'GET', 200, 0, '2025-11-13 19:20:28', 46);
+INSERT INTO `user_access_log` VALUES (458, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register', 'POST', 200, 99, '2025-11-13 19:32:55', 6);
+INSERT INTO `user_access_log` VALUES (459, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register', 'POST', 200, 99, '2025-11-13 19:38:19', 2);
+INSERT INTO `user_access_log` VALUES (460, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register', 'POST', 200, 99, '2025-11-13 19:39:30', 2);
+INSERT INTO `user_access_log` VALUES (461, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=1%40example.com&phonenumber=1&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7001&gender=%E5%A5%B3&patient_type=%E5%AD%A6%E7%94%9F', 'POST', 200, 0, '2025-11-13 19:41:58', 393);
+INSERT INTO `user_access_log` VALUES (462, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=10%40example.com&phonenumber=10&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7010&gender=%E7%94%B7&patient_type=%E6%95%99%E5%B8%88', 'POST', 200, 0, '2025-11-13 19:42:03', 354);
+INSERT INTO `user_access_log` VALUES (463, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-10-01&date_range=30days', 'GET', 200, 0, '2025-11-13 19:52:30', 53);
+INSERT INTO `user_access_log` VALUES (464, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-10-25&date_range=30days', 'GET', 200, 0, '2025-11-13 19:52:37', 28);
+INSERT INTO `user_access_log` VALUES (465, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-11-25', 'GET', 200, 0, '2025-11-13 19:52:46', 31);
+INSERT INTO `user_access_log` VALUES (466, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-10-24', 'GET', 200, 0, '2025-11-13 19:52:53', 26);
+INSERT INTO `user_access_log` VALUES (467, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=1%40example.com&phonenumber=1&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7001&gender=%E7%94%B7&patient_type=%E5%A4%96%E9%83%A8', 'POST', 200, 100, '2025-11-13 19:55:17', 7);
+INSERT INTO `user_access_log` VALUES (468, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=16%40example.com&phonenumber=16&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7016&gender=%E7%94%B7&patient_type=%E5%AD%A6%E7%94%9F', 'POST', 200, 0, '2025-11-13 19:55:22', 326);
+INSERT INTO `user_access_log` VALUES (469, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=26%40example.com&phonenumber=26&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7026&gender=%E5%A5%B3&patient_type=%E6%95%99%E5%B8%88', 'POST', 200, 0, '2025-11-13 19:55:28', 312);
+INSERT INTO `user_access_log` VALUES (470, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=35%40example.com&phonenumber=35&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7035&gender=%E7%94%B7&patient_type=%E5%AD%A6%E7%94%9F', 'POST', 200, 0, '2025-11-13 19:55:33', 310);
+INSERT INTO `user_access_log` VALUES (471, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=45%40example.com&phonenumber=45&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7045&gender=%E5%A5%B3&patient_type=%E8%81%8C%E5%B7%A5', 'POST', 200, 0, '2025-11-13 19:55:38', 310);
+INSERT INTO `user_access_log` VALUES (472, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=55%40example.com&phonenumber=55&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7055&gender=%E5%A5%B3&patient_type=%E5%AD%A6%E7%94%9F', 'POST', 200, 0, '2025-11-13 19:55:43', 318);
+INSERT INTO `user_access_log` VALUES (473, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=65%40example.com&phonenumber=65&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7065&gender=%E7%94%B7&patient_type=%E8%81%8C%E5%B7%A5', 'POST', 200, 0, '2025-11-13 19:55:49', 337);
+INSERT INTO `user_access_log` VALUES (474, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=75%40example.com&phonenumber=75&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7075&gender=%E5%A5%B3&patient_type=%E5%AD%A6%E7%94%9F', 'POST', 200, 0, '2025-11-13 19:55:54', 289);
+INSERT INTO `user_access_log` VALUES (475, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=85%40example.com&phonenumber=85&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7085&gender=%E5%A5%B3&patient_type=%E5%A4%96%E9%83%A8', 'POST', 200, 0, '2025-11-13 19:56:00', 333);
+INSERT INTO `user_access_log` VALUES (476, NULL, '127.0.0.1', 'python-requests/2.31.0', 'http://127.0.0.1:8000/auth/register?email=94%40example.com&phonenumber=94&password=123456&name=%E6%B5%8B%E8%AF%95%E7%94%A8%E6%88%B7094&gender=%E5%A5%B3&patient_type=%E8%81%8C%E5%B7%A5', 'POST', 200, 0, '2025-11-13 19:56:05', 332);
+INSERT INTO `user_access_log` VALUES (477, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-10-25&date_range=30days', 'GET', 200, 0, '2025-11-13 19:56:55', 48);
+INSERT INTO `user_access_log` VALUES (478, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/174/registrations?date=2025-10-22&date_range=30days', 'GET', 200, 0, '2025-11-13 19:58:08', 92);
+INSERT INTO `user_access_log` VALUES (479, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/departments/1/registrations?date=2025-10-22&date_range=30days', 'GET', 200, 0, '2025-11-13 19:58:49', 57);
+INSERT INTO `user_access_log` VALUES (480, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/ranking?dept_id=1&date=2025-10-23&order_by=registrations&limit=10', 'GET', 200, 0, '2025-11-13 20:01:44', 20);
+INSERT INTO `user_access_log` VALUES (481, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/ranking?dept_id=1&date=2025-10-24&order_by=registrations&limit=10', 'GET', 200, 0, '2025-11-13 20:01:50', 31);
+INSERT INTO `user_access_log` VALUES (482, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/ranking?dept_id=1&date=2025-10-26&order_by=registrations&limit=10', 'GET', 200, 0, '2025-11-13 20:01:57', 21);
+INSERT INTO `user_access_log` VALUES (483, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/174/registrations?date_range=30days', 'GET', 200, 0, '2025-11-13 20:02:21', 61);
+INSERT INTO `user_access_log` VALUES (484, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/174/registrations?date_range=30days', 'GET', 200, 0, '2025-11-13 20:07:16', 131);
+INSERT INTO `user_access_log` VALUES (485, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 20:07:20', 0);
+INSERT INTO `user_access_log` VALUES (486, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 20:07:20', 131);
+INSERT INTO `user_access_log` VALUES (487, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 20:07:26', 391);
+INSERT INTO `user_access_log` VALUES (488, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/174/registrations?date_range=30days', 'GET', 200, 0, '2025-11-13 20:07:42', 57);
+INSERT INTO `user_access_log` VALUES (489, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/174/registrations?date=2025-11-12&date_range=30days', 'GET', 200, 0, '2025-11-13 20:10:04', 65);
+INSERT INTO `user_access_log` VALUES (490, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 20:16:15', 0);
+INSERT INTO `user_access_log` VALUES (491, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 20:16:16', 72);
+INSERT INTO `user_access_log` VALUES (492, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 20:16:20', 457);
+INSERT INTO `user_access_log` VALUES (493, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 20:16:28', 0);
+INSERT INTO `user_access_log` VALUES (494, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 20:16:28', 2);
+INSERT INTO `user_access_log` VALUES (495, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 20:16:32', 412);
+INSERT INTO `user_access_log` VALUES (496, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-11-13&date_range=30days', 'GET', 200, 0, '2025-11-13 20:16:49', 37);
+INSERT INTO `user_access_log` VALUES (497, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-11-12&date_range=30days', 'GET', 200, 0, '2025-11-13 20:17:00', 24);
+INSERT INTO `user_access_log` VALUES (498, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-11-12&date_range=30days', 'GET', 200, 0, '2025-11-13 20:17:06', 32);
+INSERT INTO `user_access_log` VALUES (499, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 20:20:15', 1);
+INSERT INTO `user_access_log` VALUES (500, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 20:20:16', 141);
+INSERT INTO `user_access_log` VALUES (501, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 20:20:20', 485);
+INSERT INTO `user_access_log` VALUES (502, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-11-13', 'GET', 200, 0, '2025-11-13 20:20:25', 41);
+INSERT INTO `user_access_log` VALUES (503, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations?date=2025-11-10', 'GET', 200, 0, '2025-11-13 20:20:33', 26);
+INSERT INTO `user_access_log` VALUES (504, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/hospital/registrations', 'GET', 200, 0, '2025-11-13 20:21:10', 20);
+INSERT INTO `user_access_log` VALUES (505, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/doctors/1/registrations', 'GET', 200, 0, '2025-11-13 20:21:19', 54);
+INSERT INTO `user_access_log` VALUES (506, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/departments/1/registrations', 'GET', 200, 0, '2025-11-13 20:21:28', 48);
+INSERT INTO `user_access_log` VALUES (507, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/departments/1/registrations?date_range=30days', 'GET', 200, 0, '2025-11-13 20:21:35', 51);
+INSERT INTO `user_access_log` VALUES (508, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations', 'GET', 200, 0, '2025-11-13 20:21:49', 36);
+INSERT INTO `user_access_log` VALUES (509, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/2/registrations', 'GET', 200, 0, '2025-11-13 20:21:53', 32);
+INSERT INTO `user_access_log` VALUES (510, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/3/registrations', 'GET', 200, 0, '2025-11-13 20:21:56', 37);
+INSERT INTO `user_access_log` VALUES (511, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations', 'GET', 200, 0, '2025-11-13 20:22:00', 36);
+INSERT INTO `user_access_log` VALUES (512, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-11-01', 'GET', 200, 0, '2025-11-13 20:22:50', 39);
+INSERT INTO `user_access_log` VALUES (513, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-10-24', 'GET', 200, 0, '2025-11-13 20:23:00', 34);
+INSERT INTO `user_access_log` VALUES (514, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-10-20', 'GET', 200, 0, '2025-11-13 20:23:06', 29);
+INSERT INTO `user_access_log` VALUES (515, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/1/registrations?date=2025-10-22', 'GET', 200, 0, '2025-11-13 20:23:28', 79);
+INSERT INTO `user_access_log` VALUES (516, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/areas/2/registrations?date=2025-10-22', 'GET', 200, 0, '2025-11-13 20:23:33', 32);
+INSERT INTO `user_access_log` VALUES (517, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/departments/ranking?date=2025-11-13&order_by=registrations&limit=10', 'GET', 200, 0, '2025-11-13 20:23:48', 16);
+INSERT INTO `user_access_log` VALUES (518, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/statistics/departments/ranking?date=2025-10-20&order_by=registrations&limit=10', 'GET', 200, 0, '2025-11-13 20:23:55', 48);
 
 -- ----------------------------
 -- Table structure for visit_history
