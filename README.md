@@ -830,8 +830,16 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 ```
 
 ### 3.2 获取医生列表
-- GET `/doctors?dept_id={dept_id}`
-- 参数 `dept_id` 可选，用于按科室过滤
+- GET `/doctors?dept_id={dept_id}&name={name}`
+- 参数：
+  - `dept_id` (可选)：按科室 ID 过滤
+  - `name` (可选)：按医生姓名模糊搜索
+
+请求示例：
+```
+GET /doctors?name=张
+GET /doctors?dept_id=1&name=王
+```
 
 响应（**包含价格信息**）：
 ```json
@@ -925,7 +933,7 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 }
 ```
 
-### 2.5 为医生创建账号
+### 3.5 为医生创建账号
 - POST `/doctors/{doctor_id}/create-account`
 - 说明：为已有的医生记录创建关联的用户账号
 
@@ -951,7 +959,7 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 }
 ```
 
-### 2.6 医生调科室
+### 3.6 医生调科室
 - PUT `/doctors/{doctor_id}/transfer`
 - 说明：将医生调到新的科室
 
@@ -975,7 +983,7 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 }
 ```
 
-### 2.7 医生照片上传
+### 3.7 医生照片上传
 - POST `/doctors/{doctor_id}/photo`
 - 说明：管理员为医生上传照片（multipart/form-data）。接口会将文件异步保存到 `app/static/image/`，并在数据库中更新 `Doctor.photo_path`（内部访问路径，如 `/static/image/<filename>`）以及 `Doctor.original_photo_url`（若来源为外部 URL，可保留）。
 
@@ -995,7 +1003,7 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 注意：
 - 上传接口会对文件写入进行异常分类，如果写文件失败或磁盘问题，会被标记为资源错误并上抛 `ResourceHTTPException`（由全局异常处理器统一响应）；如果请求参数不满足业务规则会抛 `BusinessHTTPException`。
 
-### 2.8 医生照片删除
+### 3.8 医生照片删除
 - DELETE `/doctors/{doctor_id}/photo`
 - 说明：删除医生已上传的本地照片（清理 `app/static/image` 中对应文件，并将 `Doctor.photo_path` 设为 `None`/空）。
 
@@ -1013,7 +1021,7 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 
 ---
 
-### 2.9 获取医生照片（原始数据）
+### 3.9 获取医生照片（原始数据）
 - GET `/admin/doctors/{doctor_id}/photo`
 - 说明：根据医生 ID 返回真实图片二进制数据（非静态文件路径）。仅管理员可访问。
 
@@ -1044,7 +1052,77 @@ Authorization: Bearer <token>
 
 ---
 
-## 3. 审核管理
+
+---
+
+## 4. 患者信息查询
+
+### 4.1 搜索患者
+- GET `/patients?name={name}&phone={phone}&patient_id={patient_id}`
+- 说明：管理员搜索患者信息，支持按姓名、手机号或患者 ID 查询
+
+参数（所有参数可选，至少提供一个）：
+- `name` (string, optional)：按姓名模糊搜索
+- `phone` (string, optional)：按手机号模糊搜索
+- `patient_id` (int, optional)：按患者 ID 精确查询
+
+请求示例：
+```
+GET /patients?name=王
+GET /patients?phone=138
+GET /patients?patient_id=12345
+GET /patients?name=张&phone=139
+```
+
+权限与请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "patients": [
+            {
+                "patient_id": 12345,
+                "name": "王小明",
+                "phone": "13812345678",
+                "gender": "男",
+                "age": 28,
+                "id_card": "110101199501011234"
+            },
+            {
+                "patient_id": 12346,
+                "name": "王丽",
+                "phone": "13898765432",
+                "gender": "女",
+                "age": 32,
+                "id_card": "110102198901012345"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `patient_id`：患者唯一标识
+- `name`：患者姓名
+- `phone`：从关联的 User 表中获取的手机号
+- `gender`：性别（中文字符串："男"/"女"/"其他"）
+- `age`：根据出生日期自动计算的年龄
+- `id_card`：身份证号（脱敏处理由前端实现）
+
+注意：
+- 至少需要提供一个搜索条件，否则返回参数错误
+- 姓名和手机号使用模糊匹配（SQL LIKE 查询）
+- 患者 ID 使用精确匹配
+- 年龄计算考虑了当年是否已过生日
+
+---
+
+## 5. 审核管理
 
 所有审核接口均需管理员权限，请求头需包含：
 ```
@@ -1053,7 +1131,7 @@ Authorization: Bearer <token>
 
 ### A. 排班审核（Schedule Audit）
 
-#### 3.1 获取排班审核列表
+#### 5.1 获取排班审核列表
 - GET `/audit/schedule`
 - 说明：获取所有排班审核申请列表（无分页），按提交时间倒序排列
 
@@ -1086,13 +1164,13 @@ Authorization: Bearer <token>
 }
 ```
 
-#### 3.2 获取排班审核详情
+#### 5.2 获取排班审核详情
 - GET `/audit/schedule/{audit_id}`
 - 说明：获取指定排班审核申请的详细信息
 
 响应格式同上列表项，包含完整排班 JSON 数据。
 
-#### 3.3 通过排班审核
+#### 5.3 通过排班审核
 - POST `/audit/schedule/{audit_id}/approve`
 - 说明：管理员审核通过排班申请，系统会将排班数据写入 `Schedule` 表，生成实际排班记录
 
@@ -1122,7 +1200,7 @@ Authorization: Bearer <token>
 3. 解析排班 JSON 数据，为每个时间段生成 `Schedule` 记录（包括医生、门诊、日期、时段等）
 4. 事务提交，确保数据一致性
 
-#### 3.4 拒绝排班审核
+#### 5.4 拒绝排班审核
 - POST `/audit/schedule/{audit_id}/reject`
 - 说明：管理员拒绝排班申请
 
@@ -1139,7 +1217,7 @@ Authorization: Bearer <token>
 
 ### B. 请假审核（Leave Audit）
 
-#### 3.5 获取请假审核列表
+#### 5.5 获取请假审核列表
 - GET `/audit/leave`
 - 说明：获取所有请假审核申请列表（无分页），按提交时间倒序排列
 
@@ -1179,15 +1257,15 @@ Authorization: Bearer <token>
 - `reason_preview`：原因前 50 字符的预览（若超出则添加 `...`）
 - `attachments`：附件文件路径列表（可用于后续获取附件内容）
 
-#### 3.6 获取请假审核详情
+#### 5.6 获取请假审核详情
 - GET `/audit/leave/{audit_id}`
 - 说明：获取指定请假审核申请的详细信息
 
 响应格式同上列表项，包含完整请假原因和附件列表。
 
-#### 3.7 通过请假审核
+#### 5.7 通过请假审核
 - POST `/audit/leave/{audit_id}/approve`
-- 说明：管理员审核通过请假申请，系统会**自动删除医生在请假期间的所有排班记录**
+- 说明：管理员审核通过请假申请，系统会**自动将医生在请假期间的所有排班记录调为停诊状态**
 
 请求体：
 ```json
@@ -1215,9 +1293,8 @@ Authorization: Bearer <token>
 3. 记录审核人和审核时间
 4. 事务提交，确保数据一致性
 
-⚠️ **重要提示**：通过请假审核后，该医生在请假期间的排班将被清空，患者无法再预约这些时段。请谨慎操作。
 
-#### 3.8 拒绝请假审核
+#### 5.8 拒绝请假审核
 - POST `/audit/leave/{audit_id}/reject`
 - 说明：管理员拒绝请假申请，不会影响现有排班
 
@@ -1236,7 +1313,7 @@ Authorization: Bearer <token>
 
 ### C. 附件管理
 
-#### 3.9 获取审核附件（二进制数据）
+#### 5.9 获取审核附件（二进制数据）
 - GET `/audit/attachment/raw?path={file_path}`
 - 说明：根据附件的相对路径返回文件二进制数据，用于查看请假申请等审核中的附件（图片/文件）
 
@@ -1269,7 +1346,7 @@ Authorization: Bearer <token>
 #### 概述
 加号申请用于医生为某患者在已有排班上增加号源或供管理员直接为患者创建加号并生成挂号记录。流程支持：医生发起申请（需管理员审批）或管理员直接执行加号（跳过审批）。
 
-#### 3.10 医生/管理员发起加号 POST: `/schedules/add-slot`  (注意这里是doctor/schedules/add-slot)
+#### 5.10 医生/管理员发起加号 POST: `/schedules/add-slot`  (注意这里是doctor/schedules/add-slot)
 - 权限：需登录；管理员可直接执行加号并同时创建挂号记录，医生仅能提交申请由管理员审批。
 - 请求体（JSON）：
 
@@ -1308,7 +1385,7 @@ Authorization: Bearer <token>
 }
 ```
 
-#### 3.11 管理员查看所有加号申请 GET: `/audit/add-slot`
+#### 5.11 管理员查看所有加号申请 GET: `/audit/add-slot`
 - 权限：仅管理员。
 - 说明：返回所有 `AddSlotAudit` 记录（当前实现无分页）。建议在记录量大时加入分页与筛选参数（如 status/doctor_id/patient_id/date range）。
 - 响应示例：
@@ -1336,21 +1413,21 @@ Authorization: Bearer <token>
 }
 ```
 
-#### 3.12 管理员审批（已有接口）
+#### 5.12 管理员审批（已有接口）
 - 通过：POST `/audit/add-slot/{audit_id}/approve`（管理员）
 - 拒绝：POST `/audit/add-slot/{audit_id}/reject`（管理员）
 - 说明：审批通过时，系统会在事务内调用加号服务创建 `RegistrationOrder` 并更新对应 `Schedule`；审批结果会写回 `add_slot_audit` 表（status、auditor_admin_id、audit_time、audit_remark）。
 
 ---
 
-## 4. 系统配置管理
+## 6. 系统配置管理
 
 所有系统配置接口均需管理员权限，请求头需包含：
 ```
 Authorization: Bearer <token>
 ```
 
-### 4.1 获取系统配置
+### 6.1 获取系统配置
 - GET `/config`
 - 说明：获取系统所有配置信息，包括挂号配置和排班配置
 
@@ -1407,7 +1484,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 4.2 更新系统配置
+### 6.2 更新系统配置
 - PUT `/config`
 - 说明：更新系统配置信息，可选择性更新挂号配置和/或排班配置
 
@@ -1468,9 +1545,9 @@ Authorization: Bearer <token>
 
 ---
 
-## 5. 门诊管理
+## 7. 门诊管理
 
-### 5.1 获取科室门诊列表
+### 7.1 获取科室门诊列表
 - GET `/admin/clinics?dept_id={dept_id}`
 - 说明：获取门诊列表，可按小科室过滤
 - 参数 `dept_id` 可选，用于按小科室过滤
@@ -1502,7 +1579,7 @@ Authorization: Bearer <token>
 - `clinic_type`：门诊类型，0-普通，1-国疗，2-特需
 - `default_price_normal/expert/special`：三种号源的价格配置，null 表示该层级未配置
 
-### 5.2 创建门诊
+### 7.2 创建门诊
 - POST `/admin/clinics`
 - 说明：创建新的门诊地点
 
@@ -1544,7 +1621,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 5.3 更新门诊信息
+### 7.3 更新门诊信息
 - PUT `/admin/clinics/{clinic_id}`
 - 说明：更新门诊信息
 
@@ -1580,7 +1657,7 @@ Authorization: Bearer <token>
 
 ---
 
-## 6. 排班管理
+## 8. 排班管理
 
 ### 排班价格处理逻辑
 
@@ -1593,7 +1670,7 @@ Authorization: Bearer <token>
   4. 若未找到，查询全局配置（GLOBAL）
   5. 若仍未找到，使用系统默认价格（普通50元，专家100元，特需500元）
 
-### 6.1 获取科室排班
+### 8.1 获取科室排班
 - GET `/admin/departments/{dept_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定小科室在日期范围内的所有排班
 
@@ -1636,7 +1713,7 @@ Authorization: Bearer <token>
 - `status`：排班状态，如"正常"、"停诊"
 - `week_day`：星期几，值为"一"、"二"、"三"、"四"、"五"、"六"、"日"
 
-### 6.2 获取医生排班
+### 8.2 获取医生排班
 - GET `/admin/doctors/{doctor_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定医生在日期范围内的所有排班
 
@@ -1647,7 +1724,7 @@ Authorization: Bearer <token>
 
 响应：同 4.1 获取科室排班的响应格式
 
-### 6.3 获取门诊排班
+### 8.3 获取门诊排班
 - GET `/admin/clinics/{clinic_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定门诊在日期范围内的所有排班
 
@@ -1658,7 +1735,7 @@ Authorization: Bearer <token>
 
 响应：同 4.1 获取科室排班的响应格式
 
-### 6.4 创建排班
+### 8.4 创建排班
 - POST `/admin/schedules`
 - 说明：为医生创建新的排班记录
 
@@ -1709,7 +1786,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 6.5 更新排班
+### 8.5 更新排班
 - PUT `/admin/schedules/{schedule_id}`
 - 说明：更新排班信息，支持部分字段更新
 
@@ -1747,7 +1824,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 6.6 删除排班
+### 8.6 删除排班
 - DELETE `/admin/schedules/{schedule_id}`
 - 说明：删除指定的排班记录
 
@@ -1764,6 +1841,68 @@ Authorization: Bearer <token>
 }
 ```
 
+### 8.7 获取指定医生今日排班
+- GET `/doctors/{doctor_id}/schedules/today`
+- 说明：获取指定医生今天的所有排班记录，包括可预约的号源类型信息
+
+参数：
+- `doctor_id`：医生 ID（路径参数）
+
+权限与请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "doctor_id": 1,
+        "date": "2025-11-13",
+        "schedules": [
+            {
+                "schedule_id": 101,
+                "time_section": "上午",
+                "clinic_id": 5,
+                "clinic_name": "心内科门诊",
+                "clinic_type": 0,
+                "minor_dept_name": "心内科",
+                "slot_type": "普通",
+                "total_slots": 20,
+                "remaining_slots": 15,
+                "price": 60.00,
+                "status": "正常",
+                "available_slot_types": ["普通"]
+            },
+            {
+                "schedule_id": 102,
+                "time_section": "下午",
+                "clinic_id": 6,
+                "clinic_name": "国疗门诊",
+                "clinic_type": 1,
+                "minor_dept_name": "心内科",
+                "slot_type": "专家",
+                "total_slots": 10,
+                "remaining_slots": 8,
+                "price": 120.00,
+                "status": "正常",
+                "available_slot_types": ["普通", "专家"]
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `clinic_type`：门诊类型
+  - 0 = 普通门诊
+  - 1 = 专家门诊（国疗）
+  - 2 = 特需门诊
+- `available_slot_types`：该门诊可预约的号源类型列表，根据 `clinic_type` 自动计算：
+  - 普通门诊 (0) → `["普通"]`
+  - 专家门诊 (1) → `["普通", "专家"]`
+  - 特需门诊 (2) → `["普通", "专家", "特需"]`
 ---
 
 # 三、认证 API 接口详情

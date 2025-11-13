@@ -802,10 +802,11 @@ async def create_doctor(
 @router.get("/doctors", response_model=ResponseModel[Union[DoctorListResponse, AuthErrorResponse]])
 async def get_doctors(
     dept_id: Optional[int] = None,
+    name: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
-    """获取医生列表 - 仅管理员可操作，可按科室过滤"""
+    """获取医生列表 - 仅管理员可操作，可按科室过滤和姓名模糊搜索"""
     try:
         if not current_user.is_admin:
             raise AuthHTTPException(
@@ -818,6 +819,8 @@ async def get_doctors(
         filters = []
         if dept_id:
             filters.append(Doctor.dept_id == dept_id)
+        if name:
+            filters.append(Doctor.name.like(f"%{name}%"))
         
         result = await db.execute(select(Doctor).where(and_(*filters) if filters else True))
         doctors = result.scalars().all()
@@ -1553,6 +1556,81 @@ async def create_or_update_doctor_account(
         )
 
 
+# ====== 患者查询接口 ======
+
+@router.get("/patients", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_patients(
+    name: Optional[str] = None,
+    phone: Optional[str] = None,
+    patient_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """患者查询接口 - 仅管理员可操作
+    
+    支持按姓名（模糊搜索）、手机号（模糊搜索）、患者ID（精确搜索）过滤
+    """
+    try:
+        if not getattr(current_user, "is_admin", False):
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="仅管理员可访问"
+            )
+        
+        # 导入Patient模型
+        from app.models.patient import Patient
+        
+        # 构建查询，关联User表获取手机号
+        stmt = select(Patient, User).join(
+            User, Patient.user_id == User.user_id
+        )
+        
+        # 添加过滤条件
+        if patient_id is not None:
+            stmt = stmt.where(Patient.patient_id == patient_id)
+        if name:
+            stmt = stmt.where(Patient.name.like(f"%{name}%"))
+        if phone:
+            stmt = stmt.where(User.phonenumber.like(f"%{phone}%"))
+        
+        result = await db.execute(stmt)
+        rows = result.all()
+        
+        patients = []
+        for patient, user in rows:
+            # 计算年龄（如果有出生日期）
+            age = None
+            if patient.birth_date:
+                today = datetime.utcnow().date()
+                age = today.year - patient.birth_date.year
+                if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                    age -= 1
+            
+            patients.append({
+                "patient_id": patient.patient_id,
+                "name": patient.name,
+                "phone": user.phonenumber,
+                "gender": patient.gender.value if patient.gender else "未知",
+                "age": age,
+                "id_card": patient.student_id  # 使用student_id作为身份证号/学号工号
+            })
+        
+        return ResponseModel(code=0, message={"patients": patients})
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查询患者失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg=f"查询患者失败: {str(e)}"
+        )
+
+
 # ====== 门诊管理接口 ======
 
 @router.get("/clinics", response_model=ResponseModel[Union[ClinicListResponse, AuthErrorResponse]])
@@ -1775,7 +1853,89 @@ async def update_clinic(
 
 
 # ====== 排班管理接口 ======
-# 排班相关的工具函数已移至 `app.services.admin_helpers`
+
+@router.get("/doctors/{doctor_id}/schedules/today", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_doctor_schedules_today(
+    doctor_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """根据医生查询当日排班 - 仅管理员可操作"""
+    try:
+        if not getattr(current_user, "is_admin", False):
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="仅管理员可访问"
+            )
+        
+        # 获取当天日期
+        today = datetime.utcnow().date()
+        
+        # 查询医生信息
+        doctor_result = await db.execute(
+            select(Doctor).where(Doctor.doctor_id == doctor_id)
+        )
+        doctor = doctor_result.scalar_one_or_none()
+        if not doctor:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg=f"医生ID {doctor_id} 不存在"
+            )
+        
+        # 查询当天排班
+        stmt = select(Schedule, Clinic, MinorDepartment).join(
+            Clinic, Schedule.clinic_id == Clinic.clinic_id
+        ).join(
+            MinorDepartment, Clinic.minor_dept_id == MinorDepartment.minor_dept_id
+        ).where(
+            and_(
+                Schedule.doctor_id == doctor_id,
+                Schedule.date == today
+            )
+        )
+        
+        result = await db.execute(stmt)
+        rows = result.all()
+        
+        schedules = []
+        for schedule, clinic, dept in rows:
+            # 根据门诊类型确定可用号源类型
+            # clinic_type: 0-普通门诊, 1-专家门诊(国疗), 2-特需门诊
+            if clinic.clinic_type == 0:
+                available_types = ["普通"]
+            elif clinic.clinic_type == 1:
+                available_types = ["普通", "专家"]
+            else:  # clinic_type == 2
+                available_types = ["普通", "专家", "特需"]
+            
+            schedules.append({
+                "schedule_id": schedule.schedule_id,
+                "doctor_id": doctor.doctor_id,
+                "doctor_name": doctor.name,
+                "department_id": dept.minor_dept_id,
+                "department_name": dept.name,
+                "clinic_type": "普通门诊" if clinic.clinic_type == 0 else ("专家门诊" if clinic.clinic_type == 1 else "特需门诊"),
+                "date": str(schedule.date),
+                "time_slot": schedule.time_section,
+                "total_slots": schedule.total_slots,
+                "remaining_slots": schedule.remaining_slots,
+                "available_slot_types": available_types
+            })
+        
+        return ResponseModel(code=0, message={"schedules": schedules})
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生当日排班失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg=f"获取医生当日排班失败: {str(e)}"
+        )
 
 
 @router.get("/departments/{dept_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
@@ -1862,7 +2022,6 @@ async def get_department_schedules(
             msg="内部服务异常",
             status_code=500
         )
-
 
 @router.get("/doctors/{doctor_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
 async def get_doctor_schedules(
@@ -3300,7 +3459,6 @@ async def update_system_config(
             msg="内部服务异常",
             status_code=500
         )
-
 
 # ====== 全局价格配置接口 ======
 
