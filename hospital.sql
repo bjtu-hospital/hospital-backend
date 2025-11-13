@@ -1,21 +1,57 @@
 /*
- Navicat Premium Data Transfer
+ Navicat Premium Dump SQL
 
- Source Server         : local
+ Source Server         : dbstudy
  Source Server Type    : MySQL
- Source Server Version : 80039
+ Source Server Version : 80041 (8.0.41)
  Source Host           : localhost:3306
  Source Schema         : hospital
 
  Target Server Type    : MySQL
- Target Server Version : 80039
+ Target Server Version : 80041 (8.0.41)
  File Encoding         : 65001
 
- Date: 07/11/2025 09:06:57
+ Date: 13/11/2025 16:32:17
 */
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+-- Table structure for add_slot_audit
+-- ----------------------------
+DROP TABLE IF EXISTS `add_slot_audit`;
+CREATE TABLE `add_slot_audit`  (
+  `audit_id` int NOT NULL AUTO_INCREMENT COMMENT '加号申请ID',
+  `schedule_id` bigint NOT NULL COMMENT '目标排班ID',
+  `doctor_id` int NOT NULL COMMENT '申请加号的医生ID',
+  `patient_id` bigint NOT NULL COMMENT '获得加号的患者的 patient_id',
+  `slot_type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '号源类型: 普通/专家/特需',
+  `reason` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '申请理由（医生填写）',
+  `applicant_id` int NOT NULL COMMENT '发起申请的用户ID',
+  `submit_time` datetime NOT NULL COMMENT '提交时间',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '审核状态: pending, approved, rejected',
+  `auditor_admin_id` int NULL DEFAULT NULL COMMENT '审核人管理员ID',
+  `audit_time` datetime NULL DEFAULT NULL COMMENT '审核时间',
+  `audit_remark` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '审核备注/原因',
+  PRIMARY KEY (`audit_id`) USING BTREE,
+  INDEX `schedule_id`(`schedule_id` ASC) USING BTREE,
+  INDEX `doctor_id`(`doctor_id` ASC) USING BTREE,
+  INDEX `patient_id`(`patient_id` ASC) USING BTREE,
+  INDEX `applicant_id`(`applicant_id` ASC) USING BTREE,
+  INDEX `auditor_admin_id`(`auditor_admin_id` ASC) USING BTREE,
+  INDEX `ix_add_slot_audit_audit_id`(`audit_id` ASC) USING BTREE,
+  CONSTRAINT `add_slot_audit_ibfk_1` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `add_slot_audit_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `add_slot_audit_ibfk_3` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `add_slot_audit_ibfk_4` FOREIGN KEY (`applicant_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `add_slot_audit_ibfk_5` FOREIGN KEY (`auditor_admin_id`) REFERENCES `administrator` (`admin_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 2 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of add_slot_audit
+-- ----------------------------
+INSERT INTO `add_slot_audit` VALUES (1, 2956, 879, 2, '普通', 'string', 12, '2025-11-13 16:13:45', 'approved', 2, '2025-11-13 16:21:14', NULL);
 
 -- ----------------------------
 -- Table structure for administrator
@@ -28,7 +64,7 @@ CREATE TABLE `administrator`  (
   `job_title` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '职务',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`admin_id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id`) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `fk_admin_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '管理员详细信息表' ROW_FORMAT = DYNAMIC;
 
@@ -51,8 +87,8 @@ CREATE TABLE `clinic`  (
   `minor_dept_id` int NULL DEFAULT NULL,
   `clinic_type` tinyint NOT NULL DEFAULT 0 COMMENT '门诊类型: 0-普通, 1-国疗, 2-特需',
   PRIMARY KEY (`clinic_id`) USING BTREE,
-  INDEX `fk_clinic_area`(`area_id`) USING BTREE,
-  INDEX `fk_clinic_minor_dept`(`minor_dept_id`) USING BTREE,
+  INDEX `fk_clinic_area`(`area_id` ASC) USING BTREE,
+  INDEX `fk_clinic_minor_dept`(`minor_dept_id` ASC) USING BTREE,
   CONSTRAINT `fk_clinic_area` FOREIGN KEY (`area_id`) REFERENCES `hospital_area` (`area_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_clinic_minor_dept` FOREIGN KEY (`minor_dept_id`) REFERENCES `minor_department` (`minor_dept_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 220 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '门诊地点信息表' ROW_FORMAT = DYNAMIC;
@@ -295,11 +331,11 @@ CREATE TABLE `doctor`  (
   `original_photo_url` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '原医院的完整图片下载URL (用于备份)',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
   PRIMARY KEY (`doctor_id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id`) USING BTREE,
-  INDEX `fk_doctor_minor_dept`(`dept_id`) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
+  INDEX `fk_doctor_minor_dept`(`dept_id` ASC) USING BTREE,
   CONSTRAINT `fk_doctor_minor_dept` FOREIGN KEY (`dept_id`) REFERENCES `minor_department` (`minor_dept_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_doctor_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 879 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院医生基本信息表' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 880 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医院医生基本信息表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of doctor
@@ -1153,6 +1189,7 @@ INSERT INTO `doctor` VALUES (872, NULL, 47, '李百花', '副主任营养师', '
 INSERT INTO `doctor` VALUES (873, NULL, 47, '张秋香', '主管营养师', '常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等，及危重症的肠内营养支持。', '张秋香 基本情况 姓名：张秋香性别：女学位：医学硕士毕业院校：北京大学医学部专业：营养与食品卫生技术职称：主管营养师 专业特长 常见慢性疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等，营养评估，肠内营养支持治疗。', '/static/images/doctor/doctor_873.jpg', 'https://puh3.net.cn/__local/E/E0/46/6F51F766913F0D6E11E1603ED5B_B405BB58_3AA5E.jpg', '2025-10-16 11:12:59');
 INSERT INTO `doctor` VALUES (874, NULL, 47, '贺晓娟', '主管营养师', '常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等的营养咨询与治疗。', '贺晓娟 基本情况 姓名：贺晓娟性别：女学位：医学硕士毕业院校：首都医科大学专业：营养与食品卫生技术职称：主管营养师 专业特长 常见疾病的营养治疗,如糖尿病、肾病、高脂血症、痛风等的营养咨询与治疗。 工作经历...', '/static/images/doctor/doctor_874.jpg', 'https://puh3.net.cn/__local/6/36/E4/0F9716C26A9B83866A22E74E333_640532E4_21CF4.jpg', '2025-10-16 11:12:59');
 INSERT INTO `doctor` VALUES (875, NULL, 13, '李东', '主任医师、教授', '中医及中西医结合治疗妇科生殖、内分泌失调、不孕不育等疾病。中医药治疗消化、心脑血管、呼吸系统等疾病及各种内科杂症。在慢性胃炎，消化性溃疡、结肠炎、慢性支气管炎、慢阻肺、冠心病、脑血管疾病及肿瘤调理等各种内科杂症及月经不调、子宫肌瘤、子宫腺肌症、多囊卵巢综合征、不孕不育及妇科生殖疾病等方面积累了丰富的经验。', '工作经历1990年毕业于北京中医药大学，毕业后一直在北京大学第三医院中医科从事临床、教学和科研工作，历任住院医师、主治医师、副主任医师和主任医师。先后师从著名中医专家、首都国医名师姜良铎教授和中国工程院院士、国医大师王琦教授，分别获得硕士和博士学位。现任北京大学第三医院中医科主任，博士生导师，博士后合作导师，科室学术带头人，北京市中西医结合生殖医学研究所副所长，北京大学医学部中西医结合学系副主任，兼任北京中西医结合学会副会长。...', '/static/images/doctor/doctor_242.jpg', 'https://puh3.net.cn/__local/9/1C/E4/B1E32C87164827E8651738A73B2_B14E067F_1E8FF.jpg?e=.jpg', '2025-10-17 00:38:53');
+INSERT INTO `doctor` VALUES (879, 12, 1, 'GG BOND', 'string', NULL, NULL, NULL, NULL, NULL);
 
 -- ----------------------------
 -- Table structure for hospital_area
@@ -1217,7 +1254,7 @@ CREATE TABLE `major_department`  (
   `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`major_dept_id`) USING BTREE,
-  UNIQUE INDEX `name`(`name`) USING BTREE
+  UNIQUE INDEX `name`(`name` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
@@ -1238,8 +1275,8 @@ CREATE TABLE `minor_department`  (
   `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL,
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`minor_dept_id`) USING BTREE,
-  UNIQUE INDEX `name`(`name`) USING BTREE,
-  INDEX `major_dept_id`(`major_dept_id`) USING BTREE,
+  UNIQUE INDEX `name`(`name` ASC) USING BTREE,
+  INDEX `major_dept_id`(`major_dept_id` ASC) USING BTREE,
   CONSTRAINT `minor_department_ibfk_1` FOREIGN KEY (`major_dept_id`) REFERENCES `major_department` (`major_dept_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 51 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
@@ -1309,14 +1346,15 @@ CREATE TABLE `patient`  (
   `is_verified` tinyint(1) NULL DEFAULT 0 COMMENT '身份是否已通过管理员审核 (0=否, 1=是)',
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`patient_id`) USING BTREE,
-  UNIQUE INDEX `user_id`(`user_id`) USING BTREE,
-  UNIQUE INDEX `student_id`(`student_id`) USING BTREE,
+  UNIQUE INDEX `user_id`(`user_id` ASC) USING BTREE,
+  UNIQUE INDEX `student_id`(`student_id` ASC) USING BTREE,
   CONSTRAINT `fk_patient_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '患者详细信息表 (校内师生职工)' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of patient
 -- ----------------------------
+INSERT INTO `patient` VALUES (2, 11, 'HHH', '男', NULL, '学生', NULL, 0, '2025-11-13 00:00:00');
 
 -- ----------------------------
 -- Table structure for registration_order
@@ -1337,20 +1375,23 @@ CREATE TABLE `registration_order`  (
   `notes` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '订单备注/特殊说明',
   `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime NULL DEFAULT NULL COMMENT '最后更新时间',
+  `slot_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '挂号号别/类型',
   PRIMARY KEY (`order_id`) USING BTREE,
-  INDEX `patient_id`(`patient_id`) USING BTREE,
-  INDEX `user_id`(`user_id`) USING BTREE,
-  INDEX `doctor_id`(`doctor_id`) USING BTREE,
-  INDEX `schedule_id`(`schedule_id`) USING BTREE,
+  INDEX `patient_id`(`patient_id` ASC) USING BTREE,
+  INDEX `user_id`(`user_id` ASC) USING BTREE,
+  INDEX `doctor_id`(`doctor_id` ASC) USING BTREE,
+  INDEX `schedule_id`(`schedule_id` ASC) USING BTREE,
   CONSTRAINT `registration_order_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `registration_order_ibfk_4` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 4 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of registration_order
 -- ----------------------------
+INSERT INTO `registration_order` VALUES (1, 2, 11, 1, 2955, '2025-11-07', '上午', NULL, 0, NULL, 'confirmed', '加号申请 (由用户 5 发起) | price=150.0', '2025-11-13 07:59:22', '2025-11-13 07:59:22', '普通');
+INSERT INTO `registration_order` VALUES (3, 2, 11, 879, 2956, '2025-11-25', '上午', NULL, 0, NULL, 'pending', '加号申请 (由用户 12 发起) | price=100.0', '2025-11-13 08:21:14', '2025-11-13 08:21:14', '普通');
 
 -- ----------------------------
 -- Table structure for schedule
@@ -1370,11 +1411,11 @@ CREATE TABLE `schedule`  (
   `create_time` datetime NULL DEFAULT CURRENT_TIMESTAMP,
   `price` decimal(10, 2) NOT NULL DEFAULT 0.00 COMMENT '挂号原价 (单位: 元)',
   PRIMARY KEY (`schedule_id`) USING BTREE,
-  UNIQUE INDEX `uk_doc_clinic_time_type`(`doctor_id`, `clinic_id`, `date`, `time_section`, `slot_type`) USING BTREE,
-  INDEX `fk_schedule_clinic_v3`(`clinic_id`) USING BTREE,
+  UNIQUE INDEX `uk_doc_clinic_time_type`(`doctor_id` ASC, `clinic_id` ASC, `date` ASC, `time_section` ASC, `slot_type` ASC) USING BTREE,
+  INDEX `fk_schedule_clinic_v3`(`clinic_id` ASC) USING BTREE,
   CONSTRAINT `fk_schedule_clinic_v3` FOREIGN KEY (`clinic_id`) REFERENCES `clinic` (`clinic_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_schedule_doctor_v3` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 2956 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医生出诊排班及号源管理表 (含号源类型)' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 2957 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '医生出诊排班及号源管理表 (含号源类型)' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of schedule
@@ -4329,7 +4370,8 @@ INSERT INTO `schedule` VALUES (2951, 301, 1, '2025-11-21', 5, '上午', '普通'
 INSERT INTO `schedule` VALUES (2952, 302, 1, '2025-11-21', 5, '晚上', '普通', 50, 50, 'normal', NULL, 10.00);
 INSERT INTO `schedule` VALUES (2953, 1, 1, '2025-11-07', 5, '上午', '普通', 0, 0, '正常', NULL, 60.00);
 INSERT INTO `schedule` VALUES (2954, 1, 1, '2025-11-07', 5, '上午', '特需', 0, 0, '正常', NULL, 600.00);
-INSERT INTO `schedule` VALUES (2955, 1, 1, '2025-11-07', 5, '上午', '专家', 0, 0, '正常', NULL, 150.00);
+INSERT INTO `schedule` VALUES (2955, 1, 1, '2025-11-07', 5, '上午', '专家', 1, 1, '正常', NULL, 150.00);
+INSERT INTO `schedule` VALUES (2956, 879, 1, '2025-11-25', 2, '上午', '普通', 50, 50, '正常', NULL, 100.00);
 
 -- ----------------------------
 -- Table structure for schedule_audit
@@ -4385,7 +4427,7 @@ CREATE TABLE `system_config`  (
   PRIMARY KEY (`config_id`) USING BTREE,
   UNIQUE INDEX `uk_scope_key`(`scope_type` ASC, `scope_id` ASC, `config_key` ASC) USING BTREE,
   INDEX `idx_key`(`config_key` ASC) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 15 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统通用配置表' ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 16 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '系统通用配置表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of system_config
@@ -4399,6 +4441,7 @@ INSERT INTO `system_config` VALUES (6, 'registration.price', 'MINOR_DEPT', 1, '{
 INSERT INTO `system_config` VALUES (7, 'registration.price', 'CLINIC', 201, '{\"default_price_expert\": 180.0, \"default_price_normal\": 60.0, \"default_price_special\": null}', 'JSON', '诊室201挂号费用配置：专家号特调', 1, '2025-11-07 07:32:04', '2025-11-07 07:32:04');
 INSERT INTO `system_config` VALUES (8, 'registration.price', 'DOCTOR', 301, '{\"default_price_expert\": null, \"default_price_normal\": 80.0, \"default_price_special\": 888.0}', 'JSON', '医生301个人挂号费用配置：特需号最高，普通号特设', 1, '2025-11-07 07:32:04', '2025-11-07 07:32:04');
 INSERT INTO `system_config` VALUES (9, 'registration.price', 'CLINIC', 1, '{\"default_price_expert\": 400.0, \"default_price_normal\": 60.0, \"default_price_special\": 150.0}', 'JSON', '诊室1挂号费用配置', 1, '2025-11-07 00:02:45', '2025-11-07 08:07:16');
+INSERT INTO `system_config` VALUES (15, 'registration.price', 'DOCTOR', 879, '{\"default_price_expert\": 500.0, \"default_price_normal\": 100.0, \"default_price_special\": 200.0}', 'JSON', '医生879挂号费用配置', 1, '2025-11-13 08:08:52', '2025-11-13 08:08:52');
 
 -- ----------------------------
 -- Table structure for user
@@ -4419,16 +4462,16 @@ CREATE TABLE `user`  (
   `last_login_ip` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL COMMENT '最近登录IP',
   `last_login_time` bigint NULL DEFAULT NULL COMMENT '最近登录时间（时间戳）',
   PRIMARY KEY (`user_id`) USING BTREE,
-  UNIQUE INDEX `phone_number`(`phonenumber`) USING BTREE,
-  UNIQUE INDEX `phone_number_2`(`phonenumber`) USING BTREE,
-  UNIQUE INDEX `phone_number_3`(`phonenumber`) USING BTREE,
-  UNIQUE INDEX `email`(`email`) USING BTREE,
-  UNIQUE INDEX `identifier`(`identifier`) USING BTREE,
-  UNIQUE INDEX `email_2`(`email`) USING BTREE,
-  UNIQUE INDEX `email_3`(`email`) USING BTREE,
-  UNIQUE INDEX `phonenumber`(`phonenumber`) USING BTREE,
-  UNIQUE INDEX `identifier_2`(`identifier`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = DYNAMIC;
+  UNIQUE INDEX `phone_number`(`phonenumber` ASC) USING BTREE,
+  UNIQUE INDEX `phone_number_2`(`phonenumber` ASC) USING BTREE,
+  UNIQUE INDEX `phone_number_3`(`phonenumber` ASC) USING BTREE,
+  UNIQUE INDEX `email`(`email` ASC) USING BTREE,
+  UNIQUE INDEX `identifier`(`identifier` ASC) USING BTREE,
+  UNIQUE INDEX `email_2`(`email` ASC) USING BTREE,
+  UNIQUE INDEX `email_3`(`email` ASC) USING BTREE,
+  UNIQUE INDEX `phonenumber`(`phonenumber` ASC) USING BTREE,
+  UNIQUE INDEX `identifier_2`(`identifier` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 13 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '所有用户的登录认证和权限主表' ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user
@@ -4436,6 +4479,9 @@ CREATE TABLE `user`  (
 INSERT INTO `user` VALUES (3, 'string', 'admin2', 'admin', 'user@example.com', '$2b$12$DmrM/kfLLQUUHmvDa50Isujf2s0.pBBohQhpJUW973gRb0fselqSK', NULL, 1, 0, 1, 1, NULL, NULL);
 INSERT INTO `user` VALUES (4, NULL, 'admin3', 'admin', NULL, '$2b$12$Ch2BT9r38KRcDVITzfd2KuZ4zv2Nw3HT41zciaOSL8x/h7H2V1Z8C', NULL, 1, 0, 1, 1, NULL, NULL);
 INSERT INTO `user` VALUES (5, NULL, 'admin4', 'admin', NULL, '$2b$12$LxMwicjzXAc3LM2rmlKg1OPdqJDghdvjN3hm61Z.elIsESsBvfjb6', NULL, 1, 0, 1, 1, '127.0.0.1', 1761204674);
+INSERT INTO `user` VALUES (10, '10087', NULL, 'external', NULL, '$2b$12$VsEvTjGz1ZDSxY2gr5e85.S01Lg6WX70CsXKDSrPkG0E4Yne3JKB.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (11, '10088', NULL, 'external', NULL, '$2b$12$YWf6hcgSVvK/.hcP8OGRXefrSzDpam/Co6ieifvZZ//Ii4YaQv13.', NULL, 1, 0, 0, 0, NULL, NULL);
+INSERT INTO `user` VALUES (12, NULL, 'doctor1', 'doctor', NULL, '$2b$12$v66nWbC2Z4MU1mTC6X.JJOvpXACHMtRFXJ68z5G18OJetQPsU2beq', NULL, 1, 0, 0, 1, NULL, NULL);
 
 -- ----------------------------
 -- Table structure for user_access_log
@@ -4453,9 +4499,9 @@ CREATE TABLE `user_access_log`  (
   `access_time` datetime NULL DEFAULT NULL COMMENT '访问时间',
   `duration_ms` int NOT NULL COMMENT '请求耗时（毫秒）',
   PRIMARY KEY (`user_access_log_id`) USING BTREE,
-  INDEX `user_id`(`user_id`) USING BTREE,
+  INDEX `user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `user_access_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 329 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 449 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_access_log
@@ -4788,6 +4834,126 @@ INSERT INTO `user_access_log` VALUES (325, NULL, '127.0.0.1', 'Mozilla/5.0 (Wind
 INSERT INTO `user_access_log` VALUES (326, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/minor-departments/50', 'DELETE', 200, 0, '2025-11-07 09:00:12', 75);
 INSERT INTO `user_access_log` VALUES (327, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors', 'POST', 200, 99, '2025-11-07 09:00:52', 1);
 INSERT INTO `user_access_log` VALUES (328, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors/878', 'DELETE', 200, 0, '2025-11-07 09:01:20', 55);
+INSERT INTO `user_access_log` VALUES (329, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-11-12 17:02:59', 8);
+INSERT INTO `user_access_log` VALUES (330, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/major-departments', 'GET', 200, 105, '2025-11-12 17:02:59', 12);
+INSERT INTO `user_access_log` VALUES (331, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 105, '2025-11-12 17:02:59', 3);
+INSERT INTO `user_access_log` VALUES (332, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/auth/staff/login', 'POST', 200, 0, '2025-11-12 17:03:05', 765);
+INSERT INTO `user_access_log` VALUES (333, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/major-departments', 'GET', 200, 0, '2025-11-12 17:03:06', 44);
+INSERT INTO `user_access_log` VALUES (334, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-11-12 17:03:06', 1);
+INSERT INTO `user_access_log` VALUES (335, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-11-12 17:03:06', 248);
+INSERT INTO `user_access_log` VALUES (336, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-11-12 17:03:18', 5);
+INSERT INTO `user_access_log` VALUES (337, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/major-departments', 'GET', 200, 0, '2025-11-12 17:03:18', 30);
+INSERT INTO `user_access_log` VALUES (338, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-11-12 17:03:19', 436);
+INSERT INTO `user_access_log` VALUES (339, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors', 'GET', 200, 0, '2025-11-12 17:03:22', 4151);
+INSERT INTO `user_access_log` VALUES (340, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/2/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 380);
+INSERT INTO `user_access_log` VALUES (341, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/1/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 371);
+INSERT INTO `user_access_log` VALUES (342, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/3/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 395);
+INSERT INTO `user_access_log` VALUES (343, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/5/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 67);
+INSERT INTO `user_access_log` VALUES (344, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/6/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 77);
+INSERT INTO `user_access_log` VALUES (345, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/4/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 72);
+INSERT INTO `user_access_log` VALUES (346, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/7/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 111);
+INSERT INTO `user_access_log` VALUES (347, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/8/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 107);
+INSERT INTO `user_access_log` VALUES (348, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/9/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 99);
+INSERT INTO `user_access_log` VALUES (349, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/10/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 91);
+INSERT INTO `user_access_log` VALUES (350, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/11/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 47);
+INSERT INTO `user_access_log` VALUES (351, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/12/photo', 'GET', 200, NULL, '2025-11-12 17:03:23', 40);
+INSERT INTO `user_access_log` VALUES (352, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/47/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 61);
+INSERT INTO `user_access_log` VALUES (353, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/45/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 62);
+INSERT INTO `user_access_log` VALUES (354, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/46/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 61);
+INSERT INTO `user_access_log` VALUES (355, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/48/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 61);
+INSERT INTO `user_access_log` VALUES (356, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/49/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 23);
+INSERT INTO `user_access_log` VALUES (357, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/51/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 94);
+INSERT INTO `user_access_log` VALUES (358, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/53/photo', 'GET', 200, NULL, '2025-11-12 17:03:26', 81);
+INSERT INTO `user_access_log` VALUES (359, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/50/photo', 'GET', 200, NULL, '2025-11-12 17:03:27', 95);
+INSERT INTO `user_access_log` VALUES (360, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/56/photo', 'GET', 200, NULL, '2025-11-12 17:03:27', 21);
+INSERT INTO `user_access_log` VALUES (361, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/57/photo', 'GET', 200, NULL, '2025-11-12 17:03:27', 27);
+INSERT INTO `user_access_log` VALUES (362, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/52/photo', 'GET', 200, NULL, '2025-11-12 17:03:27', 93);
+INSERT INTO `user_access_log` VALUES (363, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors/54/photo', 'GET', 200, NULL, '2025-11-12 17:03:27', 51);
+INSERT INTO `user_access_log` VALUES (364, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-11-12 17:03:28', 1);
+INSERT INTO `user_access_log` VALUES (365, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-11-12 17:03:28', 224);
+INSERT INTO `user_access_log` VALUES (366, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/departments/1/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:31', 152);
+INSERT INTO `user_access_log` VALUES (367, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics?dept_id=1', 'GET', 200, 0, '2025-11-12 17:03:31', 207);
+INSERT INTO `user_access_log` VALUES (368, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/7/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 86);
+INSERT INTO `user_access_log` VALUES (369, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/doctors?dept_id=1', 'GET', 200, 0, '2025-11-12 17:03:32', 465);
+INSERT INTO `user_access_log` VALUES (370, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/54/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 25);
+INSERT INTO `user_access_log` VALUES (371, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/55/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 20);
+INSERT INTO `user_access_log` VALUES (372, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/56/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 23);
+INSERT INTO `user_access_log` VALUES (373, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/57/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 25);
+INSERT INTO `user_access_log` VALUES (374, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/150/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 22);
+INSERT INTO `user_access_log` VALUES (375, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/169/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 20);
+INSERT INTO `user_access_log` VALUES (376, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/190/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 24);
+INSERT INTO `user_access_log` VALUES (377, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/191/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 22);
+INSERT INTO `user_access_log` VALUES (378, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/clinics/216/schedules?start_date=2025-10-26&end_date=2025-11-02', 'GET', 200, 0, '2025-11-12 17:03:32', 19);
+INSERT INTO `user_access_log` VALUES (379, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/audit/schedule', 'GET', 200, 0, '2025-11-12 17:03:44', 65);
+INSERT INTO `user_access_log` VALUES (380, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/audit/leave', 'GET', 200, 0, '2025-11-12 17:03:44', 65);
+INSERT INTO `user_access_log` VALUES (381, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments/', 'GET', 307, NULL, '2025-11-12 17:03:44', 0);
+INSERT INTO `user_access_log` VALUES (382, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://localhost:8000/admin/minor-departments', 'GET', 200, 0, '2025-11-12 17:03:45', 221);
+INSERT INTO `user_access_log` VALUES (383, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-11-13 11:37:33', 3);
+INSERT INTO `user_access_log` VALUES (384, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-11-13 11:37:34', 7);
+INSERT INTO `user_access_log` VALUES (385, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 11:37:39', 1);
+INSERT INTO `user_access_log` VALUES (386, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 11:37:47', 230);
+INSERT INTO `user_access_log` VALUES (387, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10086&password=123456&name=Man', 'POST', 200, 100, '2025-11-13 11:40:04', 765);
+INSERT INTO `user_access_log` VALUES (388, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 11:44:13', 0);
+INSERT INTO `user_access_log` VALUES (389, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 11:44:13', 3);
+INSERT INTO `user_access_log` VALUES (390, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10086&password=123456&name=MAN', 'POST', 200, 100, '2025-11-13 11:44:33', 682);
+INSERT INTO `user_access_log` VALUES (391, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 11:45:07', 0);
+INSERT INTO `user_access_log` VALUES (392, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 11:45:08', 4);
+INSERT INTO `user_access_log` VALUES (393, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10086&password=123456&name=MAN', 'POST', 200, 100, '2025-11-13 11:45:20', 667);
+INSERT INTO `user_access_log` VALUES (394, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 11:46:30', 1);
+INSERT INTO `user_access_log` VALUES (395, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 11:46:30', 165);
+INSERT INTO `user_access_log` VALUES (396, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10086&password=123456&name=MAN', 'POST', 200, 0, '2025-11-13 11:46:44', 838);
+INSERT INTO `user_access_log` VALUES (397, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-11-13 11:54:53', 1);
+INSERT INTO `user_access_log` VALUES (398, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-11-13 11:54:54', 3);
+INSERT INTO `user_access_log` VALUES (399, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 11:54:57', 0);
+INSERT INTO `user_access_log` VALUES (400, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 11:54:57', 140);
+INSERT INTO `user_access_log` VALUES (401, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10087&password=123456&name=HHH&patient_type=STUDENT&gender=%E7%94%B7', 'POST', 200, 100, '2025-11-13 11:56:09', 17);
+INSERT INTO `user_access_log` VALUES (402, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10088&password=123456&name=HHH&patient_type=STUDENT&gender=%E7%94%B7', 'POST', 200, 0, '2025-11-13 11:56:16', 1027);
+INSERT INTO `user_access_log` VALUES (403, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 11:57:59', 656);
+INSERT INTO `user_access_log` VALUES (404, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 99, '2025-11-13 11:59:09', 80);
+INSERT INTO `user_access_log` VALUES (405, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-11-13 12:00:45', 1);
+INSERT INTO `user_access_log` VALUES (406, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-11-13 12:00:46', 2);
+INSERT INTO `user_access_log` VALUES (407, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 12:00:50', 1);
+INSERT INTO `user_access_log` VALUES (408, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 12:00:51', 166);
+INSERT INTO `user_access_log` VALUES (409, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 105, '2025-11-13 12:01:20', 5);
+INSERT INTO `user_access_log` VALUES (410, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 12:01:25', 750);
+INSERT INTO `user_access_log` VALUES (411, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 99, '2025-11-13 12:01:28', 58);
+INSERT INTO `user_access_log` VALUES (412, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 12:13:46', 1);
+INSERT INTO `user_access_log` VALUES (413, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 12:13:47', 181);
+INSERT INTO `user_access_log` VALUES (414, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 12:13:50', 777);
+INSERT INTO `user_access_log` VALUES (415, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10086&password=123456&name=MAN&patient_type=STUDENT&gender=%E7%94%B7', 'POST', 200, 100, '2025-11-13 12:14:35', 11);
+INSERT INTO `user_access_log` VALUES (416, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10087&password=123456&name=HHH&patient_type=STUDENT&gender=%E7%94%B7', 'POST', 200, 100, '2025-11-13 12:18:35', 131);
+INSERT INTO `user_access_log` VALUES (417, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/register?phonenumber=10088&password=123456&name=HHH&patient_type=STUDENT&gender=%E7%94%B7', 'POST', 200, 0, '2025-11-13 12:18:41', 859);
+INSERT INTO `user_access_log` VALUES (418, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 99, '2025-11-13 12:19:33', 218);
+INSERT INTO `user_access_log` VALUES (419, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/', 'GET', 200, NULL, '2025-11-13 15:40:20', 0);
+INSERT INTO `user_access_log` VALUES (420, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/favicon.ico', 'GET', 200, 98, '2025-11-13 15:40:20', 5);
+INSERT INTO `user_access_log` VALUES (421, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 15:40:24', 0);
+INSERT INTO `user_access_log` VALUES (422, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 15:40:24', 136);
+INSERT INTO `user_access_log` VALUES (423, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 15:40:29', 607);
+INSERT INTO `user_access_log` VALUES (424, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 99, '2025-11-13 15:41:43', 37);
+INSERT INTO `user_access_log` VALUES (425, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 15:59:02', 0);
+INSERT INTO `user_access_log` VALUES (426, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 15:59:02', 83);
+INSERT INTO `user_access_log` VALUES (427, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 15:59:06', 467);
+INSERT INTO `user_access_log` VALUES (428, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 0, '2025-11-13 15:59:21', 63);
+INSERT INTO `user_access_log` VALUES (429, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 16:07:26', 397);
+INSERT INTO `user_access_log` VALUES (430, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/doctors', 'POST', 200, 0, '2025-11-13 16:08:52', 659);
+INSERT INTO `user_access_log` VALUES (431, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 16:09:10', 425);
+INSERT INTO `user_access_log` VALUES (432, 12, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 102, '2025-11-13 16:10:17', 22);
+INSERT INTO `user_access_log` VALUES (433, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/schedules', 'POST', 200, 105, '2025-11-13 16:12:38', 4);
+INSERT INTO `user_access_log` VALUES (434, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 16:12:42', 415);
+INSERT INTO `user_access_log` VALUES (435, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/schedules', 'POST', 200, 99, '2025-11-13 16:12:45', 21);
+INSERT INTO `user_access_log` VALUES (436, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/schedules', 'POST', 200, 0, '2025-11-13 16:12:55', 49);
+INSERT INTO `user_access_log` VALUES (437, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 16:13:13', 467);
+INSERT INTO `user_access_log` VALUES (438, 12, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/doctor/schedules/add-slot', 'POST', 200, 0, '2025-11-13 16:13:45', 37);
+INSERT INTO `user_access_log` VALUES (439, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-13 16:16:20', 0);
+INSERT INTO `user_access_log` VALUES (440, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-13 16:16:20', 81);
+INSERT INTO `user_access_log` VALUES (441, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 16:16:25', 438);
+INSERT INTO `user_access_log` VALUES (442, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot', 'GET', 200, 0, '2025-11-13 16:16:47', 23);
+INSERT INTO `user_access_log` VALUES (443, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/approve', 'POST', 200, 99, '2025-11-13 16:17:36', 17);
+INSERT INTO `user_access_log` VALUES (444, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-13 16:18:50', 619);
+INSERT INTO `user_access_log` VALUES (445, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/approve', 'POST', 200, 0, '2025-11-13 16:18:53', 86);
+INSERT INTO `user_access_log` VALUES (446, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/reject', 'POST', 200, 0, '2025-11-13 16:19:38', 44);
+INSERT INTO `user_access_log` VALUES (447, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/approve', 'POST', 200, 99, '2025-11-13 16:20:21', 29);
+INSERT INTO `user_access_log` VALUES (448, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/audit/add-slot/1/approve', 'POST', 200, 0, '2025-11-13 16:21:13', 70);
 
 -- ----------------------------
 -- Table structure for visit_history
@@ -4808,13 +4974,13 @@ CREATE TABLE `visit_history`  (
   `create_time` datetime NULL DEFAULT NULL COMMENT '创建时间',
   `update_time` datetime NULL DEFAULT NULL COMMENT '最后更新时间',
   PRIMARY KEY (`visit_id`) USING BTREE,
-  INDEX `patient_id`(`patient_id`) USING BTREE,
-  INDEX `doctor_id`(`doctor_id`) USING BTREE,
-  INDEX `schedule_id`(`schedule_id`) USING BTREE,
+  INDEX `patient_id`(`patient_id` ASC) USING BTREE,
+  INDEX `doctor_id`(`doctor_id` ASC) USING BTREE,
+  INDEX `schedule_id`(`schedule_id` ASC) USING BTREE,
   CONSTRAINT `visit_history_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_3` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of visit_history
