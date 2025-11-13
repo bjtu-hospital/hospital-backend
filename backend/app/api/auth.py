@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -395,14 +395,14 @@ async def get_user_logs(
 
 @router.post("/register", response_model=ResponseModel[Union[str, AuthErrorResponse]])
 async def register_patient(
-    phonenumber: str,
-    password: str,
-    name: str,
-    email: Optional[str] = None,
-    patient_type: Optional[str] = None,
-    gender: Optional[str] = None,
-    birth_date: Optional[str] = None,
-    student_id: Optional[str] = None,
+    phonenumber: str = Body(...),
+    password: str = Body(...),
+    name: str = Body(...),
+    email: Optional[str] = Body(None),
+    patient_type: Optional[str] = Body(None),
+    gender: Optional[str] = Body(None),
+    birth_date: Optional[str] = Body(None),
+    student_id: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
     """患者注册接口"""
