@@ -27,30 +27,39 @@ router = APIRouter()
 
 
 def _parse_date_range(date: str | None, date_range: str | None):
-    """返回 (start_date, end_date) 的 date 对象（包含端点）。"""
+    """返回 (start_date, end_date)，逻辑说明：
+    1. 先解析 date 作为锚点（anchor）。如果未提供，则使用当前 UTC 日期 today。
+    2. date == "" 视为错误；格式不符抛出明确异常。
+    3. date_range 取值：today / 7days / 30days；均以锚点日期为 end_date，向前回溯。
+       - today  => (anchor, anchor)
+       - 7days  => (anchor - 6, anchor)
+       - 30days => (anchor - 29, anchor)
+    4. 未提供 date_range 或传入 today 时返回单日范围。
+    5. 传入未知的 date_range 值抛异常，避免静默回退。
+    """
     today = datetime.utcnow().date()
-    if date_range:
-        dr = date_range.lower()
-        if dr == "today":
-            return today, today
-        if dr == "7days":
-            return today - timedelta(days=6), today
-        if dr == "30days":
-            return today - timedelta(days=29), today
-    # If no date provided, default to today
+
+    # 解析锚点日期
     if date is None:
-        return today, today
+        anchor = today
+    else:
+        if date.strip() == "":
+            raise ValueError("参数 date 不能为空，请传入 YYYY-MM-DD 格式的日期或不传该参数")
+        try:
+            anchor = datetime.strptime(date, "%Y-%m-%d").date()
+        except Exception as ex:
+            raise ValueError(f"日期格式无效: {date}. 请使用 YYYY-MM-DD") from ex
 
-    # If user provided an empty string, treat as invalid (don't silently fall back to today)
-    if isinstance(date, str) and date.strip() == "":
-        raise ValueError("参数 date 不能为空，请传入 YYYY-MM-DD 格式的日期或不传该参数")
+    # 处理日期范围
+    if not date_range or date_range.lower() == "today":
+        return anchor, anchor
 
-    # Parse provided date and raise clear error on invalid format
-    try:
-        d = datetime.strptime(date, "%Y-%m-%d").date()
-        return d, d
-    except Exception as ex:
-        raise ValueError(f"日期格式无效: {date}. 请使用 YYYY-MM-DD") from ex
+    dr = date_range.lower()
+    mapping = {"7days": 6, "30days": 29}
+    if dr in mapping:
+        return anchor - timedelta(days=mapping[dr]), anchor
+
+    raise ValueError(f"时间范围无效: {date_range}. 允许值: today,7days,30days")
 
 
 @router.get("/hospital/registrations", response_model=ResponseModel, tags=["Statistics"], summary="医院总体挂号统计")
