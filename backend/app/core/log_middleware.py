@@ -7,6 +7,7 @@ import json
 
 from app.core.security import get_user_id_from_request  # 根据Token获取用户信息
 from app.db.base import redis,get_db,UserAccessLog  # 你封装的 Redis 客户端
+from app.services.risk_detection_service import risk_detection_service
 from sqlalchemy.ext.asyncio import AsyncSession
 
 async def save_log_to_db(log_data: dict):
@@ -72,6 +73,18 @@ class LogMiddleware(BaseHTTPMiddleware):
             "access_time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "duration_ms": process_time,
         }
+
+        # 挂号接口风险检测 (仅在成功响应时执行)
+        # try:
+        #     if response.status_code == 200 and request.method == "POST" and request.url.path.startswith("/registration") and user_id:
+        #         async for db in get_db():
+        #             try:
+        #                 await risk_detection_service.detect_registration_risk(db, user_id)
+        #                 break
+        #             except Exception:
+        #                 break
+        # except Exception:
+        #     pass
 
         # Redis 去抖逻辑
         key = f"logdedup:{user_id}:{request.url.path}"

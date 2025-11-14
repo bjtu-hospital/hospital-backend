@@ -14,6 +14,7 @@ from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleRespo
 from app.db.base import get_db, redis, User, UserAccessLog, Administrator
 from app.models.user import UserType
 from app.models.patient import Patient, PatientType, Gender
+from app.services.risk_detection_service import risk_detection_service
 from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
@@ -134,7 +135,7 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
 
 
 @router.post("/patient/login", response_model=ResponseModel[Union[str, AuthErrorResponse]])
-async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get_db)):
+async def patient_login(login_data: PatientLogin, request: Request, db: AsyncSession = Depends(get_db)):
     """患者端登录接口 - 使用手机号和密码进行认证"""
     user = await authenticate_patient(db, login_data.phonenumber, login_data.password)
     if not user:
@@ -167,7 +168,12 @@ async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get
                 msg=ban_msg,
                 status_code=403
             )
-    
+    # 登录风险检测(成功认证后执行)
+    try:
+        await risk_detection_service.detect_login_risk(db, user.user_id, request.client.host if request.client else "unknown")
+    except Exception:
+        pass
+
     # 生成并保存 token
     token = create_access_token({"sub": str(user.user_id)})
     
@@ -193,7 +199,7 @@ async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get
 
 
 @router.post("/staff/login", response_model=ResponseModel[Union[str, AuthErrorResponse]])
-async def staff_login(login_data: StaffLogin, db: AsyncSession = Depends(get_db)):
+async def staff_login(login_data: StaffLogin, request: Request, db: AsyncSession = Depends(get_db)):
     """医生/管理员登录接口 - 使用工号和密码进行认证"""
     user = await authenticate_staff(db, login_data.identifier, login_data.password)
     if not user:
@@ -226,7 +232,12 @@ async def staff_login(login_data: StaffLogin, db: AsyncSession = Depends(get_db)
                 msg=ban_msg,
                 status_code=403
             )
-    
+    # 登录风险检测(成功认证后执行)
+    try:
+        await risk_detection_service.detect_login_risk(db, user.user_id, request.client.host if request.client else "unknown")
+    except Exception:
+        pass
+
     # 生成并保存 token
     token = create_access_token({"sub": str(user.user_id)})
     
