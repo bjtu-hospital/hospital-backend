@@ -1908,7 +1908,7 @@ Authorization: Bearer <token>
 
 ## 9. 用户风险管理接口（管理员专用）
 
-### 9.1 获取用户列表（按风险/封禁状态筛选）Get: `/admin/anti-scalper/users`
+### 9.1 获取风险用户列表 Get: `/admin/anti-scalper/users`
 
 管理员获取用户列表，支持按风险等级和封禁状态筛选。
 
@@ -1918,28 +1918,33 @@ Authorization: Bearer <token>
 ```
 
 #### Query 参数:
-- `risk_level` (可选): 风险等级筛选 (`low` / `medium` / `high`)
-- `is_banned` (可选): 封禁状态筛选 (`true` / `false`)
+- `user_type` (可选): 用户类型筛选，默认 `normal`
+  - `high`: 高风险用户（风险等级为 MEDIUM 或 HIGH）
+  - `low`: 低风险用户（风险等级为 LOW）
+  - `normal`: 正常用户（无风险记录或风险等级为 SAFE）
+  - `banned`: 已封禁用户
 - `page` (可选): 页码，默认 1
-- `page_size` (可选): 每页数量，默认 20
+- `page_size` (可选): 每页数量，默认 10
 
 #### 输出:
 ```json
 {
     "code": 0,
     "message": {
+        "total": 1,
+        "page": 1,
+        "page_size": 10,
         "users": [
             {
                 "user_id": 12,
                 "username": "user12@example.com",
-                "latest_risk_score": 85,
-                "latest_risk_level": "high",
-                "is_banned": true
+                "risk_score": 85,
+                "risk_level": "HIGH",
+                "banned": true,
+                "ban_type": "all",
+                "ban_until": "2025-12-14T01:24:39"
             }
-        ],
-        "total": 1,
-        "page": 1,
-        "page_size": 20
+        ]
     }
 }
 ```
@@ -1962,25 +1967,32 @@ Authorization: Bearer <token>
     "message": {
         "user_id": 12,
         "username": "user12@example.com",
-        "email": "user12@example.com",
-        "phonenumber": null,
-        "user_type": "EXTERNAL",
+        "is_admin": false,
+        "risk_score": 85,
+        "risk_level": "HIGH",
+        "ban_active": true,
+        "ban_type": "all",
+        "ban_until": "2025-12-14T01:24:39",
+        "ban_reason": "风险分数达到 92",
+        "unban_time": null,
         "risk_logs": [
             {
                 "log_id": 123,
-                "risk_score": 85,
-                "risk_level": "high",
-                "alert_time": "2025-11-10T14:30:00"
+                "risk_score": 60,
+                "risk_level": "MEDIUM",
+                "behavior_type": "no_show",
+                "description": "2 次爽约累积 +60",
+                "alert_time": "2025-11-14T01:24:39"
             }
         ],
         "ban_records": [
             {
                 "ban_id": 5,
-                "ban_type": "login",
-                "ban_until": "2025-11-17T14:30:00",
+                "ban_type": "all",
+                "ban_until": "2025-12-14T01:24:39",
                 "is_active": true,
-                "reason": "多次异常行为检测",
-                "banned_at": "2025-11-10T14:30:00",
+                "reason": "风险分数达到 92",
+                "banned_at": "2025-11-14T01:24:39",
                 "deactivated_at": null
             }
         ]
@@ -1992,7 +2004,7 @@ Authorization: Bearer <token>
 
 ### 9.3 获取用户统计信息（时间范围内行为） Get: `/admin/anti-scalper/users/{user_id}/stats` 
 
-管理员查看指定用户在时间范围内的行为统计（挂号、登录次数）。
+管理员查看指定用户在时间范围内的行为统计（挂号、取消、爽约、登录次数等）。
 
 #### Header:
 ```
@@ -2011,7 +2023,14 @@ Authorization: Bearer <token>
         "user_id": 12,
         "start_date": "2025-11-01",
         "end_date": "2025-11-14",
-        "registration_count": 15,
+        "total_registrations": 15,
+        "total_cancellations": 3,
+        "cancellation_rate": 0.2,
+        "total_completed": 10,
+        "total_no_show": 2,
+        "total_confirmed": 0,
+        "total_pending": 0,
+        "total_waitlist": 0,
         "login_count": 8
     }
 }
@@ -2019,9 +2038,9 @@ Authorization: Bearer <token>
 
 ---
 
-### 9.4 封禁用户 Post: `/admin/anti-scalper/users/{user_id}/ban`
+### 9.4 封禁用户 Post: `/admin/anti-scalper/ban`
 
-管理员封禁指定用户，禁止其注册、登录或全部操作。
+管理员封禁指定用户，禁止其注册、登录或全部操作。如果用户已有封禁记录，则更新现有记录。
 
 #### Header:
 ```
@@ -2031,6 +2050,7 @@ Authorization: Bearer <token>
 #### Body:
 ```json
 {
+    "user_id": 12,
     "ban_type": "login",
     "duration_days": 7,
     "reason": "多次异常行为检测"
@@ -2038,28 +2058,31 @@ Authorization: Bearer <token>
 ```
 
 参数说明：
-- `ban_type`: 封禁类型
+- `user_id` (必需): 要封禁的用户ID
+- `ban_type` (必需): 封禁类型
   - `register` - 禁止注册新号
   - `login` - 禁止登录
   - `all` - 全部禁止
-- `duration_days`: 封禁天数（可选，不传或为 0 表示永久封禁）
-- `reason`: 封禁原因（可选）
+- `duration_days` (可选): 封禁天数，不传或为 0 表示永久封禁
+- `reason` (可选): 封禁原因
 
 #### 输出:
 ```json
 {
     "code": 0,
     "message": {
-        "detail": "用户已被封禁",
-        "ban_id": 5,
-        "ban_until": "2025-11-21T14:30:00"
+        "detail": "封禁操作成功",
+        "user_id": 12,
+        "ban_type": "login",
+        "ban_until": "2025-11-21T14:30:00",
+        "is_active": true
     }
 }
 ```
 
 ---
 
-### 9.5 解封用户 Post: `/admin/anti-scalper/users/{user_id}/unban`
+### 9.5 解封用户 Post: `/admin/anti-scalper/unban`
 
 管理员解除用户的活跃封禁。
 
@@ -2068,19 +2091,27 @@ Authorization: Bearer <token>
 Authorization: Bearer <token>
 ```
 
-#### Body (可选):
+#### Body:
 ```json
 {
+    "user_id": 12,
     "reason": "申诉通过"
 }
 ```
+
+参数说明：
+- `user_id` (必需): 要解封的用户ID
+- `reason` (可选): 解封原因
 
 #### 输出:
 ```json
 {
     "code": 0,
     "message": {
-        "detail": "用户已解封"
+        "detail": "解除封禁成功",
+        "user_id": 12,
+        "ban_type": "login",
+        "unban_time": "2025-11-14T01:30:00"
     }
 }
 ```
@@ -2269,48 +2300,352 @@ Authorization: Bearer <token>
 - 大部分统计接口需登录鉴权（通过 `Authorization: Bearer <token>`），医院/院区/科室/医生级别的统计与排行榜要求用户为管理员（`is_admin==True`）。
 
 **通用参数**
-- `date` (query, string, 格式 `YYYY-MM-DD`): 统计日期。接口签名通常会在文档显示默认值为当天，但建议明确传参以避免 Swagger 自动填充造成误导。
+- `date` (query, string, 格式 `YYYY-MM-DD`): 统计日期。默认为当天，建议明确传参。
 - `date_range` (query, string): `today` / `7days` / `30days`。若同时传 `date_range`，`date_range` 优先于 `date`。
+  - `today`: 仅统计当天
+  - `7days`: 统计最近7天（含今天）
+  - `30days`: 统计最近30天（含今天）
 
-**注意**: 若 `date` 为空字符串或格式不正确，接口会返回错误提示（不会静默回退到今天）。
+**注意**: 
+- 若 `date` 为空字符串或格式不正确，接口会返回错误提示。
+- 所有统计排除 `status == 'cancelled'` 的挂号记录。
+- 收入统计基于 `Schedule.price` 字段。
 
-### 4.1 医院总体挂号统计
-- `GET /statistics/hospital/registrations`（管理员）
-- 参数: `date`, `date_range`
-- 返回: `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `completed_consultations`
+---
 
+### 4.1 医院总体挂号统计 Get: `/statistics/hospital/registrations`
 
-### 4.2 院区挂号统计
-- `GET /statistics/areas/{area_id}/registrations`（管理员）
-- 参数: `date`
-- 返回: `area_id`, `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `departments` (每项 `{ minor_dept_id, registrations, revenue }`)
+获取医院总体挂号统计数据（管理员专用）。
 
-### 4.3 科室挂号统计（含医生分解）
-- `GET /statistics/departments/{minor_dept_id}/registrations`（管理员）
-- 参数: `date`, `date_range`
-- 返回: `minor_dept_id`, `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `completed_consultations`, `doctors` (每项 `{ doctor_id, doctor_name, title, registrations, revenue }`)
+#### Header:
+```
+Authorization: Bearer <token>
+```
 
-### 4.4 医生挂号统计（含排班利用率）
-- `GET /statistics/doctors/{doctor_id}/registrations`（管理员）
-- 参数: `date`, `date_range`
-- 返回: `doctor_id`, `doctor_name`, `title`, `start_date`, `end_date`, `total_registrations`, `by_slot_type`, `total_revenue`, `completed_consultations`, `by_time_section`, `schedules` (包含 `utilization_rate`)
+#### Query 参数:
+- `date` (可选): 统计日期，格式 `YYYY-MM-DD`，默认当天
+- `date_range` (可选): 时间范围 `today`/`7days`/`30days`
 
-### 4.5 科室排行榜
-- `GET /statistics/departments/ranking`（管理员）
-- 参数: `date`, `order_by=registrations|revenue`, `limit`
-- 返回: `ranking` 列表（含 `minor_dept_id`, `dept_name`, `registrations`, `revenue`）
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "date": "2025-11-14",
+        "date_range": "today",
+        "start_date": "2025-11-14",
+        "end_date": "2025-11-14",
+        "total_registrations": 150,
+        "by_slot_type": {
+            "普通": 80,
+            "专家": 50,
+            "特需": 20
+        },
+        "total_revenue": 15000.0,
+        "completed_consultations": 120
+    }
+}
+```
 
-### 4.6 医生排行榜
-- `GET /statistics/doctors/ranking`（管理员）
-- 参数: `dept_id` (可选), `date`, `order_by`, `limit`
-- 返回: `ranking` 列表（含 `doctor_id`, `doctor_name`, `title`, `dept_name`, `registrations`, `revenue`）
+---
 
-### 4.7 用户统计
-- `GET /statistics/users`（登录用户）
-- 返回: `UserStatisticsResponse`（例如 `{ total_users: <int> }`）
+### 4.2 院区挂号统计 Get: `/statistics/areas/{area_id}/registrations`
 
-### 4.8 访问量统计
-- `GET /statistics/visits`（登录用户）
-- 参数: `compare_days`（默认见 `settings.COMPARE_DAYS`）
-- 返回: `VisitStatisticsResponse`（`total_visits`, `growth_percent`, `compare_days`）
+按院区统计挂号数据，包含分科室明细（管理员专用）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `area_id`: 院区ID
+
+#### Query 参数:
+- `date` (可选): 统计日期，格式 `YYYY-MM-DD`，默认当天
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "area_id": 1,
+        "start_date": "2025-11-14",
+        "end_date": "2025-11-14",
+        "total_registrations": 50,
+        "by_slot_type": {
+            "普通": 30,
+            "专家": 20
+        },
+        "total_revenue": 5000.0,
+        "departments": [
+            {
+                "minor_dept_id": 10,
+                "registrations": 30,
+                "revenue": 3000.0
+            },
+            {
+                "minor_dept_id": 11,
+                "registrations": 20,
+                "revenue": 2000.0
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 4.3 科室挂号统计 Get: `/statistics/departments/{minor_dept_id}/registrations`
+
+获取某小科室的挂号统计，包含按医生分解（管理员专用）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `minor_dept_id`: 小科室ID
+
+#### Query 参数:
+- `date` (可选): 统计日期，格式 `YYYY-MM-DD`，默认当天
+- `date_range` (可选): 时间范围 `today`/`7days`/`30days`
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "minor_dept_id": 10,
+        "start_date": "2025-11-14",
+        "end_date": "2025-11-14",
+        "total_registrations": 30,
+        "by_slot_type": {
+            "普通": 20,
+            "专家": 10
+        },
+        "total_revenue": 3000.0,
+        "completed_consultations": 25,
+        "doctors": [
+            {
+                "doctor_id": 5,
+                "doctor_name": "张医生",
+                "title": "主任医师",
+                "registrations": 20,
+                "revenue": 2000.0
+            },
+            {
+                "doctor_id": 6,
+                "doctor_name": "李医生",
+                "title": "副主任医师",
+                "registrations": 10,
+                "revenue": 1000.0
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 4.4 医生挂号统计 Get: `/statistics/doctors/{doctor_id}/registrations`
+
+获取某医生的详细挂号统计，包含排班利用率（管理员专用）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `doctor_id`: 医生ID
+
+#### Query 参数:
+- `date` (可选): 统计日期，格式 `YYYY-MM-DD`，默认当天
+- `date_range` (可选): 时间范围 `today`/`7days`/`30days`
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "doctor_id": 5,
+        "doctor_name": "张医生",
+        "title": "主任医师",
+        "dept_name": null,
+        "start_date": "2025-11-14",
+        "end_date": "2025-11-14",
+        "total_registrations": 20,
+        "by_slot_type": {
+            "普通": 12,
+            "专家": 8
+        },
+        "total_revenue": 2000.0,
+        "completed_consultations": 18,
+        "by_time_section": {
+            "上午": 12,
+            "下午": 8
+        },
+        "schedules": [
+            {
+                "schedule_id": 100,
+                "clinic_name": "内科门诊",
+                "time_section": "上午",
+                "slot_type": "专家",
+                "registrations": 8,
+                "total_slots": 10,
+                "utilization_rate": 0.8
+            },
+            {
+                "schedule_id": 101,
+                "clinic_name": "内科门诊",
+                "time_section": "下午",
+                "slot_type": "普通",
+                "registrations": 12,
+                "total_slots": 15,
+                "utilization_rate": 0.8
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 4.5 科室排行榜 Get: `/statistics/departments/ranking`
+
+获取科室挂号排行榜（管理员专用）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `date` (可选): 统计日期，格式 `YYYY-MM-DD`，默认当天
+- `order_by` (可选): 排序依据，`registrations`（挂号数）或 `revenue`（收入），默认 `registrations`
+- `limit` (可选): 返回数量，默认 10
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "date": "2025-11-14",
+        "order_by": "registrations",
+        "ranking": [
+            {
+                "minor_dept_id": 10,
+                "dept_name": "内科",
+                "registrations": 50,
+                "revenue": 5000.0
+            },
+            {
+                "minor_dept_id": 11,
+                "dept_name": "外科",
+                "registrations": 40,
+                "revenue": 4500.0
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 4.6 医生排行榜 Get: `/statistics/doctors/ranking`
+
+获取医生挂号排行榜（管理员专用）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `dept_id` (可选): 限定科室ID，不传则全院统计
+- `date` (可选): 统计日期，格式 `YYYY-MM-DD`，默认当天
+- `order_by` (可选): 排序依据，`registrations`（挂号数）或 `revenue`（收入），默认 `registrations`
+- `limit` (可选): 返回数量，默认 10
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "date": "2025-11-14",
+        "order_by": "registrations",
+        "ranking": [
+            {
+                "doctor_id": 5,
+                "doctor_name": "张医生",
+                "title": "主任医师",
+                "dept_name": "内科",
+                "registrations": 30,
+                "revenue": 3000.0
+            },
+            {
+                "doctor_id": 6,
+                "doctor_name": "李医生",
+                "title": "副主任医师",
+                "dept_name": "外科",
+                "registrations": 25,
+                "revenue": 2800.0
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 4.7 用户统计 Get: `/statistics/users`
+
+获取系统用户总数（需登录）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "total_users": 1250
+    }
+}
+```
+
+---
+
+### 4.8 访问量统计 Get: `/statistics/visits`
+
+获取网站访问总量及增长比例（需登录）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `compare_days` (可选): 对比天数，默认 3 天
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "total_visits": 15000,
+        "growth_percent": 12.5,
+        "compare_days": 3
+    }
+}
+```
+
+**说明**: `growth_percent` 表示相对于 `compare_days` 天前的增长百分比。
+
+---
 

@@ -22,8 +22,9 @@ from app.schemas.config import SystemConfigRequest, SystemConfigResponse, Regist
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
 from app.models.user_ban import UserBan
 from app.models.risk_log import RiskLog
+from app.models.user_risk_summary import UserRiskSummary
 from app.models.registration_order import RegistrationOrder, OrderStatus
-from sqlalchemy import select, and_, delete, func
+from sqlalchemy import select, and_, delete, func, or_
 from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
 from app.schemas.audit import (
@@ -49,6 +50,8 @@ from app.schemas.anti_scalper import (
     AntiScalperUserStatsResponse,
     UserBanRequest,
     UserUnbanRequest,
+    RiskLogItem,
+    BanRecordItem,
 )
 
 
@@ -140,7 +143,7 @@ async def anti_scalper_users(
     current_user: UserSchema = Depends(get_current_user)
 ):
     """SEC-001 获取风险用户列表
-    user_type: high_risk | normal | banned
+    user_type: high | low | normal | banned
     分页返回用户基础信息 + 风险 + 封禁状态
     """
     try:
@@ -152,34 +155,46 @@ async def anti_scalper_users(
         banned_result = await db.execute(select(UserBan).where(UserBan.is_active == True))
         banned_records = banned_result.scalars().all()
         banned_map = {r.user_id: r for r in banned_records}
-
-        # 2. 获取高风险用户最新风险日志 (risk_score > 70)
-        high_risk_result = await db.execute(
-            select(RiskLog).where(RiskLog.risk_score > 70).order_by(RiskLog.alert_time.desc())
-        )
-        high_risk_logs = high_risk_result.scalars().all()
-        # 取每个 user 的最新
-        latest_high_risk: dict[int, RiskLog] = {}
-        for log in high_risk_logs:
-            if log.user_id not in latest_high_risk:
-                latest_high_risk[log.user_id] = log
-
-        # 3. 获取所有用户（用于 normal 场景）
+        
+        # 2. 获取所有用户（用于 normal 场景）
         users_result = await db.execute(select(User))
         all_users = users_result.scalars().all()
 
-        if user_type not in {"high_risk", "normal", "banned"}:
+        # 3. 预取这些用户的风险汇总
+        user_ids_all = [u.user_id for u in all_users]
+        summary_map = {}
+        if user_ids_all:
+            sum_result = await db.execute(
+                select(UserRiskSummary).where(UserRiskSummary.user_id.in_(user_ids_all))
+            )
+            summaries = sum_result.scalars().all()
+            summary_map = {s.user_id: s for s in summaries}
+
+        if user_type not in {"high", "low", "normal", "banned"}:
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="user_type 无效")
 
         filtered: List[User] = []
         if user_type == "banned":
             filtered = [u for u in all_users if u.user_id in banned_map]
-        elif user_type == "high_risk":
-            filtered = [u for u in all_users if u.user_id in latest_high_risk]
-        else:  # normal
+        elif user_type == "high":
+            # 高风险用户: 风险等级为 MEDIUM 或 HIGH
             filtered = [
                 u for u in all_users
-                if u.user_id not in banned_map and u.user_id not in latest_high_risk
+                if summary_map.get(u.user_id) and summary_map[u.user_id].current_level in ('MEDIUM', 'HIGH')
+            ]
+        elif user_type == "low":
+            # 低风险用户: 风险等级为 LOW
+            filtered = [
+                u for u in all_users
+                if summary_map.get(u.user_id) and summary_map[u.user_id].current_level == 'LOW'
+            ]
+        else:  # normal
+            # 正常用户: 未被封禁且（无风险汇总或风险等级为 SAFE）
+            filtered = [
+                u for u in all_users
+                if u.user_id not in banned_map and (
+                    not summary_map.get(u.user_id) or summary_map[u.user_id].current_level == 'SAFE'
+                )
             ]
 
         total = len(filtered)
@@ -188,26 +203,15 @@ async def anti_scalper_users(
         page_slice = filtered[start:end]
 
         items: List[AntiScalperUserItem] = []
-        # 预加载这些用户的最新风险记录（包括非高风险的）
-        user_ids_page = [u.user_id for u in page_slice]
-        risk_logs_page_result = await db.execute(
-            select(RiskLog).where(RiskLog.user_id.in_(user_ids_page)).order_by(RiskLog.alert_time.desc())
-        )
-        risk_logs_page = risk_logs_page_result.scalars().all()
-        latest_risk_any: dict[int, RiskLog] = {}
-        for log in risk_logs_page:
-            if log.user_id not in latest_risk_any:
-                latest_risk_any[log.user_id] = log
-
         for u in page_slice:
             ban_rec = banned_map.get(u.user_id)
-            risk_log = latest_risk_any.get(u.user_id)
+            summary = summary_map.get(u.user_id)
             items.append(
                 AntiScalperUserItem(
                     user_id=u.user_id,
                     username=u.email or u.phonenumber or u.identifier,
-                    risk_level=risk_log.risk_level if risk_log else None,
-                    risk_score=risk_log.risk_score if risk_log else None,
+                    risk_level=(summary.current_level if summary else None),
+                    risk_score=(summary.current_score if summary else None),
                     banned=ban_rec is not None,
                     ban_type=ban_rec.ban_type if ban_rec else None,
                     ban_until=ban_rec.ban_until if ban_rec else None
@@ -240,25 +244,51 @@ async def anti_scalper_user_detail(
         if not db_user:
             raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="用户不存在", status_code=404)
 
-        ban_result = await db.execute(select(UserBan).where(and_(UserBan.user_id == user_id, UserBan.is_active == True)))  # noqa: E712
-        ban_rec = ban_result.scalar_one_or_none()
+        # 风险汇总
+        sum_res = await db.execute(select(UserRiskSummary).where(UserRiskSummary.user_id == user_id))
+        summary = sum_res.scalar_one_or_none()
 
-        risk_result = await db.execute(
-            select(RiskLog).where(RiskLog.user_id == user_id).order_by(RiskLog.alert_time.desc())
-        )
-        risk_log = risk_result.scalars().first()
+        # 所有封禁记录（按时间倒序）
+        bans_res = await db.execute(select(UserBan).where(UserBan.user_id == user_id).order_by(UserBan.create_time.desc()))
+        bans = bans_res.scalars().all()
+        active_ban = next((b for b in bans if b.is_active), None)
+
+        # 最近的风险日志（可选限制数量）
+        rlogs_res = await db.execute(select(RiskLog).where(RiskLog.user_id == user_id).order_by(RiskLog.alert_time.desc()))
+        rlogs = rlogs_res.scalars().all()
 
         detail = AntiScalperUserDetailResponse(
             user_id=db_user.user_id,
             username=db_user.email or db_user.phonenumber or db_user.identifier,
             is_admin=db_user.is_admin,
-            risk_score=risk_log.risk_score if risk_log else None,
-            risk_level=risk_log.risk_level if risk_log else None,
-            ban_active=ban_rec.is_active if ban_rec else False,
-            ban_type=ban_rec.ban_type if ban_rec else None,
-            ban_until=ban_rec.ban_until if ban_rec else None,
-            ban_reason=ban_rec.reason if ban_rec else None,
-            unban_time=ban_rec.unban_time if ban_rec else None
+            risk_score=(summary.current_score if summary else None),
+            risk_level=(summary.current_level if summary else None),
+            ban_active=active_ban.is_active if active_ban else False,
+            ban_type=active_ban.ban_type if active_ban else None,
+            ban_until=active_ban.ban_until if active_ban else None,
+            ban_reason=active_ban.reason if active_ban else None,
+            unban_time=active_ban.unban_time if active_ban else None,
+            risk_logs=[
+                RiskLogItem(
+                    log_id=rl.risk_log_id,
+                    risk_score=rl.risk_score,
+                    risk_level=rl.risk_level,
+                    behavior_type=rl.behavior_type,
+                    description=rl.description,
+                    alert_time=rl.alert_time,
+                ) for rl in rlogs
+            ],
+            ban_records=[
+                BanRecordItem(
+                    ban_id=b.ban_id,
+                    ban_type=b.ban_type,
+                    ban_until=b.ban_until,
+                    is_active=b.is_active,
+                    reason=b.reason,
+                    banned_at=b.create_time,
+                    deactivated_at=b.unban_time
+                ) for b in bans
+            ]
         )
         return ResponseModel(code=0, message=detail)
     except AuthHTTPException:
@@ -309,18 +339,32 @@ async def anti_scalper_user_stats(
         total_cancellations = sum(1 for o in orders if o.status == OrderStatus.CANCELLED)
         cancellation_rate = round(total_cancellations / total_registrations, 4) if total_registrations else 0.0
 
-        # 可选: 访问日志次数
+        # 细分各状态数量
+        total_completed = sum(1 for o in orders if o.status == OrderStatus.COMPLETED)
+        total_no_show = sum(1 for o in orders if o.status == OrderStatus.NO_SHOW)
+        total_confirmed = sum(1 for o in orders if o.status == OrderStatus.CONFIRMED)
+        total_pending = sum(1 for o in orders if o.status == OrderStatus.PENDING)
+        total_waitlist = sum(1 for o in orders if o.status == OrderStatus.WAITLIST)
 
-        access_count_result = await db.execute(
+        # 登录次数（统计成功登录请求）
+        start_dt = datetime.combine(sd, datetime.min.time())
+        end_dt = datetime.combine(ed, datetime.max.time())
+        login_count_result = await db.execute(
             select(func.count()).where(
                 and_(
                     UserAccessLog.user_id == user_id,
-                    UserAccessLog.access_time >= datetime.combine(sd, datetime.min.time()),
-                    UserAccessLog.access_time <= datetime.combine(ed, datetime.max.time())
+                    UserAccessLog.status_code == 200,
+                    UserAccessLog.access_time >= start_dt,
+                    UserAccessLog.access_time <= end_dt,
+                    or_(
+                        UserAccessLog.url.contains("/auth/patient/login"),
+                        UserAccessLog.url.contains("/auth/staff/login"),
+                        UserAccessLog.url.contains("/auth/swagger-login"),
+                    )
                 )
             )
         )
-        access_logs = access_count_result.scalar_one()
+        login_count = login_count_result.scalar_one()
 
         stats = AntiScalperUserStatsResponse(
             user_id=user_id,
@@ -329,7 +373,12 @@ async def anti_scalper_user_stats(
             total_registrations=total_registrations,
             total_cancellations=total_cancellations,
             cancellation_rate=cancellation_rate,
-            access_logs=access_logs
+            total_completed=total_completed,
+            total_no_show=total_no_show,
+            total_confirmed=total_confirmed,
+            total_pending=total_pending,
+            total_waitlist=total_waitlist,
+            login_count=login_count
         )
         return ResponseModel(code=0, message=stats)
     except AuthHTTPException:
