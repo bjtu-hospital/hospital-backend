@@ -34,6 +34,8 @@ from app.models.visit_history import VisitHistory # noqa
 from app.models.schedule_audit import ScheduleAudit # noqa
 from app.models.leave_audit import LeaveAudit # noqa
 from app.models.add_slot_audit import AddSlotAudit # noqa
+from app.models.user_ban import UserBan # noqa
+from app.models.risk_log import RiskLog # noqa
 
 #异步获取事务函数
 async def get_db():
