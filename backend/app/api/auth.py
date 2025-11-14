@@ -14,6 +14,7 @@ from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleRespo
 from app.db.base import get_db, redis, User, UserAccessLog, Administrator
 from app.models.user import UserType
 from app.models.patient import Patient, PatientType, Gender
+from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 
@@ -78,6 +79,26 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
             raise HTTPException(status_code=401, detail="用户不存在或已被删除")
         if not user.is_verified:
             raise HTTPException(status_code=401, detail="邮箱未验证，请先完成邮箱验证")
+        
+        # 检查用户是否被封禁
+        ban_result = await db.execute(
+            select(UserBan).where(
+                and_(
+                    UserBan.user_id == user.user_id,
+                    UserBan.is_active == True  # noqa: E712
+                )
+            )
+        )
+        active_ban = ban_result.scalar_one_or_none()
+        if active_ban:
+            # 检查封禁类型是否影响登录
+            if active_ban.ban_type in ('login', 'all'):
+                ban_msg = f"账号已被封禁，原因: {active_ban.reason or '未说明'}";
+                if active_ban.ban_until:
+                    ban_msg += f"，封禁至: {active_ban.ban_until.strftime('%Y-%m-%d %H:%M:%S')}"
+                else:
+                    ban_msg += "，永久封禁"
+                raise HTTPException(status_code=403, detail=ban_msg)
 
         now_ts = int(time.time())
         login_ip = request.client.host if request.client else "unknown"
@@ -123,6 +144,30 @@ async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get
             status_code=401
         )
     
+    # 检查用户是否被封禁
+    ban_result = await db.execute(
+        select(UserBan).where(
+            and_(
+                UserBan.user_id == user.user_id,
+                UserBan.is_active == True  
+            )
+        )
+    )
+    active_ban = ban_result.scalar_one_or_none()
+    if active_ban:
+        # 检查封禁类型是否影响登录
+        if active_ban.ban_type in ('login', 'all'):
+            ban_msg = f"账号已被封禁，原因: {active_ban.reason or '未说明'}";
+            if active_ban.ban_until:
+                ban_msg += f"，封禁至: {active_ban.ban_until.strftime('%Y-%m-%d %H:%M:%S')}"
+            else:
+                ban_msg += "，永久封禁"
+            raise AuthHTTPException(
+                code=settings.LOGIN_FAILED_CODE,
+                msg=ban_msg,
+                status_code=403
+            )
+    
     # 生成并保存 token
     token = create_access_token({"sub": str(user.user_id)})
     
@@ -157,6 +202,30 @@ async def staff_login(login_data: StaffLogin, db: AsyncSession = Depends(get_db)
             msg="用户不存在或密码错误",
             status_code=401
         )
+    
+    # 检查用户是否被封禁
+    ban_result = await db.execute(
+        select(UserBan).where(
+            and_(
+                UserBan.user_id == user.user_id,
+                UserBan.is_active == True  # noqa: E712
+            )
+        )
+    )
+    active_ban = ban_result.scalar_one_or_none()
+    if active_ban:
+        # 检查封禁类型是否影响登录
+        if active_ban.ban_type in ('login', 'all'):
+            ban_msg = f"账号已被封禁，原因: {active_ban.reason or '未说明'}";
+            if active_ban.ban_until:
+                ban_msg += f"，封禁至: {active_ban.ban_until.strftime('%Y-%m-%d %H:%M:%S')}"
+            else:
+                ban_msg += "，永久封禁"
+            raise AuthHTTPException(
+                code=settings.LOGIN_FAILED_CODE,
+                msg=ban_msg,
+                status_code=403
+            )
     
     # 生成并保存 token
     token = create_access_token({"sub": str(user.user_id)})

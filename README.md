@@ -1903,7 +1903,190 @@ Authorization: Bearer <token>
   - 普通门诊 (0) → `["普通"]`
   - 专家门诊 (1) → `["普通", "专家"]`
   - 特需门诊 (2) → `["普通", "专家", "特需"]`
+
 ---
+
+## 9. 用户风险管理接口（管理员专用）
+
+### 9.1 获取用户列表（按风险/封禁状态筛选）Get: `/admin/anti-scalper/users`
+
+管理员获取用户列表，支持按风险等级和封禁状态筛选。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `risk_level` (可选): 风险等级筛选 (`low` / `medium` / `high`)
+- `is_banned` (可选): 封禁状态筛选 (`true` / `false`)
+- `page` (可选): 页码，默认 1
+- `page_size` (可选): 每页数量，默认 20
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "users": [
+            {
+                "user_id": 12,
+                "username": "user12@example.com",
+                "latest_risk_score": 85,
+                "latest_risk_level": "high",
+                "is_banned": true
+            }
+        ],
+        "total": 1,
+        "page": 1,
+        "page_size": 20
+    }
+}
+```
+
+---
+
+### 9.2 获取用户详细信息 Get: `/admin/anti-scalper/users/{user_id}`
+
+管理员查看指定用户的详细风险信息和封禁记录。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "user_id": 12,
+        "username": "user12@example.com",
+        "email": "user12@example.com",
+        "phonenumber": null,
+        "user_type": "EXTERNAL",
+        "risk_logs": [
+            {
+                "log_id": 123,
+                "risk_score": 85,
+                "risk_level": "high",
+                "alert_time": "2025-11-10T14:30:00"
+            }
+        ],
+        "ban_records": [
+            {
+                "ban_id": 5,
+                "ban_type": "login",
+                "ban_until": "2025-11-17T14:30:00",
+                "is_active": true,
+                "reason": "多次异常行为检测",
+                "banned_at": "2025-11-10T14:30:00",
+                "deactivated_at": null
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 9.3 获取用户统计信息（时间范围内行为） Get: `/admin/anti-scalper/users/{user_id}/stats` 
+
+管理员查看指定用户在时间范围内的行为统计（挂号、登录次数）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `start_date` (必需): 开始日期，格式 `YYYY-MM-DD`
+- `end_date` (必需): 结束日期，格式 `YYYY-MM-DD`
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "user_id": 12,
+        "start_date": "2025-11-01",
+        "end_date": "2025-11-14",
+        "registration_count": 15,
+        "login_count": 8
+    }
+}
+```
+
+---
+
+### 9.4 封禁用户 Post: `/admin/anti-scalper/users/{user_id}/ban`
+
+管理员封禁指定用户，禁止其注册、登录或全部操作。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Body:
+```json
+{
+    "ban_type": "login",
+    "duration_days": 7,
+    "reason": "多次异常行为检测"
+}
+```
+
+参数说明：
+- `ban_type`: 封禁类型
+  - `register` - 禁止注册新号
+  - `login` - 禁止登录
+  - `all` - 全部禁止
+- `duration_days`: 封禁天数（可选，不传或为 0 表示永久封禁）
+- `reason`: 封禁原因（可选）
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "用户已被封禁",
+        "ban_id": 5,
+        "ban_until": "2025-11-21T14:30:00"
+    }
+}
+```
+
+---
+
+### 9.5 解封用户 Post: `/admin/anti-scalper/users/{user_id}/unban`
+
+管理员解除用户的活跃封禁。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Body (可选):
+```json
+{
+    "reason": "申诉通过"
+}
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "用户已解封"
+    }
+}
+```
+
+---
+
 
 # 三、认证 API 接口详情
 

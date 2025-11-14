@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
 from sqlalchemy.orm.attributes import flag_modified
-from typing import Optional, Union
+from typing import Optional, Union, List
 import logging
 import os
 import time
@@ -12,6 +12,7 @@ import aiofiles
 from app.core.security import get_hash_pwd
 from datetime import datetime, date, timedelta
 from app.api.auth import get_current_user
+from app.models.user_access_log import UserAccessLog
 from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicUpdate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
 from app.schemas.admin import AddSlotAuditListResponse, AddSlotAuditResponse
 from app.schemas.response import (
@@ -19,6 +20,10 @@ from app.schemas.response import (
 )
 from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
+from app.models.user_ban import UserBan
+from app.models.risk_log import RiskLog
+from app.models.registration_order import RegistrationOrder, OrderStatus
+from sqlalchemy import select, and_, delete, func
 from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
 from app.schemas.audit import (
@@ -35,6 +40,15 @@ from app.services.admin_helpers import (
     _str_to_slot_type,
     get_administrator_id,
     calculate_leave_days
+)
+
+from app.schemas.anti_scalper import (
+    AntiScalperUserItem,
+    AntiScalperUserListResponse,
+    AntiScalperUserDetailResponse,
+    AntiScalperUserStatsResponse,
+    UserBanRequest,
+    UserUnbanRequest,
 )
 
 
@@ -102,6 +116,322 @@ async def create_major_department(
             msg="内部服务异常",
             status_code=500
         )
+
+
+# ====== 防黄牛(anti-scalper) 管理接口 ======
+
+
+
+def _ensure_admin(current_user: UserSchema):
+    if not getattr(current_user, "is_admin", False):
+        raise AuthHTTPException(
+            code=settings.INSUFFICIENT_AUTHORITY_CODE,
+            msg="仅管理员可操作",
+            status_code=403
+        )
+
+
+@router.get("/anti-scalper/users", response_model=ResponseModel[Union[AntiScalperUserListResponse, AuthErrorResponse]])
+async def anti_scalper_users(
+    user_type: Optional[str] = "normal",
+    page: int = 1,
+    page_size: int = 10,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """SEC-001 获取风险用户列表
+    user_type: high_risk | normal | banned
+    分页返回用户基础信息 + 风险 + 封禁状态
+    """
+    try:
+        _ensure_admin(current_user)
+        if page <= 0 or page_size <= 0:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="分页参数必须为正整数")
+
+        # 1. 获取所有活跃封禁记录
+        banned_result = await db.execute(select(UserBan).where(UserBan.is_active == True))
+        banned_records = banned_result.scalars().all()
+        banned_map = {r.user_id: r for r in banned_records}
+
+        # 2. 获取高风险用户最新风险日志 (risk_score > 70)
+        high_risk_result = await db.execute(
+            select(RiskLog).where(RiskLog.risk_score > 70).order_by(RiskLog.alert_time.desc())
+        )
+        high_risk_logs = high_risk_result.scalars().all()
+        # 取每个 user 的最新
+        latest_high_risk: dict[int, RiskLog] = {}
+        for log in high_risk_logs:
+            if log.user_id not in latest_high_risk:
+                latest_high_risk[log.user_id] = log
+
+        # 3. 获取所有用户（用于 normal 场景）
+        users_result = await db.execute(select(User))
+        all_users = users_result.scalars().all()
+
+        if user_type not in {"high_risk", "normal", "banned"}:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="user_type 无效")
+
+        filtered: List[User] = []
+        if user_type == "banned":
+            filtered = [u for u in all_users if u.user_id in banned_map]
+        elif user_type == "high_risk":
+            filtered = [u for u in all_users if u.user_id in latest_high_risk]
+        else:  # normal
+            filtered = [
+                u for u in all_users
+                if u.user_id not in banned_map and u.user_id not in latest_high_risk
+            ]
+
+        total = len(filtered)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_slice = filtered[start:end]
+
+        items: List[AntiScalperUserItem] = []
+        # 预加载这些用户的最新风险记录（包括非高风险的）
+        user_ids_page = [u.user_id for u in page_slice]
+        risk_logs_page_result = await db.execute(
+            select(RiskLog).where(RiskLog.user_id.in_(user_ids_page)).order_by(RiskLog.alert_time.desc())
+        )
+        risk_logs_page = risk_logs_page_result.scalars().all()
+        latest_risk_any: dict[int, RiskLog] = {}
+        for log in risk_logs_page:
+            if log.user_id not in latest_risk_any:
+                latest_risk_any[log.user_id] = log
+
+        for u in page_slice:
+            ban_rec = banned_map.get(u.user_id)
+            risk_log = latest_risk_any.get(u.user_id)
+            items.append(
+                AntiScalperUserItem(
+                    user_id=u.user_id,
+                    username=u.email or u.phonenumber or u.identifier,
+                    risk_level=risk_log.risk_level if risk_log else None,
+                    risk_score=risk_log.risk_score if risk_log else None,
+                    banned=ban_rec is not None,
+                    ban_type=ban_rec.ban_type if ban_rec else None,
+                    ban_until=ban_rec.ban_until if ban_rec else None
+                )
+            )
+
+        return ResponseModel(code=0, message=AntiScalperUserListResponse(total=total, page=page, page_size=page_size, users=items))
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取风险用户列表异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="内部服务异常", status_code=500)
+
+
+@router.get("/anti-scalper/users/{user_id}", response_model=ResponseModel[Union[AntiScalperUserDetailResponse, AuthErrorResponse]])
+async def anti_scalper_user_detail(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """SEC-002 获取单个用户风险与封禁详情"""
+    try:
+        _ensure_admin(current_user)
+        user_result = await db.execute(select(User).where(User.user_id == user_id))
+        db_user = user_result.scalar_one_or_none()
+        if not db_user:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="用户不存在", status_code=404)
+
+        ban_result = await db.execute(select(UserBan).where(and_(UserBan.user_id == user_id, UserBan.is_active == True)))  # noqa: E712
+        ban_rec = ban_result.scalar_one_or_none()
+
+        risk_result = await db.execute(
+            select(RiskLog).where(RiskLog.user_id == user_id).order_by(RiskLog.alert_time.desc())
+        )
+        risk_log = risk_result.scalars().first()
+
+        detail = AntiScalperUserDetailResponse(
+            user_id=db_user.user_id,
+            username=db_user.email or db_user.phonenumber or db_user.identifier,
+            is_admin=db_user.is_admin,
+            risk_score=risk_log.risk_score if risk_log else None,
+            risk_level=risk_log.risk_level if risk_log else None,
+            ban_active=ban_rec.is_active if ban_rec else False,
+            ban_type=ban_rec.ban_type if ban_rec else None,
+            ban_until=ban_rec.ban_until if ban_rec else None,
+            ban_reason=ban_rec.reason if ban_rec else None,
+            unban_time=ban_rec.unban_time if ban_rec else None
+        )
+        return ResponseModel(code=0, message=detail)
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取用户风险详情异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="内部服务异常", status_code=500)
+
+
+@router.get("/anti-scalper/users/{user_id}/stats", response_model=ResponseModel[Union[AntiScalperUserStatsResponse, AuthErrorResponse]])
+async def anti_scalper_user_stats(
+    user_id: int,
+    start_date: date,
+    end_date: date,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """SEC-003 用户在时间段内的行为统计 (挂号/取消等)"""
+    try:
+        _ensure_admin(current_user)
+        # 校验用户存在
+        user_result = await db.execute(select(User).where(User.user_id == user_id))
+        if not user_result.scalar_one_or_none():
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="用户不存在", status_code=404)
+
+        if start_date > end_date:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="开始日期不能大于结束日期")
+        
+        sd = start_date
+        ed = end_date
+
+        # 查询挂号记录
+        regs_result = await db.execute(
+            select(RegistrationOrder).where(
+                and_(
+                    RegistrationOrder.user_id == user_id,
+                    RegistrationOrder.slot_date >= sd,
+                    RegistrationOrder.slot_date <= ed
+                )
+            )
+        )
+        orders = regs_result.scalars().all()
+        total_registrations = len(orders)
+        total_cancellations = sum(1 for o in orders if o.status == OrderStatus.CANCELLED)
+        cancellation_rate = round(total_cancellations / total_registrations, 4) if total_registrations else 0.0
+
+        # 可选: 访问日志次数
+
+        access_count_result = await db.execute(
+            select(func.count()).where(
+                and_(
+                    UserAccessLog.user_id == user_id,
+                    UserAccessLog.access_time >= datetime.combine(sd, datetime.min.time()),
+                    UserAccessLog.access_time <= datetime.combine(ed, datetime.max.time())
+                )
+            )
+        )
+        access_logs = access_count_result.scalar_one()
+
+        stats = AntiScalperUserStatsResponse(
+            user_id=user_id,
+            start_date=sd,
+            end_date=ed,
+            total_registrations=total_registrations,
+            total_cancellations=total_cancellations,
+            cancellation_rate=cancellation_rate,
+            access_logs=access_logs
+        )
+        return ResponseModel(code=0, message=stats)
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取用户统计异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="内部服务异常", status_code=500)
+
+
+@router.post("/anti-scalper/ban", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def anti_scalper_ban_user(
+    data: UserBanRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """SEC-004 执行用户封禁 / 覆盖更新封禁记录"""
+    try:
+        _ensure_admin(current_user)
+        # 校验用户存在
+        user_result = await db.execute(select(User).where(User.user_id == data.user_id))
+        if not user_result.scalar_one_or_none():
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="用户不存在", status_code=404)
+
+        # 查找现有封禁记录
+        ban_result = await db.execute(select(UserBan).where(UserBan.user_id == data.user_id))
+        ban_rec = ban_result.scalar_one_or_none()
+        if ban_rec:
+            # 更新
+            ban_rec.ban_type = data.ban_type
+            ban_rec.is_active = True
+            ban_rec.apply_duration(data.duration_days)
+            ban_rec.reason = data.reason
+        else:
+            ban_rec = UserBan(
+                user_id=data.user_id,
+                ban_type=data.ban_type,
+                is_active=True,
+                reason=data.reason
+            )
+            ban_rec.apply_duration(data.duration_days)
+            db.add(ban_rec)
+
+        await db.commit()
+        await db.refresh(ban_rec)
+
+        return ResponseModel(code=0, message={
+            "detail": "封禁操作成功",
+            "user_id": data.user_id,
+            "ban_type": ban_rec.ban_type,
+            "ban_until": ban_rec.ban_until.isoformat() if ban_rec.ban_until else None,
+            "is_active": ban_rec.is_active
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"用户封禁异常: {e}")
+        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="内部服务异常", status_code=500)
+
+
+@router.post("/anti-scalper/unban", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def anti_scalper_unban_user(
+    data: UserUnbanRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """SEC-005 解除用户封禁"""
+    try:
+        _ensure_admin(current_user)
+        ban_result = await db.execute(
+            select(UserBan).where(and_(UserBan.user_id == data.user_id, UserBan.is_active == True))  # noqa: E712
+        )
+        ban_rec = ban_result.scalar_one_or_none()
+        if not ban_rec:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="该用户当前无有效封禁", status_code=404)
+
+        ban_rec.deactivate(extra_reason=data.reason)
+        await db.commit()
+        await db.refresh(ban_rec)
+
+        return ResponseModel(code=0, message={
+            "detail": "解除封禁成功",
+            "user_id": data.user_id,
+            "ban_type": ban_rec.ban_type,
+            "unban_time": ban_rec.unban_time.isoformat() if ban_rec.unban_time else None
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"解除封禁异常: {e}")
+        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="内部服务异常", status_code=500)
 
 
 @router.get("/major-departments", response_model=ResponseModel[Union[MajorDepartmentListResponse, AuthErrorResponse]])
