@@ -11,7 +11,7 @@
  Target Server Version : 80041 (8.0.41)
  File Encoding         : 65001
 
- Date: 14/11/2025 08:30:04
+ Date: 14/11/2025 09:56:27
 */
 
 SET NAMES utf8mb4;
@@ -1600,66 +1600,58 @@ DROP TABLE IF EXISTS `risk_log`;
 CREATE TABLE `risk_log`  (
   `risk_log_id` int NOT NULL AUTO_INCREMENT COMMENT '风险日志ID',
   `user_id` int NOT NULL COMMENT '关联用户ID',
-  `risk_score` int NOT NULL COMMENT '风险分值',
-  `risk_level` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '风险等级',
+  `risk_score` int NOT NULL COMMENT '本次分数变化',
+  `risk_level` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '操作后的风险等级',
+  `behavior_type` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '行为类型标识',
+  `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '行为描述',
   `alert_time` datetime NOT NULL COMMENT '记录时间',
   PRIMARY KEY (`risk_log_id`) USING BTREE,
   INDEX `ix_risk_log_user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `risk_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 50 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 46 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of risk_log
 -- ----------------------------
-INSERT INTO `risk_log` VALUES (1, 3, 18, 'low', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (2, 3, 21, 'low', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (3, 3, 21, 'low', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (4, 3, 13, 'low', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (5, 3, 23, 'low', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (6, 3, 10, 'low', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (7, 3, 25, 'low', '2025-11-13 23:55:36');
-INSERT INTO `risk_log` VALUES (8, 4, 18, 'low', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (9, 4, 21, 'low', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (10, 4, 20, 'low', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (11, 4, 14, 'low', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (12, 4, 13, 'low', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (13, 4, 20, 'low', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (14, 4, 12, 'low', '2025-11-13 23:55:36');
-INSERT INTO `risk_log` VALUES (15, 5, 14, 'low', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (16, 5, 21, 'low', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (17, 5, 16, 'low', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (18, 5, 14, 'low', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (19, 5, 21, 'low', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (20, 5, 18, 'low', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (21, 5, 22, 'low', '2025-11-13 23:55:36');
-INSERT INTO `risk_log` VALUES (22, 10, 55, 'medium', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (23, 10, 47, 'medium', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (24, 10, 45, 'medium', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (25, 10, 42, 'medium', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (26, 10, 53, 'medium', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (27, 10, 49, 'medium', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (28, 10, 48, 'medium', '2025-11-13 23:55:36');
-INSERT INTO `risk_log` VALUES (29, 11, 41, 'medium', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (30, 11, 40, 'medium', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (31, 11, 41, 'medium', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (32, 11, 43, 'medium', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (33, 11, 45, 'medium', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (34, 11, 41, 'medium', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (35, 11, 54, 'medium', '2025-11-13 23:55:36');
-INSERT INTO `risk_log` VALUES (36, 12, 88, 'high', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (37, 12, 88, 'high', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (38, 12, 87, 'high', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (39, 12, 90, 'high', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (40, 12, 85, 'high', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (41, 12, 86, 'high', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (42, 12, 81, 'high', '2025-11-13 23:55:36');
-INSERT INTO `risk_log` VALUES (43, 13, 92, 'high', '2025-11-07 23:55:36');
-INSERT INTO `risk_log` VALUES (44, 13, 95, 'high', '2025-11-08 23:55:36');
-INSERT INTO `risk_log` VALUES (45, 13, 88, 'high', '2025-11-09 23:55:36');
-INSERT INTO `risk_log` VALUES (46, 13, 91, 'high', '2025-11-10 23:55:36');
-INSERT INTO `risk_log` VALUES (47, 13, 91, 'high', '2025-11-11 23:55:36');
-INSERT INTO `risk_log` VALUES (48, 13, 89, 'high', '2025-11-12 23:55:36');
-INSERT INTO `risk_log` VALUES (49, 13, 94, 'high', '2025-11-13 23:55:36');
+INSERT INTO `risk_log` VALUES (7, 10, 60, 'MEDIUM', 'no_show', '2 次爽约累积 +60', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (8, 10, 32, 'HIGH', 'frequent_cancel', '4 次取消累积 +32', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (9, 11, 60, 'MEDIUM', 'no_show', '2 次爽约累积 +60', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (10, 11, 32, 'HIGH', 'frequent_cancel', '4 次取消累积 +32', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (11, 12, 30, 'LOW', 'no_show', '1 次爽约累积 +30', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (12, 12, 16, 'LOW', 'frequent_cancel', '2 次取消累积 +16', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (13, 12, -5, 'LOW', 'positive_complete', '1 次完成就诊奖励 -5', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (14, 13, 30, 'LOW', 'no_show', '1 次爽约累积 +30', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (15, 13, 16, 'LOW', 'frequent_cancel', '2 次取消累积 +16', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (16, 13, -5, 'LOW', 'positive_complete', '1 次完成就诊奖励 -5', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (17, 14, 30, 'LOW', 'no_show', '1 次爽约累积 +30', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (18, 14, 16, 'LOW', 'frequent_cancel', '2 次取消累积 +16', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (19, 14, -5, 'LOW', 'positive_complete', '1 次完成就诊奖励 -5', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (20, 15, 30, 'LOW', 'no_show', '1 次爽约累积 +30', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (21, 15, 16, 'LOW', 'frequent_cancel', '2 次取消累积 +16', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (22, 15, -5, 'LOW', 'positive_complete', '1 次完成就诊奖励 -5', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (23, 16, 30, 'LOW', 'no_show', '1 次爽约累积 +30', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (24, 16, 16, 'LOW', 'frequent_cancel', '2 次取消累积 +16', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (25, 16, -5, 'LOW', 'positive_complete', '1 次完成就诊奖励 -5', '2025-11-14 01:24:39');
+INSERT INTO `risk_log` VALUES (26, 17, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (27, 17, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (28, 18, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (29, 18, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (30, 19, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (31, 19, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (32, 20, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (33, 20, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (34, 21, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (35, 21, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (36, 22, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (37, 22, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (38, 23, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (39, 23, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (40, 24, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (41, 24, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (42, 25, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (43, 25, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (44, 26, 8, 'SAFE', 'frequent_cancel', '1 次取消累积 +8', '2025-11-14 01:24:40');
+INSERT INTO `risk_log` VALUES (45, 26, -10, 'SAFE', 'positive_complete', '2 次完成就诊奖励 -10', '2025-11-14 01:24:40');
 
 -- ----------------------------
 -- Table structure for schedule
@@ -4869,7 +4861,7 @@ CREATE TABLE `user_access_log`  (
   PRIMARY KEY (`user_access_log_id`) USING BTREE,
   INDEX `user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `user_access_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 584 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 632 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of user_access_log
@@ -5457,6 +5449,54 @@ INSERT INTO `user_access_log` VALUES (580, NULL, '127.0.0.1', 'Mozilla/5.0 (Wind
 INSERT INTO `user_access_log` VALUES (581, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-14 08:21:23', 435);
 INSERT INTO `user_access_log` VALUES (582, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/11/stats?start_date=2025-11-06&end_date=2025-11-25', 'GET', 200, 0, '2025-11-14 08:22:42', 58);
 INSERT INTO `user_access_log` VALUES (583, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/11/stats?start_date=2025-11-08&end_date=2025-11-25', 'GET', 200, 0, '2025-11-14 08:23:01', 26);
+INSERT INTO `user_access_log` VALUES (584, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=10', 'GET', 200, 0, '2025-11-14 08:36:36', 31);
+INSERT INTO `user_access_log` VALUES (585, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/11/stats?start_date=2025-11-08&end_date=2025-11-25', 'GET', 200, 0, '2025-11-14 08:36:45', 42);
+INSERT INTO `user_access_log` VALUES (586, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-14 09:25:11', 0);
+INSERT INTO `user_access_log` VALUES (587, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-14 09:25:11', 200);
+INSERT INTO `user_access_log` VALUES (588, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, 98, '2025-11-14 09:25:14', 491);
+INSERT INTO `user_access_log` VALUES (589, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=10', 'GET', 200, 105, '2025-11-14 09:25:20', 6);
+INSERT INTO `user_access_log` VALUES (590, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, 98, '2025-11-14 09:25:46', 334);
+INSERT INTO `user_access_log` VALUES (591, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=10', 'GET', 200, 105, '2025-11-14 09:25:48', 3);
+INSERT INTO `user_access_log` VALUES (592, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/staff/login', 'POST', 200, 101, '2025-11-14 09:26:15', 516);
+INSERT INTO `user_access_log` VALUES (593, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/staff/login', 'POST', 200, 101, '2025-11-14 09:27:48', 494);
+INSERT INTO `user_access_log` VALUES (594, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-14 09:27:51', 0);
+INSERT INTO `user_access_log` VALUES (595, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-14 09:27:51', 3);
+INSERT INTO `user_access_log` VALUES (596, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, 98, '2025-11-14 09:28:14', 324);
+INSERT INTO `user_access_log` VALUES (597, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=10', 'GET', 200, 105, '2025-11-14 09:28:30', 3);
+INSERT INTO `user_access_log` VALUES (598, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/staff/login', 'POST', 200, 101, '2025-11-14 09:28:57', 357);
+INSERT INTO `user_access_log` VALUES (599, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/staff/login', 'POST', 200, 0, '2025-11-14 09:29:52', 440);
+INSERT INTO `user_access_log` VALUES (600, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-14 09:29:57', 348);
+INSERT INTO `user_access_log` VALUES (601, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=10', 'GET', 200, 0, '2025-11-14 09:30:03', 52);
+INSERT INTO `user_access_log` VALUES (602, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=high_risk&page=1&page_size=10', 'GET', 200, 0, '2025-11-14 09:30:15', 68);
+INSERT INTO `user_access_log` VALUES (603, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=banned&page=1&page_size=10', 'GET', 200, 0, '2025-11-14 09:30:24', 35);
+INSERT INTO `user_access_log` VALUES (604, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=low&page=1&page_size=10', 'GET', 200, 99, '2025-11-14 09:30:37', 56);
+INSERT INTO `user_access_log` VALUES (605, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/3', 'GET', 200, 0, '2025-11-14 09:30:54', 32);
+INSERT INTO `user_access_log` VALUES (606, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/5', 'GET', 200, 0, '2025-11-14 09:30:57', 27);
+INSERT INTO `user_access_log` VALUES (607, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/6', 'GET', 200, 301, '2025-11-14 09:31:00', 12);
+INSERT INTO `user_access_log` VALUES (608, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/10', 'GET', 200, 0, '2025-11-14 09:31:03', 47);
+INSERT INTO `user_access_log` VALUES (609, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/10/stats?start_date=2025-11-05&end_date=2025-11-20', 'GET', 200, 0, '2025-11-14 09:31:25', 28);
+INSERT INTO `user_access_log` VALUES (610, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/5/stats?start_date=2025-11-05&end_date=2025-11-20', 'GET', 200, 0, '2025-11-14 09:31:29', 24);
+INSERT INTO `user_access_log` VALUES (611, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/3/stats?start_date=2025-11-05&end_date=2025-11-20', 'GET', 200, 0, '2025-11-14 09:31:32', 23);
+INSERT INTO `user_access_log` VALUES (612, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/11/stats?start_date=2025-11-05&end_date=2025-11-20', 'GET', 200, 0, '2025-11-14 09:31:50', 24);
+INSERT INTO `user_access_log` VALUES (613, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/unban', 'POST', 200, 301, '2025-11-14 09:32:33', 16);
+INSERT INTO `user_access_log` VALUES (614, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/unban', 'POST', 200, 0, '2025-11-14 09:32:44', 48);
+INSERT INTO `user_access_log` VALUES (615, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/ban', 'POST', 200, 0, '2025-11-14 09:32:53', 69);
+INSERT INTO `user_access_log` VALUES (616, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/unban', 'POST', 200, 0, '2025-11-14 09:32:57', 29);
+INSERT INTO `user_access_log` VALUES (617, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?page=1&page_size=10', 'GET', 200, 0, '2025-11-14 09:37:27', 174);
+INSERT INTO `user_access_log` VALUES (618, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/docs', 'GET', 200, NULL, '2025-11-14 09:37:34', 0);
+INSERT INTO `user_access_log` VALUES (619, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/openapi.json', 'GET', 200, NULL, '2025-11-14 09:37:35', 150);
+INSERT INTO `user_access_log` VALUES (620, NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/auth/swagger-login', 'POST', 200, NULL, '2025-11-14 09:37:38', 479);
+INSERT INTO `user_access_log` VALUES (621, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=10', 'GET', 200, 0, '2025-11-14 09:37:42', 37);
+INSERT INTO `user_access_log` VALUES (622, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:37:48', 60);
+INSERT INTO `user_access_log` VALUES (623, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=high&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:37:56', 57);
+INSERT INTO `user_access_log` VALUES (624, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=low&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:38:02', 35);
+INSERT INTO `user_access_log` VALUES (625, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=banned&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:38:29', 36);
+INSERT INTO `user_access_log` VALUES (626, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=high&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:40:16', 233);
+INSERT INTO `user_access_log` VALUES (627, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=low&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:40:23', 30);
+INSERT INTO `user_access_log` VALUES (628, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=normal&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:40:32', 31);
+INSERT INTO `user_access_log` VALUES (629, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=BANNED&page=1&page_size=100', 'GET', 200, 99, '2025-11-14 09:40:39', 46);
+INSERT INTO `user_access_log` VALUES (630, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users?user_type=banned&page=1&page_size=100', 'GET', 200, 0, '2025-11-14 09:40:44', 35);
+INSERT INTO `user_access_log` VALUES (631, 5, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36', 'http://127.0.0.1:8000/admin/anti-scalper/users/11', 'GET', 200, 0, '2025-11-14 09:40:55', 36);
 
 -- ----------------------------
 -- Table structure for user_ban
@@ -5475,13 +5515,55 @@ CREATE TABLE `user_ban`  (
   PRIMARY KEY (`ban_id`) USING BTREE,
   INDEX `ix_user_ban_user_id`(`user_id` ASC) USING BTREE,
   CONSTRAINT `user_ban_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of user_ban
 -- ----------------------------
 INSERT INTO `user_ban` VALUES (1, 14, 'all', '2025-11-20 23:55:36', 1, 'mock high risk active ban', '2025-11-13 23:55:36', '2025-11-13 23:55:36', NULL);
-INSERT INTO `user_ban` VALUES (2, 13, 'register', NULL, 1, 'string', '2025-11-13 23:55:36', '2025-11-14 00:18:28', '2025-11-14 00:13:35');
+INSERT INTO `user_ban` VALUES (2, 13, 'register', NULL, 0, 'string | 解除: string', '2025-11-13 23:55:36', '2025-11-14 01:32:57', '2025-11-14 01:32:57');
+INSERT INTO `user_ban` VALUES (6, 10, 'all', '2025-12-14 01:24:39', 1, '风险分数达到 92', '2025-11-14 01:24:39', '2025-11-14 01:24:39', NULL);
+INSERT INTO `user_ban` VALUES (7, 11, 'all', '2025-12-14 01:24:39', 1, '风险分数达到 92', '2025-11-14 01:24:39', '2025-11-14 01:24:39', NULL);
+
+-- ----------------------------
+-- Table structure for user_risk_summary
+-- ----------------------------
+DROP TABLE IF EXISTS `user_risk_summary`;
+CREATE TABLE `user_risk_summary`  (
+  `user_id` int NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+  `current_score` int NOT NULL COMMENT '当前风险分数',
+  `current_level` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '当前风险等级',
+  `last_incident_time` datetime NULL DEFAULT NULL COMMENT '最近一次异常行为时间',
+  `last_decay_time` datetime NULL DEFAULT NULL COMMENT '最近一次衰减时间',
+  `total_positive_count` int NOT NULL COMMENT '累计正向行为次数',
+  `total_negative_count` int NOT NULL COMMENT '累计负向行为次数',
+  `updated_at` datetime NOT NULL COMMENT '最近更新时间',
+  PRIMARY KEY (`user_id`) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 27 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of user_risk_summary
+-- ----------------------------
+INSERT INTO `user_risk_summary` VALUES (3, 0, 'SAFE', '2025-11-14 01:24:39', NULL, 0, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (4, 0, 'SAFE', '2025-11-14 01:24:39', NULL, 0, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (5, 0, 'SAFE', '2025-11-14 01:24:39', NULL, 0, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (10, 92, 'HIGH', '2025-11-14 01:24:39', NULL, 0, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (11, 92, 'HIGH', '2025-11-14 01:24:39', NULL, 0, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (12, 41, 'LOW', '2025-11-14 01:24:39', NULL, 1, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (13, 41, 'LOW', '2025-11-14 01:24:39', NULL, 1, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (14, 41, 'LOW', '2025-11-14 01:24:39', NULL, 1, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (15, 41, 'LOW', '2025-11-14 01:24:39', NULL, 1, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (16, 41, 'LOW', '2025-11-14 01:24:39', NULL, 1, 2, '2025-11-14 01:24:39');
+INSERT INTO `user_risk_summary` VALUES (17, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (18, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (19, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (20, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (21, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (22, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (23, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (24, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (25, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
+INSERT INTO `user_risk_summary` VALUES (26, 0, 'SAFE', '2025-11-14 01:24:40', NULL, 1, 1, '2025-11-14 01:24:40');
 
 -- ----------------------------
 -- Table structure for visit_history
@@ -5508,7 +5590,7 @@ CREATE TABLE `visit_history`  (
   CONSTRAINT `visit_history_ibfk_1` FOREIGN KEY (`patient_id`) REFERENCES `patient` (`patient_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_2` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`doctor_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT `visit_history_ibfk_3` FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`) ON DELETE RESTRICT ON UPDATE RESTRICT
-) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Records of visit_history
