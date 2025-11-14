@@ -14,12 +14,13 @@ from datetime import datetime, date, timedelta
 from app.api.auth import get_current_user
 from app.models.user_access_log import UserAccessLog
 from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicUpdate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
-from app.schemas.admin import AddSlotAuditListResponse, AddSlotAuditResponse
+from app.schemas.admin import AddSlotAuditListResponse, AddSlotAuditResponse, HospitalAreaItem, HospitalAreaListResponse
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
 from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
+from app.models.hospital_area import HospitalArea
 from app.models.user_ban import UserBan
 from app.models.risk_log import RiskLog
 from app.models.user_risk_summary import UserRiskSummary
@@ -2007,6 +2008,64 @@ async def get_patients(
         raise BusinessHTTPException(
             code=settings.DATA_GET_FAILED_CODE,
             msg=f"查询患者失败: {str(e)}"
+        )
+
+
+# ====== 院区管理接口 ======
+
+@router.get("/hospital-areas", response_model=ResponseModel[Union[HospitalAreaListResponse, AuthErrorResponse]])
+async def get_hospital_areas(
+    area_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取院区列表 - 仅管理员可操作
+    
+    参数:
+    - area_id: 可选，指定院区ID则返回该院区信息，不传则返回全部院区
+    """
+    try:
+        if not getattr(current_user, "is_admin", False):
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="仅管理员可访问"
+            )
+        
+        # 构建查询
+        stmt = select(HospitalArea)
+        if area_id is not None:
+            stmt = stmt.where(HospitalArea.area_id == area_id)
+        
+        result = await db.execute(stmt)
+        areas = result.scalars().all()
+        
+        # 构建响应
+        area_items = [
+            HospitalAreaItem(
+                area_id=area.area_id,
+                name=area.name,
+                destination=area.destination,
+                create_time=area.create_time
+            )
+            for area in areas
+        ]
+        
+        return ResponseModel(
+            code=0,
+            message=HospitalAreaListResponse(areas=area_items)
+        )
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查询院区失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg=f"查询院区失败: {str(e)}"
         )
 
 

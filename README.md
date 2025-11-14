@@ -304,6 +304,10 @@ docker run -d --name hospital-backend -p 8000:8000 --env-file backend/.env bjtu-
     - 其它用户管理接口（部分在 `auth.py` 中实现，管理员可管理用户）
 
 - 管理员（admin）相关（路径前缀视 `main.py` 注册，通常单独路由，例如 `/admin` 或直接根下）
+    - 院区（HospitalArea）
+        - GET `/hospital-areas`：获取全部院区列表（仅管理员）
+        - GET `/hospital-areas?area_id={id}`：根据院区ID获取单个院区信息（仅管理员）
+
     - 大科室（MajorDepartment）
         - POST `/major-departments`：创建大科室（仅管理员）
         - GET `/major-departments`：获取大科室列表
@@ -783,6 +787,64 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
     "code": 0,
     "message": {
         "detail": "成功删除小科室 心内科"
+    }
+}
+```
+
+## 2.9 园区相关接口
+
+### 2.9.1 获取全部园区信息
+- GET `/hospital-areas`
+- 权限：仅管理员
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": {
+        "areas": [
+            {
+                "area_id": 1,
+                "name": "东院区",
+                "destination": "北京市海淀区上园村3号",
+                "create_time": "2024-01-01T00:00:00"
+            },
+            {
+                "area_id": 2,
+                "name": "西院区",
+                "destination": "北京市海淀区西土城路10号",
+                "create_time": "2024-01-01T00:00:00"
+            }
+        ]
+    }
+}
+```
+
+### 2.9.2 根据园区ID获取单个园区
+- GET `/hospital-areas?area_id={id}`
+- 权限：仅管理员
+
+**请求参数**：
+- `area_id`（可选）：院区ID，如果提供则返回该院区信息
+
+**请求示例**：
+```
+GET /hospital-areas?area_id=1
+```
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": {
+        "areas": [
+            {
+                "area_id": 1,
+                "name": "东院区",
+                "destination": "北京市海淀区上园村3号",
+                "create_time": "2024-01-01T00:00:00"
+            }
+        ]
     }
 }
 ```

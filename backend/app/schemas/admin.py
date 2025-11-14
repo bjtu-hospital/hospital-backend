@@ -243,3 +243,18 @@ class AddSlotAuditResponse(BaseModel):
 
 class AddSlotAuditListResponse(BaseModel):
     audits: List[AddSlotAuditResponse]
+
+
+# 院区管理
+class HospitalAreaItem(BaseModel):
+    area_id: int
+    name: str
+    destination: Optional[str] = None
+    create_time: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class HospitalAreaListResponse(BaseModel):
+    areas: List[HospitalAreaItem]
