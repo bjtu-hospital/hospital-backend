@@ -25,3 +25,4 @@ class Doctor(Base):
     schedule_audits = relationship("ScheduleAudit", back_populates="doctor")
     leave_audits = relationship("LeaveAudit", back_populates="doctor")
     add_slot_audits = relationship("AddSlotAudit", back_populates="doctor")
+    attendance_records = relationship("AttendanceRecord", back_populates="doctor")

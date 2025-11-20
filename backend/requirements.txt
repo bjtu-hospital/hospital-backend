@@ -5,6 +5,7 @@ aiomysql==0.2.0
 aiosignal==1.4.0
 annotated-types==0.7.0
 anyio==4.9.0
+APScheduler==3.10.4
 attrs==25.4.0
 bcrypt==4.0.1
 cffi==1.17.1
@@ -38,6 +39,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 python-jose==3.5.0
 python-multipart==0.0.20
+pytz==2025.2
 PyYAML==6.0.2
 redis==6.2.0
 rsa==4.9.1
@@ -47,6 +49,8 @@ SQLAlchemy==2.0.41
 starlette==0.46.2
 typing-inspection==0.4.1
 typing_extensions==4.14.1
+tzdata==2025.2
+tzlocal==5.3.1
 uvicorn==0.35.0
 watchfiles==1.1.0
 websockets==15.0.1
