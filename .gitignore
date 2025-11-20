@@ -68,5 +68,8 @@ test.db
 /backend/schedule/
 /backend/all.json
 
+# Test data generation scripts (no need to commit)
+/backend/scripts/
+
 # Redundant __pycache__ in subdirs covered by global rule (removed)
 # /backend/app/__pycache__/ etc.

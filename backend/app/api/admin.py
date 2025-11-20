@@ -44,6 +44,11 @@ from app.services.admin_helpers import (
     get_administrator_id,
     calculate_leave_days
 )
+from app.services.absence_detection_service import (
+    mark_absent_for_date,
+    mark_absent_for_date_range,
+    get_absent_statistics
+)
 
 from app.schemas.anti_scalper import (
     AntiScalperUserItem,
@@ -2336,90 +2341,6 @@ async def update_clinic(
 
 # ====== 排班管理接口 ======
 
-@router.get("/doctors/{doctor_id}/schedules/today", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
-async def get_doctor_schedules_today(
-    doctor_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_user)
-):
-    """根据医生查询当日排班 - 仅管理员可操作"""
-    try:
-        if not getattr(current_user, "is_admin", False):
-            raise AuthHTTPException(
-                code=settings.INSUFFICIENT_AUTHORITY_CODE,
-                msg="仅管理员可访问"
-            )
-        
-        # 获取当天日期
-        today = datetime.utcnow().date()
-        
-        # 查询医生信息
-        doctor_result = await db.execute(
-            select(Doctor).where(Doctor.doctor_id == doctor_id)
-        )
-        doctor = doctor_result.scalar_one_or_none()
-        if not doctor:
-            raise ResourceHTTPException(
-                code=settings.DATA_GET_FAILED_CODE,
-                msg=f"医生ID {doctor_id} 不存在"
-            )
-        
-        # 查询当天排班
-        stmt = select(Schedule, Clinic, MinorDepartment).join(
-            Clinic, Schedule.clinic_id == Clinic.clinic_id
-        ).join(
-            MinorDepartment, Clinic.minor_dept_id == MinorDepartment.minor_dept_id
-        ).where(
-            and_(
-                Schedule.doctor_id == doctor_id,
-                Schedule.date == today
-            )
-        )
-        
-        result = await db.execute(stmt)
-        rows = result.all()
-        
-        schedules = []
-        for schedule, clinic, dept in rows:
-            # 根据门诊类型确定可用号源类型
-            # clinic_type: 0-普通门诊, 1-专家门诊(国疗), 2-特需门诊
-            if clinic.clinic_type == 0:
-                available_types = ["普通"]
-            elif clinic.clinic_type == 1:
-                available_types = ["普通", "专家"]
-            else:  # clinic_type == 2
-                available_types = ["普通", "专家", "特需"]
-            
-            schedules.append({
-                "schedule_id": schedule.schedule_id,
-                "doctor_id": doctor.doctor_id,
-                "doctor_name": doctor.name,
-                "department_id": dept.minor_dept_id,
-                "department_name": dept.name,
-                "clinic_type": "普通门诊" if clinic.clinic_type == 0 else ("专家门诊" if clinic.clinic_type == 1 else "特需门诊"),
-                "date": str(schedule.date),
-                "time_slot": schedule.time_section,
-                "total_slots": schedule.total_slots,
-                "remaining_slots": schedule.remaining_slots,
-                "available_slot_types": available_types
-            })
-        
-        return ResponseModel(code=0, message={"schedules": schedules})
-        
-    except AuthHTTPException:
-        raise
-    except BusinessHTTPException:
-        raise
-    except ResourceHTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取医生当日排班失败: {e}")
-        raise BusinessHTTPException(
-            code=settings.DATA_GET_FAILED_CODE,
-            msg=f"获取医生当日排班失败: {str(e)}"
-        )
-
-
 @router.get("/departments/{dept_id}/schedules", response_model=ResponseModel[Union[ScheduleListResponse, AuthErrorResponse]])
 async def get_department_schedules(
     dept_id: int,
@@ -2686,6 +2607,24 @@ async def create_schedule(
         clinic = clinic_result.scalar_one_or_none()
         if not clinic:
             raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="门诊不存在", status_code=400)
+
+        # 检查该医生在同一日期和时间段是否已有排班
+        conflict_result = await db.execute(
+            select(Schedule).where(
+                and_(
+                    Schedule.doctor_id == schedule_data.doctor_id,
+                    Schedule.date == schedule_data.schedule_date,
+                    Schedule.time_section == schedule_data.time_section
+                )
+            )
+        )
+        existing_schedule = conflict_result.scalar_one_or_none()
+        if existing_schedule:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg=f"该医生在 {schedule_data.schedule_date} {schedule_data.time_section} 已有排班(ID: {existing_schedule.schedule_id})",
+                status_code=400
+            )
 
         # 处理价格：如果 price <= 0，则使用分级价格查询
         final_price = schedule_data.price
@@ -3765,9 +3704,9 @@ async def get_system_config(
             "maxFutureDays": 60,
             "morningStart": "08:00",
             "morningEnd": "12:00",
-            "afternoonStart": "14:00",
-            "afternoonEnd": "18:00",
-            "eveningStart": "18:30",
+            "afternoonStart": "13:30",
+            "afternoonEnd": "17:30",
+            "eveningStart": "18:00",
             "eveningEnd": "21:00",
             "consultationDuration": 15,
             "intervalTime": 5
@@ -4022,6 +3961,190 @@ async def update_global_prices(
         raise
     except Exception as e:
         logger.error(f"更新全局价格配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ==================== 缺勤管理 API ====================
+
+@router.post("/attendance/mark-absent/single", summary="手动标记单日缺勤")
+async def mark_single_date_absent(
+    target_date: date,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    手动触发单日缺勤标记（管理员）
+    
+    - **target_date**: 目标日期（格式 YYYY-MM-DD）
+    - 自动检测该日所有无考勤记录的排班并标记为 ABSENT
+    - 返回标记统计信息
+    """
+    try:
+        # 管理员权限检查
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.AUTH_ERROR_CODE,
+                msg="仅管理员可执行此操作",
+                status_code=403
+            )
+        
+        # 不能标记今天及未来的日期
+        if target_date >= date.today():
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="只能标记历史日期的缺勤记录",
+                status_code=400
+            )
+        
+        stats = await mark_absent_for_date(db, target_date)
+        
+        logger.info(f"管理员 {current_user.user_id} 手动标记 {target_date} 缺勤: {stats}")
+        return ResponseModel(
+            code=0,
+            message={
+                "detail": "缺勤标记完成",
+                "date": str(target_date),
+                **stats
+            }
+        )
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"标记单日缺勤时发生异常: {str(e)}", exc_info=True)
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.post("/attendance/mark-absent/range", summary="批量标记日期范围缺勤")
+async def mark_range_absent(
+    start_date: date,
+    end_date: date,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    手动触发批量缺勤标记（管理员）
+    
+    - **start_date**: 开始日期
+    - **end_date**: 结束日期
+    - 批量检测并标记日期范围内的缺勤记录
+    - 返回每日统计明细
+    """
+    try:
+        # 管理员权限检查
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.AUTH_ERROR_CODE,
+                msg="仅管理员可执行此操作",
+                status_code=403
+            )
+        
+        # 不能标记今天及未来的日期
+        if end_date >= date.today():
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="结束日期不能包含今天或未来日期",
+                status_code=400
+            )
+        
+        if start_date > end_date:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="开始日期不能晚于结束日期",
+                status_code=400
+            )
+        
+        # 防止批量操作过大
+        date_diff = (end_date - start_date).days
+        if date_diff > 90:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="单次批量操作不能超过 90 天",
+                status_code=400
+            )
+        
+        results = await mark_absent_for_date_range(db, start_date, end_date)
+        
+        total_marked = sum(r["absent_marked"] for r in results)
+        logger.info(f"管理员 {current_user.user_id} 批量标记缺勤 {start_date} 至 {end_date}: 共标记 {total_marked} 条")
+        
+        return ResponseModel(
+            code=0,
+            message={
+                "detail": "批量缺勤标记完成",
+                "date_range": {
+                    "start": str(start_date),
+                    "end": str(end_date)
+                },
+                "total_marked": total_marked,
+                "daily_statistics": results
+            }
+        )
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量标记缺勤时发生异常: {str(e)}", exc_info=True)
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/attendance/absent-statistics", summary="查询缺勤统计")
+async def get_absence_statistics(
+    start_date: date,
+    end_date: date,
+    doctor_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    查询缺勤统计（管理员）
+    
+    - **start_date**: 开始日期
+    - **end_date**: 结束日期
+    - **doctor_id**: 可选，指定医生ID（不指定则查询所有医生）
+    - 返回缺勤记录列表、按医生汇总统计
+    """
+    try:
+        # 管理员权限检查
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.AUTH_ERROR_CODE,
+                msg="仅管理员可查看缺勤统计",
+                status_code=403
+            )
+        
+        if start_date > end_date:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="开始日期不能晚于结束日期",
+                status_code=400
+            )
+        
+        stats = await get_absent_statistics(db, start_date, end_date, doctor_id)
+        
+        logger.info(f"管理员 {current_user.user_id} 查询缺勤统计: {start_date} 至 {end_date}, doctor_id={doctor_id}")
+        return ResponseModel(code=0, message=stats)
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查询缺勤统计时发生异常: {str(e)}", exc_info=True)
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",

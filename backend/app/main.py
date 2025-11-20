@@ -15,6 +15,7 @@ from app.core.log_middleware import LogMiddleware
 from app.core.config import settings
 from app.db.base import engine,Base,redis
 from app.core.cleantask import create_cleanup_task
+from app.services.absence_scheduler_service import start_absence_scheduler, stop_absence_scheduler
 
 # 确保 logs 文件夹存在
 os.makedirs("logs", exist_ok=True)
@@ -61,6 +62,10 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+        # 启动缺勤检测定时任务
+        start_absence_scheduler()
+        logger.info("✓ 缺勤检测定时任务已启动")
+
         logger.info(" Application startup complete")
         yield  # 应用正常运行
 
@@ -69,6 +74,10 @@ async def lifespan(app: FastAPI):
         sys.exit(1)
 
     finally:
+        # 停止定时任务
+        stop_absence_scheduler()
+        logger.info("✓ 缺勤检测定时任务已停止")
+        
         # 清理 Redis
         if redis:
             try:

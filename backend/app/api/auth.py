@@ -12,12 +12,17 @@ from app.core.security import get_hash_pwd, verify_pwd, create_access_token
 from app.schemas.user import user as UserSchema, PatientLogin, StaffLogin
 from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleResponse, DeleteResponse, UpdateUserRoleResponse, UserAccessLogPageResponse, AdminRegisterResponse
 from app.db.base import get_db, redis, User, UserAccessLog, Administrator
+from app.models.doctor import Doctor
+from app.models.minor_department import MinorDepartment
 from app.models.user import UserType
 from app.models.patient import Patient, PatientType, Gender
 from app.services.risk_detection_service import risk_detection_service
 from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
+import os
+import mimetypes
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -379,6 +384,55 @@ async def get_me(current_user: UserSchema = Depends(get_current_user)):
             msg="Token无效或已失效",
             status_code=401
         )
+
+
+@router.post("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_user_info(current_user: UserSchema = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """获取医生端用户信息（若当前登录用户绑定医生记录则返回医生资料）"""
+    try:
+        doctor_res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+        doctor = doctor_res.scalar_one_or_none()
+        if not doctor:
+            return ResponseModel(code=0, message={"doctor": None})
+        dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
+        dept = dept_res.scalar_one_or_none()
+        # 读取并编码医生照片（如果存在）
+        photo_base64 = None
+        photo_mime = None
+        if doctor.photo_path:
+            base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+            rel_path = doctor.photo_path.lstrip("/")
+            if rel_path.startswith("app/"):
+                rel_path = rel_path[4:]
+            fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+            if os.path.exists(fs_path) and os.path.isfile(fs_path):
+                mime_type, _ = mimetypes.guess_type(fs_path)
+                if not mime_type:
+                    mime_type = "application/octet-stream"
+                try:
+                    with open(fs_path, "rb") as f:
+                        bdata = f.read()
+                        photo_base64 = base64.b64encode(bdata).decode("utf-8")
+                        photo_mime = mime_type
+                except Exception:
+                    photo_base64 = None
+                    photo_mime = None
+        return ResponseModel(code=0, message={
+            "doctor": {
+                "id": doctor.doctor_id,
+                "name": doctor.name,
+                "department": dept.name if dept else None,
+                "hospital": "主院区",
+                "title": doctor.title,
+                "photo_mime": photo_mime,
+                "photo_base64": photo_base64
+            }
+        })
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生用户信息异常: {e}")
+        raise BusinessHTTPException(code=settings.USER_GET_FAILED_CODE, msg="获取用户信息失败", status_code=500)
 
 
 @router.delete("/users/{user_id}", response_model=ResponseModel[Union[DeleteResponse, AuthErrorResponse]])

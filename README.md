@@ -1829,18 +1829,7 @@ Authorization: Bearer <token>
 - `status`：排班状态，如"正常"、"停诊"
 - `week_day`：星期几，值为"一"、"二"、"三"、"四"、"五"、"六"、"日"
 
-### 8.2 获取医生排班
-- GET `/admin/doctors/{doctor_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
-- 说明：获取指定医生在日期范围内的所有排班
-
-参数：
-- `doctor_id`：医生ID（路径参数）
-- `start_date`：开始日期，格式 YYYY-MM-DD（查询参数）
-- `end_date`：结束日期，格式 YYYY-MM-DD（查询参数）
-
-响应：同 4.1 获取科室排班的响应格式
-
-### 8.3 获取门诊排班
+### 8.2 获取门诊排班
 - GET `/admin/clinics/{clinic_id}/schedules?start_date=2025-10-31&end_date=2025-11-30`
 - 说明：获取指定门诊在日期范围内的所有排班
 
@@ -1889,7 +1878,10 @@ Authorization: Bearer <token>
 2. 最终使用价格：80.00元
 ```
 
-注意：创建时系统会自动计算 `week_day`（星期几），并设置 `remaining_slots` 等于 `total_slots`。
+注意事项：
+- 创建时系统会自动计算 `week_day`（星期几），并设置 `remaining_slots` 等于 `total_slots`
+- **冲突检测**：系统会检查该医生在同一日期、同一时间段是否已有排班，如存在冲突则创建失败
+- 冲突错误示例：`"该医生在 2025-11-20 上午 已有排班(ID: 123)"`
 
 响应：
 ```json
@@ -1956,69 +1948,6 @@ Authorization: Bearer <token>
     }
 }
 ```
-
-### 8.7 获取指定医生今日排班
-- GET `/doctors/{doctor_id}/schedules/today`
-- 说明：获取指定医生今天的所有排班记录，包括可预约的号源类型信息
-
-参数：
-- `doctor_id`：医生 ID（路径参数）
-
-权限与请求头：
-```
-Authorization: Bearer <token>
-```
-
-响应示例：
-```json
-{
-    "code": 0,
-    "message": {
-        "doctor_id": 1,
-        "date": "2025-11-13",
-        "schedules": [
-            {
-                "schedule_id": 101,
-                "time_section": "上午",
-                "clinic_id": 5,
-                "clinic_name": "心内科门诊",
-                "clinic_type": 0,
-                "minor_dept_name": "心内科",
-                "slot_type": "普通",
-                "total_slots": 20,
-                "remaining_slots": 15,
-                "price": 60.00,
-                "status": "正常",
-                "available_slot_types": ["普通"]
-            },
-            {
-                "schedule_id": 102,
-                "time_section": "下午",
-                "clinic_id": 6,
-                "clinic_name": "国疗门诊",
-                "clinic_type": 1,
-                "minor_dept_name": "心内科",
-                "slot_type": "专家",
-                "total_slots": 10,
-                "remaining_slots": 8,
-                "price": 120.00,
-                "status": "正常",
-                "available_slot_types": ["普通", "专家"]
-            }
-        ]
-    }
-}
-```
-
-字段说明：
-- `clinic_type`：门诊类型
-  - 0 = 普通门诊
-  - 1 = 专家门诊（国疗）
-  - 2 = 特需门诊
-- `available_slot_types`：该门诊可预约的号源类型列表，根据 `clinic_type` 自动计算：
-  - 普通门诊 (0) → `["普通"]`
-  - 专家门诊 (1) → `["普通", "专家"]`
-  - 特需门诊 (2) → `["普通", "专家", "特需"]`
 
 ---
 
@@ -2231,6 +2160,146 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+---
+
+## 10. 医生缺勤管理 API
+
+所有缺勤管理接口均需管理员权限，请求头需包含：
+```
+Authorization: Bearer <token>
+```
+
+### 10.1 手动标记单日缺勤
+- POST `/attendance/mark-absent/single?target_date=YYYY-MM-DD`
+- 说明：手动触发单日缺勤标记，自动检测该日所有无考勤记录的排班并标记为 ABSENT
+
+参数：
+- `target_date`（查询参数，必填）：目标日期，格式 YYYY-MM-DD
+  - 只能标记历史日期（不能是今天或未来日期）
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "缺勤标记完成",
+        "date": "2025-11-15",
+        "total_schedules": 45,
+        "absent_marked": 3,
+        "already_marked": 2
+    }
+}
+```
+
+字段说明：
+- `total_schedules`：当日总排班数
+- `absent_marked`：本次新标记的缺勤数
+- `already_marked`：之前已标记的缺勤数
+
+---
+
+### 10.2 批量标记日期范围缺勤
+- POST `/attendance/mark-absent/range?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+- 说明：批量检测并标记日期范围内的缺勤记录，返回每日统计明细
+
+参数：
+- `start_date`（查询参数，必填）：开始日期，格式 YYYY-MM-DD
+- `end_date`（查询参数，必填）：结束日期，格式 YYYY-MM-DD
+  - 结束日期不能包含今天或未来日期
+  - 日期范围不能超过 90 天
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "批量缺勤标记完成",
+        "date_range": {
+            "start": "2025-11-01",
+            "end": "2025-11-15"
+        },
+        "total_marked": 12,
+        "daily_statistics": [
+            {
+                "date": "2025-11-01",
+                "total_schedules": 50,
+                "absent_marked": 2,
+                "already_marked": 0
+            },
+            {
+                "date": "2025-11-02",
+                "total_schedules": 48,
+                "absent_marked": 1,
+                "already_marked": 1
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 10.3 查询缺勤统计
+- GET `/attendance/absent-statistics?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&doctor_id={doctor_id}`
+- 说明：查询缺勤统计，包括缺勤记录列表和按医生汇总的统计信息
+
+参数：
+- `start_date`（查询参数，必填）：开始日期，格式 YYYY-MM-DD
+- `end_date`（查询参数，必填）：结束日期，格式 YYYY-MM-DD
+- `doctor_id`（查询参数，可选）：医生ID，不指定则查询所有医生
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "date_range": {
+            "start": "2025-11-01",
+            "end": "2025-11-15"
+        },
+        "total_absent_count": 12,
+        "absent_records": [
+            {
+                "record_id": 101,
+                "doctor_id": 5,
+                "doctor_name": "张三",
+                "schedule_id": 4567,
+                "schedule_date": "2025-11-05",
+                "time_section": "上午",
+                "clinic_name": "心内科门诊",
+                "is_absent": true,
+                "marked_at": "2025-11-06T08:30:00"
+            }
+        ],
+        "doctor_summary": [
+            {
+                "doctor_id": 5,
+                "doctor_name": "张三",
+                "absent_count": 3,
+                "total_schedules": 15,
+                "absence_rate": 0.2
+            },
+            {
+                "doctor_id": 12,
+                "doctor_name": "李四",
+                "absent_count": 2,
+                "total_schedules": 10,
+                "absence_rate": 0.2
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `absent_records`：缺勤记录详细列表
+  - `is_absent`：是否标记为缺勤
+  - `marked_at`：标记时间
+- `doctor_summary`：按医生汇总的统计
+  - `absent_count`：缺勤次数
+  - `total_schedules`：总排班次数
+  - `absence_rate`：缺勤率（缺勤次数/总排班次数）
 
 ---
 
@@ -2765,3 +2834,332 @@ Authorization: Bearer <token>
 
 ---
 
+# 五、 医生 API 接口详细
+## 1. 医生工作台接口（Doctor Client）
+
+医生端工作台与医生个人信息相关接口。需通过 `/staff/login` 获取 token 且账号已绑定医生档案。统一成功返回：`{ "code": 0, "message": { ... } }`。
+
+通用要求：
+- Header：`Authorization: Bearer <token>` （除非特别说明）
+- 返回错误按全局错误码，成功 `code=0`。
+- 时间格式：统一使用 `HH:MM`（24 小时制）。
+
+### 1.1 工作台总览 Get: `/workbench/dashboard`
+权限：医生本人。
+
+说明：汇总医生今日排班状态、签到/签退进度、接诊统计、提醒与最近接诊记录。
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "doctor": {
+            "id": 12,
+            "name": "张三",
+            "title": "主治医师",
+            "department": "心内科",
+            "photo_path": null
+        },
+        "shiftStatus": {
+            "status": "not_checkin",
+            "currentShift": {
+                "id": 4567,
+                "name": "上午门诊",
+                "startTime": "08:00",
+                "endTime": "12:00",
+                "location": "门诊楼 3 层 305",
+                "countdown": "1小时20分钟"
+            },
+            "checkinTime": null,
+            "checkoutTime": null,
+            "workDuration": null,
+            "timeToCheckout": null
+        },
+        "todayData": {
+            "pendingConsultation": 5,
+            "ongoingConsultation": 2,
+            "completedConsultation": 18,
+            "totalConsultation": 25
+        },
+        "reminders": [
+            { "id": 1, "type": "system", "title": "请按时签到", "icon": "bell", "time": "08:00" }
+        ],
+        "recentRecords": [
+            { "id": 9001, "patientName": "李四", "consultationTime": "09:32", "diagnosis": "高血压" },
+            { "id": 9002, "patientName": "王五", "consultationTime": "10:15", "diagnosis": "糖尿病" }
+        ]
+    }
+}
+```
+
+字段说明：
+- `shiftStatus.status`: `not_checkin | checked_in | checkout_pending | checked_out`
+- `countdown`: 未签到且班次未开始时的剩余时间。
+- `timeToCheckout`: 签到后离班次结束的剩余时间。
+- `workDuration`: 已签到后累计工作时长（签到到当前/签退）。
+- **`recentRecords.consultationTime`**: 实际就诊时间（HH:MM 格式），从数据库 `visit_times` 字段解析，**仅显示已完成/已确认就诊的患者**
+
+### 1.2. 签到 Post: `/workbench/checkin`
+请求体：
+```json
+{ "shiftId": 4567, "latitude": 39.984, "longitude": 116.318 }
+```
+响应示例：
+```json
+{ "code": 0, "message": { "checkinTime": "08:05", "status": "checked_in", "message": "签到成功", "workDuration": "0分钟" } }
+```
+状态流转：`not_checkin -> checked_in`。
+
+### 1.3. 签退 Post: `/workbench/checkout`
+请求体：
+```json
+{ "shiftId": 4567, "latitude": 39.984, "longitude": 116.318 }
+```
+响应示例：
+```json
+{ "code": 0, "message": { "checkoutTime": "11:58", "workDuration": "3小时53分钟", "status": "checked_out", "message": "签退成功" } }
+```
+状态流转：`checked_in | checkout_pending -> checked_out`。
+
+### 1.4. 班次列表 Get: `/workbench/shifts?doctorId={doctorId}&date=YYYY-MM-DD`
+说明：返回指定日期医生的全部班次与当前状态。
+
+响应示例：
+```json
+{ "code": 0, "message": { "shifts": [ { "id": 4567, "name": "上午门诊", "startTime": "08:00", "endTime": "12:00", "location": "门诊楼 3 层 305", "status": "checking_in" } ] } }
+```
+`status` 取值：`not_started | checking_in | checkout_pending | checked_out`。
+
+### 1.5. 接诊统计 Get: `/workbench/consultation-stats?doctorId={doctorId}`
+说明：统计当天挂号/接诊状态分布。
+响应示例：
+```json
+{ "code": 0, "message": { "pending": 5, "ongoing": 2, "completed": 18, "total": 25 } }
+```
+统计规则：
+- pending: 订单状态 `pending` 或 `waitlist`
+- ongoing: 订单状态 `confirmed`
+- completed: 订单状态 `completed`
+- total: 当日全部匹配订单数（含上述三类）
+
+### 1.6. 最近接诊记录 Get: `/workbench/recent-consultations?doctorId={doctorId}&limit=3`
+
+**重要更新（2025-11）**：
+- 现在**仅返回已就诊的患者**（订单状态为 `COMPLETED` 或 `CONFIRMED` 且有实际就诊时间）
+- 数据库层面过滤：`visit_times IS NOT NULL` 且 `status IN (COMPLETED, CONFIRMED)`
+- `consultationTime` 显示**实际就诊时间**（从 `visit_times` 字段解析），不再出现 "--:--"
+- 不再填充待就诊/已取消患者，所有返回记录保证有有效就诊时间
+
+请求参数：
+- `doctorId`（必填）：医生ID
+- `limit`（可选）：返回记录数，默认 3 条
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "records": [
+            { "id": 9001, "patientName": "李四", "consultationTime": "09:32", "diagnosis": "高血压" },
+            { "id": 9002, "patientName": "王五", "consultationTime": "10:15", "diagnosis": "糖尿病" },
+            { "id": 9003, "patientName": "赵六", "consultationTime": "11:20", "diagnosis": "感冒" }
+        ]
+    }
+}
+```
+
+字段说明：
+- **`consultationTime`**: 实际就诊时间（HH:MM 格式），从数据库 `registration_order.visit_times` 字段解析
+- **`diagnosis`**: 诊断信息（可能为 null，取决于是否录入）
+- 所有记录按就诊时间倒序排列（最新的在前）
+
+数据来源：
+- 从 `registration_order` 表读取，条件：
+  - `doctor_id = {doctorId}`
+  - `slot_date = 今天`
+  - `status IN (COMPLETED, CONFIRMED)`
+  - `visit_times IS NOT NULL`（数据库级别过滤）
+
+### 1.7. 医生用户信息（含照片） Post: `/auth/user-info` (注意这个在auth中并非doctor)
+说明：返回当前登录账号绑定的医生档案及照片二进制（Base64）。若不是医生账号则 `doctor: null`。
+
+成功响应：
+```json
+{
+    "code": 0,
+    "message": {
+        "doctor": {
+            "id": 12,
+            "name": "张三",
+            "department": "心内科",
+            "hospital": "主院区",
+            "title": "主治医师",
+            "photo_mime": "image/jpeg",
+            "photo_base64": "iVBORw0KGgoAAA..."
+        }
+    }
+}
+```
+非医生：
+```json
+{ "code": 0, "message": { "doctor": null } }
+```
+照片字段：前端可构造：`data:{photo_mime};base64,{photo_base64}` 用于直接展示。
+
+### 1.8. 查询医生排班（按日期范围）Get: `/doctors/schedules`
+说明：查询医生在指定日期范围内的排班记录。医生只能查询自己的排班，管理员可查询任意医生的排班。
+
+权限：
+- 医生：只能查询自己的排班（`doctor_id` 参数可选，若提供必须与当前用户匹配）
+- 管理员：可查询任意医生排班（必须提供 `doctor_id` 参数）
+
+请求参数：
+- `doctor_id`（可选）：医生ID
+  - 医生用户：可省略或必须等于自己的ID
+  - 管理员：必须提供
+- `start_date`（必填）：开始日期，格式 YYYY-MM-DD
+- `end_date`（必填）：结束日期，格式 YYYY-MM-DD
+
+请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "schedules": [
+            {
+                "schedule_id": 123,
+                "doctor_id": 1,
+                "doctor_name": "张三",
+                "clinic_id": 5,
+                "clinic_name": "心内科门诊",
+                "clinic_type": 0,
+                "date": "2025-11-20",
+                "week_day": "三",
+                "time_section": "上午",
+                "slot_type": "普通",
+                "total_slots": 20,
+                "remaining_slots": 15,
+                "status": "正常",
+                "price": 60.00
+            }
+        ]
+    }
+}
+```
+
+### 1.9. 查询医生当日排班 Get: `/doctors/schedules/today`
+说明：查询指定医生今天的所有排班记录。医生只能查询自己的，管理员可查询任意医生的。
+
+权限：
+- 医生：只能查询自己的排班（`doctor_id` 参数可选，若提供必须与当前用户匹配）
+- 管理员：可查询任意医生排班（必须提供 `doctor_id` 参数）
+
+请求参数：
+- `doctor_id`（可选）：医生ID
+  - 医生用户：可省略或必须等于自己的ID
+  - 管理员：必须提供
+
+请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "schedules": [
+            {
+                "schedule_id": 101,
+                "doctor_id": 1,
+                "doctor_name": "张三",
+                "department_id": 3,
+                "department_name": "心内科",
+                "clinic_type": "普通门诊",
+                "date": "2025-11-20",
+                "time_slot": "上午",
+                "total_slots": 20,
+                "remaining_slots": 15,
+                "available_slot_types": ["普通"]
+            },
+            {
+                "schedule_id": 102,
+                "doctor_id": 1,
+                "doctor_name": "张三",
+                "department_id": 3,
+                "department_name": "心内科",
+                "clinic_type": "专家门诊",
+                "date": "2025-11-20",
+                "time_slot": "下午",
+                "total_slots": 10,
+                "remaining_slots": 8,
+                "available_slot_types": ["普通", "专家"]
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `clinic_type`：门诊类型字符串（"普通门诊" / "专家门诊" / "特需门诊"）
+- `available_slot_types`：该门诊可预约的号源类型列表，根据门诊类型自动计算：
+  - 普通门诊 → `["普通"]`
+  - 专家门诊 → `["普通", "专家"]`
+  - 特需门诊 → `["普通", "专家", "特需"]`
+
+### 1.10. 获取排班详情 Get: `/doctors/schedules/{schedule_id}`
+说明：根据排班ID获取排班详细信息。医生只能查询自己的排班详情，管理员可以查询任意排班。
+
+权限：
+- 医生：只能查询本人的排班详情
+- 管理员：可查询任意排班详情
+
+请求参数：
+- `schedule_id`：排班ID（路径参数）
+
+请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "schedule_id": 123,
+        "doctor_id": 1,
+        "doctor_name": "张三",
+        "doctor_title": "主治医师",
+        "department_id": 3,
+        "department_name": "心内科",
+        "clinic_id": 5,
+        "clinic_name": "心内科门诊",
+        "clinic_type": "普通门诊",
+        "date": "2025-11-20",
+        "week_day": "三",
+        "time_section": "上午",
+        "slot_type": "普通",
+        "total_slots": 20,
+        "remaining_slots": 15,
+        "status": "正常",
+        "price": 60.00,
+        "available_slot_types": ["普通"]
+    }
+}
+```
+
+字段说明：
+- 包含完整的排班信息、医生信息、科室信息和门诊信息
+- `doctor_title`：医生职称（主治医师/副主任医师/主任医师等）
+- `week_day`：星期几（"一" / "二" / "三" / "四" / "五" / "六" / "日"）
+- 其他字段说明同前述接口
+
+---
