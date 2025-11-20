@@ -47,6 +47,12 @@ class RegistrationOrder(Base):
     is_waitlist = Column(Boolean, default=False, comment="是否为候补挂号")
     waitlist_position = Column(Integer, nullable=True, comment="候补队列中的位置（1 表示队首）")
 
+    # 接诊队列相关字段
+    pass_count = Column(Integer, default=0, nullable=False, comment="过号次数，用于队列排序")
+    call_time = Column(DateTime, nullable=True, comment="最近一次叫号时间")
+    is_calling = Column(Boolean, default=False, nullable=False, comment="是否正在就诊中（已叫号未完成）")
+    priority = Column(Integer, default=0, nullable=False, comment="优先级（加号插队用，负数更优先）")
+
     status = Column(
         Enum(OrderStatus, values_callable=lambda e: [v.value for v in e], name="orderstatus", native_enum=False),
         default=OrderStatus.PENDING,
