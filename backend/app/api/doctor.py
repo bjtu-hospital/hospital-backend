@@ -36,9 +36,15 @@ from app.schemas.workbench import (
 )
 from app.db.base import redis
 from app.services.add_slot_service import execute_add_slot_and_register
+from app.services.consultation_service import (
+	get_consultation_queue,
+	call_next_patient,
+	pass_patient,
+	complete_current_patient
+)
 from app.schemas.response import ResponseModel
 from typing import Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timezone, timedelta
 import json
 
 router = APIRouter()
@@ -59,7 +65,8 @@ async def add_slot_request(
 				schedule_id=data.schedule_id,
 				patient_id=data.patient_id,
 				slot_type=data.slot_type,
-				applicant_user_id=current_user.user_id
+				applicant_user_id=current_user.user_id,
+				position=data.position or "end"
 			)
 			return ResponseModel(code=0, message={"detail": "加号记录已创建", "order_id": order_id})
 
@@ -242,7 +249,17 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 	dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
 	dept = dept_res.scalar_one_or_none()
 
-	schedules = await _get_today_schedules(db, doctor.doctor_id)
+	# 获取医生今天的排班信息
+	today = datetime.now(timezone.utc).date()
+	stmt = (
+		select(Schedule)
+		.options(selectinload(Schedule.clinic))
+		.where(Schedule.doctor_id == current_user.user_id, Schedule.date == today)
+	)
+	result = await db.execute(stmt)
+	schedules = result.scalars().all()
+
+	schedule_details = []
 	now = datetime.now()  # 使用本地时间而非UTC
 	current_shift_obj = None
 	shift_status_value = "checked_out"
@@ -990,6 +1007,321 @@ async def get_schedule_detail(
 		raise BusinessHTTPException(
 			code=settings.DATA_GET_FAILED_CODE,
 			msg=f"获取排班详情失败: {str(e)}"
+		)
+
+
+# ==================== 接诊队列管理 API ====================
+
+@router.get("/consultation/queue", response_model=ResponseModel)
+async def get_queue(
+	schedule_id: int,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	获取某次排班的接诊队列
+	
+	- **schedule_id**: 排班ID（必填，唯一标识某次出诊，如某天上午/下午/晚间）
+	
+	返回：
+	- scheduleInfo: 排班信息（排班ID、医生ID、日期、时段）
+	- stats: 统计数据（总号源、候诊人数、已完成、过号等）
+	- currentPatient: 当前正在就诊的患者（如果有）
+	- nextPatient: 下一位候诊患者（如果有）
+	- queue: 正式队列列表（CONFIRMED状态，按优先级、过号次数、挂号时间排序）
+	- waitlist: 候补队列列表（WAITLIST状态）
+	"""
+	try:
+		# 验证排班是否存在
+		schedule_res = await db.execute(
+			select(Schedule).where(Schedule.schedule_id == schedule_id)
+		)
+		schedule = schedule_res.scalar_one_or_none()
+		
+		if not schedule:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"排班 {schedule_id} 不存在",
+				status_code=404
+			)
+		
+		# 权限检查
+		if not current_user.is_admin:
+			# 非管理员必须是医生且是自己的排班
+			res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+			current_doctor = res.scalar_one_or_none()
+			if not current_doctor:
+				raise AuthHTTPException(
+					code=settings.INSUFFICIENT_AUTHORITY_CODE,
+					msg="仅医生可查看接诊队列",
+					status_code=403
+				)
+			
+			if schedule.doctor_id != current_doctor.doctor_id:
+				raise AuthHTTPException(
+					code=settings.INSUFFICIENT_AUTHORITY_CODE,
+					msg="只能查看本人的排班队列",
+					status_code=403
+				)
+		
+		# 调用服务层获取队列
+		queue_data = await get_consultation_queue(db, schedule_id)
+		
+		return ResponseModel(code=0, message=queue_data)
+		
+	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取接诊队列失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取接诊队列失败: {str(e)}"
+		)
+
+
+@router.post("/consultation/complete", response_model=ResponseModel)
+async def complete_consultation(
+	patient_id: int = Body(..., embed=True),
+	schedule_id: int = Body(..., embed=True),
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	完成当前患者就诊（患者正常就诊完毕）
+	
+	- **patient_id**: 患者ID
+	- **schedule_id**: 排班ID
+	
+	流程：
+	1. 验证患者是否正在就诊（is_calling=True）
+	2. 标记为已完成（status=COMPLETED）
+	3. 记录就诊时间（visit_times）
+	
+	返回：
+	- completedPatient: 完成就诊的患者信息
+	"""
+	try:
+		# 权限检查：必须是医生
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		current_doctor = res.scalar_one_or_none()
+		if not current_doctor and not current_user.is_admin:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可执行完成就诊操作",
+				status_code=403
+			)
+		
+		doctor_id = current_doctor.doctor_id if current_doctor else None
+		
+		# 验证排班是否属于当前医生
+		if doctor_id:
+			res = await db.execute(
+				select(Schedule).where(Schedule.schedule_id == schedule_id)
+			)
+			schedule = res.scalar_one_or_none()
+			if not schedule or schedule.doctor_id != doctor_id:
+				raise AuthHTTPException(
+					code=settings.INSUFFICIENT_AUTHORITY_CODE,
+					msg="只能完成本人排班下的患者就诊",
+					status_code=403
+				)
+		
+		# 调用服务层
+		result = await complete_current_patient(db=db, patient_id=patient_id, schedule_id=schedule_id, doctor_id=doctor_id)
+		
+		await db.commit()
+		
+		return ResponseModel(
+			code=0,
+			message={
+				"detail": "就诊完成",
+				**result
+			}
+		)
+		
+	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"完成就诊操作失败: {e}")
+		await db.rollback()
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"完成就诊操作失败: {str(e)}"
+		)
+
+
+@router.post("/consultation/next", response_model=ResponseModel)
+async def call_next(
+	schedule_id: int = Body(..., embed=True),
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	呼叫下一位患者（针对某次排班）
+	
+	- **schedule_id**: 排班ID（必填）
+	
+	流程：
+	1. 从队列中选取下一位（CONFIRMED 且未叫号）
+	2. 标记为正在就诊（is_calling=True）
+	3. 记录叫号时间（call_time）
+	
+	返回：
+	- nextPatient: 新呼叫的患者信息
+	- scheduleId: 排班ID
+	
+	注意：如果需要先完成当前患者，请先调用 /consultation/complete
+	"""
+	try:
+		# 验证排班并检查权限
+		schedule_res = await db.execute(
+			select(Schedule).where(Schedule.schedule_id == schedule_id)
+		)
+		schedule = schedule_res.scalar_one_or_none()
+		
+		if not schedule:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"排班 {schedule_id} 不存在",
+				status_code=404
+			)
+		
+		# 权限检查：必须是医生且是自己的排班
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		current_doctor = res.scalar_one_or_none()
+		if not current_doctor and not current_user.is_admin:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可执行叫号操作",
+				status_code=403
+			)
+		
+		if current_doctor and schedule.doctor_id != current_doctor.doctor_id:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="只能叫本人排班的号",
+				status_code=403
+			)
+		
+		# 调用服务层
+		result = await call_next_patient(db=db, schedule_id=schedule_id)
+		
+		await db.commit()
+		
+		detail = "已呼叫下一位" if result["nextPatient"] else "队列已空"
+		
+		return ResponseModel(
+			code=0,
+			message={
+				"detail": detail,
+				**result
+			}
+		)
+		
+	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"呼叫下一位失败: {e}")
+		await db.rollback()
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"呼叫下一位失败: {str(e)}"
+		)
+
+
+@router.post("/consultation/pass", response_model=ResponseModel)
+async def pass_current_patient(
+	patient_id: int = Body(..., embed=True),
+	max_pass_count: Optional[int] = Body(None, embed=True),
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	过号操作（当前被叫号的患者未到场）
+	
+	- **patient_id**: 需要过号的患者订单ID（必须是正在叫号的患者）
+	- **max_pass_count**: 可选，覆盖系统配置的过号次数上限
+	  - 不传：从配置读取（优先级：医生配置 > 全局配置 > 默认3次）
+	  - 传入：使用指定值（临时覆盖，不影响配置）
+	
+	流程：
+	1. 验证患者是否正在被叫号（is_calling=True）
+	2. 增加过号次数（pass_count += 1），取消叫号标记
+	3. 患者回到队列，因 pass_count 增加自动排到后面
+	4. 检查过号次数，达到上限则标记为 NO_SHOW（爽约）
+	5. 自动呼叫下一位
+	
+	返回：
+	- passedPatient: 过号患者信息（包含过号次数、是否爽约）
+	- nextPatient: 自动呼叫的下一位患者
+	"""
+	try:
+		# 权限检查：必须是医生
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		current_doctor = res.scalar_one_or_none()
+		if not current_doctor and not current_user.is_admin:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可执行过号操作",
+				status_code=403
+			)
+		
+		doctor_id = current_doctor.doctor_id if current_doctor else None
+		
+		# 验证订单是否属于当前医生
+		if doctor_id:
+			res = await db.execute(
+				select(RegistrationOrder).where(RegistrationOrder.order_id == patient_id)
+			)
+			patient_order = res.scalar_one_or_none()
+			if patient_order and patient_order.doctor_id != doctor_id:
+				raise AuthHTTPException(
+					code=settings.INSUFFICIENT_AUTHORITY_CODE,
+					msg="只能对本人患者执行过号操作",
+					status_code=403
+				)
+		
+		# 调用服务层
+		result = await pass_patient(
+			db=db,
+			patient_order_id=patient_id,
+			doctor_id=doctor_id,
+			slot_date=date.today(),
+			max_pass_count=max_pass_count
+		)
+		
+		await db.commit()
+		
+		detail = "过号成功，患者已标记为爽约" if result["passedPatient"]["isNoShow"] else "过号成功"
+		
+		return ResponseModel(
+			code=0,
+			message={
+				"detail": detail,
+				**result
+			}
+		)
+		
+	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"过号操作失败: {e}")
+		await db.rollback()
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"过号操作失败: {str(e)}"
 		)
 
 

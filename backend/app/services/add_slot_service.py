@@ -15,9 +15,13 @@ async def execute_add_slot_and_register(
     schedule_id: int,
     patient_id: int,
     slot_type: str,
-    applicant_user_id: int
+    applicant_user_id: int,
+    position: str = "end"
 ) -> int:
     """在单个事务中执行加号并创建挂号记录。
+
+    Args:
+        position: 加号位置，"next" 表示插队到下一个，"end" 表示队尾（默认）
 
     返回新创建的 registration_order.order_id
     """
@@ -44,7 +48,10 @@ async def execute_add_slot_and_register(
     if res.scalar_one_or_none():
         raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="患者在该排班已有有效挂号", status_code=400)
 
-    # 4. 创建挂号记录，使用 schedule.price 作为费用
+    # 4. 根据 position 设置优先级
+    priority = -1 if position == "next" else 0
+
+    # 5. 创建挂号记录，直接设为 CONFIRMED（已支付）
     reg = RegistrationOrder(
         patient_id=patient.patient_id,
         user_id=patient.user_id,
@@ -53,20 +60,15 @@ async def execute_add_slot_and_register(
         slot_type=slot_type,
         slot_date=schedule.date,
         time_section=schedule.time_section,
-        status=OrderStatus.PENDING,
-        notes=f"加号申请 (由用户 {applicant_user_id} 发起)",
+        status=OrderStatus.CONFIRMED,  # 加号直接进入正式队列
+        priority=priority,  # 设置优先级
+        notes=f"加号申请 (由用户 {applicant_user_id} 发起，位置: {position})",
     )
 
-    # 记录价格字段于 notes 或 visit_times 处；RegistrationOrder 模型中没有价格字段，
-    # 如需保留价格，建议在 notes 中附加价格信息或拓展模型。这里把价格放在 notes。
+    # 记录价格信息于 notes
     reg.notes = (reg.notes or "") + f" | price={float(schedule.price)}"
 
     db.add(reg)
-
-    # (不改变)5. 更新排班：total_slots +1, remaining_slots +1
-    # schedule.total_slots = (schedule.total_slots or 0) + 1
-    # schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
-    # db.add(schedule)
 
     # 一并提交（调用者一般在外部 commit）
     await db.flush()

@@ -221,6 +221,8 @@ class AddSlotAuditCreate(BaseModel):
     patient_id: int = Field(..., description="患者的 patient_id")
     slot_type: str = Field(..., description="号源类型: 普通/专家/特需")
     reason: Optional[str] = Field(None, description="申请理由（医生填写）")
+    position: Optional[str] = Field("end", description="加号位置: next-下一个（插队）, end-队尾（默认）")
+
 
 
 class AddSlotAuditResponse(BaseModel):

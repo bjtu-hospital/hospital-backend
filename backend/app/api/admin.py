@@ -3472,7 +3472,8 @@ async def approve_add_slot_audit(
             schedule_id=audit.schedule_id,
             patient_id=audit.patient_id,
             slot_type=audit.slot_type,
-            applicant_user_id=audit.applicant_id
+            applicant_user_id=audit.applicant_id,
+            position="end"  # 审批通过的加号默认加到队尾
         )
 
         # 更新审核记录
@@ -4145,6 +4146,199 @@ async def get_absence_statistics(
         raise
     except Exception as e:
         logger.error(f"查询缺勤统计时发生异常: {str(e)}", exc_info=True)
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ==================== 11. 接诊配置管理 API ====================
+
+@router.get("/consultation/config", summary="获取接诊配置")
+async def get_consultation_config(
+    scope_type: str = "GLOBAL",
+    scope_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取接诊配置（管理员）
+    
+    - **scope_type**: 配置范围类型（GLOBAL=全局, DOCTOR=医生级别）
+    - **scope_id**: 范围ID（GLOBAL时不需要，DOCTOR时传 doctor_id）
+    - 返回过号次数上限等配置
+    """
+    try:
+        # 管理员权限检查
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.AUTH_ERROR_CODE,
+                msg="仅管理员可查看接诊配置",
+                status_code=403
+            )
+        
+        # 验证参数
+        if scope_type not in ["GLOBAL", "DOCTOR"]:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="scope_type 必须是 GLOBAL 或 DOCTOR",
+                status_code=400
+            )
+        
+        if scope_type == "DOCTOR" and not scope_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="DOCTOR 类型必须提供 scope_id (doctor_id)",
+                status_code=400
+            )
+        
+        # 查询配置
+        query = select(SystemConfig).where(
+            SystemConfig.config_key == "consultation.max_pass_count",
+            SystemConfig.scope_type == scope_type,
+            SystemConfig.is_active == True
+        )
+        
+        if scope_type == "GLOBAL":
+            query = query.where(SystemConfig.scope_id.is_(None))
+        else:
+            query = query.where(SystemConfig.scope_id == scope_id)
+        
+        result = await db.execute(query)
+        config = result.scalar_one_or_none()
+        
+        if not config:
+            # 返回默认值
+            return ResponseModel(
+                code=0,
+                message={
+                    "maxPassCount": 3,
+                    "source": "default",
+                    "description": "默认值（未配置）"
+                }
+            )
+        
+        logger.info(f"管理员 {current_user.user_id} 查询接诊配置: {scope_type}:{scope_id}")
+        return ResponseModel(
+            code=0,
+            message={
+                "maxPassCount": int(config.config_value),
+                "source": scope_type.lower(),
+                "description": config.description,
+                "updateTime": config.update_time.isoformat() if config.update_time else None
+            }
+        )
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"查询接诊配置时发生异常: {str(e)}", exc_info=True)
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/consultation/config", summary="更新接诊配置")
+async def update_consultation_config(
+    max_pass_count: int,
+    scope_type: str = "GLOBAL",
+    scope_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    更新接诊配置（管理员）
+    
+    - **max_pass_count**: 过号次数上限（1-10）
+    - **scope_type**: 配置范围类型（GLOBAL=全局, DOCTOR=医生级别）
+    - **scope_id**: 范围ID（GLOBAL时不需要，DOCTOR时传 doctor_id）
+    """
+    try:
+        # 管理员权限检查
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.AUTH_ERROR_CODE,
+                msg="仅管理员可修改接诊配置",
+                status_code=403
+            )
+        
+        # 验证参数
+        if scope_type not in ["GLOBAL", "DOCTOR"]:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="scope_type 必须是 GLOBAL 或 DOCTOR",
+                status_code=400
+            )
+        
+        if scope_type == "DOCTOR" and not scope_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="DOCTOR 类型必须提供 scope_id (doctor_id)",
+                status_code=400
+            )
+        
+        if not 1 <= max_pass_count <= 10:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="过号次数上限必须在 1-10 之间",
+                status_code=400
+            )
+        
+        # 查询现有配置
+        query = select(SystemConfig).where(
+            SystemConfig.config_key == "consultation.max_pass_count",
+            SystemConfig.scope_type == scope_type
+        )
+        
+        if scope_type == "GLOBAL":
+            query = query.where(SystemConfig.scope_id.is_(None))
+        else:
+            query = query.where(SystemConfig.scope_id == scope_id)
+        
+        result = await db.execute(query)
+        config = result.scalar_one_or_none()
+        
+        if config:
+            # 更新现有配置
+            config.config_value = str(max_pass_count)
+            config.update_time = datetime.utcnow()
+        else:
+            # 创建新配置
+            config = SystemConfig(
+                config_key="consultation.max_pass_count",
+                scope_type=scope_type,
+                scope_id=scope_id if scope_type == "DOCTOR" else None,
+                config_value=str(max_pass_count),
+                data_type="INT",
+                description=f"接诊过号次数上限（{scope_type}）",
+                is_active=True
+            )
+            db.add(config)
+        
+        await db.commit()
+        
+        logger.info(f"管理员 {current_user.user_id} 更新接诊配置: {scope_type}:{scope_id} = {max_pass_count}")
+        return ResponseModel(
+            code=0,
+            message={
+                "detail": "配置更新成功",
+                "maxPassCount": max_pass_count,
+                "scope": f"{scope_type}:{scope_id}" if scope_id else scope_type
+            }
+        )
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新接诊配置时发生异常: {str(e)}", exc_info=True)
+        await db.rollback()
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
