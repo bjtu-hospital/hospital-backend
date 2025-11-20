@@ -21,6 +21,7 @@ from app.schemas.response import (
 from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
 from app.models.hospital_area import HospitalArea
+from app.services.crawler_service import import_all_json, crawl_and_import_schedules
 from app.models.user_ban import UserBan
 from app.models.risk_log import RiskLog
 from app.models.user_risk_summary import UserRiskSummary
@@ -2070,6 +2071,49 @@ async def get_hospital_areas(
 
 
 # ====== 门诊管理接口 ======
+
+# ====== 排班爬虫导入接口 ======
+
+@router.post("/crawler/schedules/run", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def run_full_crawler_pipeline(
+    skip_crawl: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """完整爬虫流程：爬取医院排班 -> 合并数据 -> 导入数据库（一键执行）
+
+    参数：
+    - skip_crawl: 是否跳过爬虫步骤，直接使用已有的 all.json（默认 False）
+    
+    流程：
+    1. 从 final/crawler_data.json 读取医生列表
+    2. 并发爬取所有医生的排班数据（存储到 schedule/年份i周/ 目录）
+    3. 合并所有 JSON 文件为 all.json
+    4. 解析并导入到数据库（创建院区/门诊，匹配医生，插入/更新排班）
+    
+    响应：包含爬取统计、合并计数、导入统计
+    """
+    try:
+        if not getattr(current_user, "is_admin", False):
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="仅管理员可访问"
+            )
+        
+        result = await crawl_and_import_schedules(db, skip_crawl=skip_crawl)
+        return ResponseModel(code=0, message=result)
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException as be:
+        raise be
+    except Exception as e:
+        logger.error(f"完整爬虫流程失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg=f"完整爬虫流程失败: {str(e)}"
+        )
+
 
 @router.get("/clinics", response_model=ResponseModel[Union[ClinicListResponse, AuthErrorResponse]])
 async def get_clinics(

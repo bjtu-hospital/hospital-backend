@@ -849,7 +849,61 @@ GET /hospital-areas?area_id=1
 }
 ```
 
-## 3. 医生管理
+## 2.10 排班爬虫数据导入接口
+
+用于将爬虫流程生成的 `all.json` 文件内容导入到系统的院区 / 门诊 / 排班表，或直接触发完整的爬虫+导入流程。
+
+### 2.10.1 完整爬虫流程（一键执行）
+- POST `/crawler/schedules/run`
+- 权限：仅管理员
+
+**功能**：自动执行完整流程：爬取医院官网排班 → 合并数据 → 导入数据库
+
+**请求参数**：
+- `skip_crawl`（可选，bool）：是否跳过爬虫步骤，直接使用已有 all.json（默认 false）
+
+**流程说明**：
+1. 从 `final/crawler_data.json` 读取医生基础信息列表
+2. 并发爬取所有医生的排班数据（异步 HTTP 请求）
+3. 保存到 `schedule/年份i周/` 目录
+4. 合并所有 JSON 文件为 `all.json`
+5. 解析并导入数据库：
+   - 创建/匹配院区（幂等）
+   - 创建/匹配门诊（幂等）
+   - 根据医生姓名匹配已有医生记录
+   - 插入新排班或更新已有排班（避免重复）
+
+**请求示例**：
+```pwsh
+# 完整流程（爬取+导入）
+curl -X POST "http://127.0.0.1:8000/crawler/schedules/run" -H "Authorization: Bearer <token>"
+
+# 跳过爬虫，仅导入已有数据
+curl -X POST "http://127.0.0.1:8000/crawler/schedules/run?skip_crawl=true" -H "Authorization: Bearer <token>"
+```
+
+**响应示例**：
+```json
+{
+  "code": 0,
+  "message": {
+    "crawl_stats": {
+      "success": 245,
+      "total": 250,
+      "output_dir": "schedule/2025年47周(11.17-11.23)"
+    },
+    "merge_count": 245,
+    "import_stats": {
+      "areas_created": 0,
+      "clinics_created": 0,
+      "schedules_inserted": 456,
+      "schedules_updated": 123,
+      "schedules_skipped_no_doctor": 12,
+      "schedules_skipped_duplicate": 5
+    }
+  }
+}
+```
 
 ### 3.1 创建医生
 - POST `/doctors`
