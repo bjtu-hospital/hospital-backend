@@ -100,8 +100,10 @@ async def get_consultation_queue(
     next_patient = waiting_queue[0] if waiting_queue else None
     
     # 7. 统计数据
+    # totalSlots 修改为实际订单总数：已确认 + 候补 + 已完成
+    dynamic_total_slots = len(confirmed_list) + len(waitlist_list) + int(completed_count)
     stats = {
-        "totalSlots": schedule.total_slots,
+        "totalSlots": dynamic_total_slots,
         "confirmedCount": len(confirmed_list),
         "waitlistCount": len(waitlist_list),
         "completedCount": int(completed_count),

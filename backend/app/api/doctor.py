@@ -1325,3 +1325,76 @@ async def pass_current_patient(
 		)
 
 
+@router.get("/patient/{patient_id}", response_model=ResponseModel)
+async def get_patient_info(
+    patient_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """
+    根据患者ID查询患者信息
+    
+    - **patient_id**: 患者ID（必填）
+    
+    返回：
+    - patient_id: 患者ID
+    - name: 患者姓名
+    - gender: 性别
+    - age: 年龄（根据出生日期计算）
+    """
+    try:
+        # 权限检查：必须是医生或管理员
+        if not current_user.is_admin:
+            res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+            current_doctor = res.scalar_one_or_none()
+            if not current_doctor:
+                raise AuthHTTPException(
+                    code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                    msg="仅医生可查询患者信息",
+                    status_code=403
+                )
+        
+        # 查询患者信息
+        from app.models.patient import Patient
+        patient_res = await db.execute(
+            select(Patient).where(Patient.patient_id == patient_id)
+        )
+        patient = patient_res.scalar_one_or_none()
+        
+        if not patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg=f"患者ID {patient_id} 不存在",
+                status_code=404
+            )
+        
+        # 计算年龄
+        age = None
+        if patient.birth_date:
+            from datetime import date
+            today = date.today()
+            age = today.year - patient.birth_date.year - (
+                (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day)
+            )
+        
+        return ResponseModel(
+            code=0,
+            message={
+                "patient_id": patient.patient_id,
+                "name": patient.name,
+                "gender": patient.gender,
+                "age": age
+            }
+        )
+        
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"查询患者信息失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg=f"查询患者信息失败: {str(e)}"
+        )
