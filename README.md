@@ -2108,8 +2108,8 @@ Authorization: Bearer <token>
   - `register` - 禁止注册新号
   - `login` - 禁止登录
   - `all` - 全部禁止
-- `duration_days` (可选): 封禁天数，不传或为 0 表示永久封禁
-- `reason` (可选): 封禁原因
+- `duration_days` (必需): 封禁天数，0 表示永久封禁
+- `reason` (必需): 封禁原因，1-500字符
 
 #### 输出:
 ```json
@@ -2119,7 +2119,7 @@ Authorization: Bearer <token>
         "detail": "封禁操作成功",
         "user_id": 12,
         "ban_type": "login",
-        "ban_until": "2025-11-21T14:30:00",
+        "ban_until": "2025-11-28T14:30:00.000000",
         "is_active": true
     }
 }
@@ -2146,7 +2146,7 @@ Authorization: Bearer <token>
 
 参数说明：
 - `user_id` (必需): 要解封的用户ID
-- `reason` (可选): 解封原因
+- `reason` (必需): 解封原因，1-500字符
 
 #### 输出:
 ```json
@@ -2156,7 +2156,7 @@ Authorization: Bearer <token>
         "detail": "解除封禁成功",
         "user_id": 12,
         "ban_type": "login",
-        "unban_time": "2025-11-14T01:30:00"
+        "unban_time": "2025-11-21T14:30:00.000000"
     }
 }
 ```
@@ -3161,5 +3161,180 @@ Authorization: Bearer <token>
 - `doctor_title`：医生职称（主治医师/副主任医师/主任医师等）
 - `week_day`：星期几（"一" / "二" / "三" / "四" / "五" / "六" / "日"）
 - 其他字段说明同前述接口
+
+---
+
+## 2. 医生就诊
+
+### 2.1 获取接诊队列
+
+**接口地址**：`GET /doctor/consultation/queue`
+
+**请求参数**：
+- `schedule_id` (query): 排班ID，必需
+
+**响应示例**：
+```json
+{
+  "code": 0,
+  "message": {
+    "stats": {
+      "totalSlots": 8,
+      "confirmedCount": 1,
+      "waitlistCount": 0,
+      "completedCount": 2,
+      "waitingCount": 0,
+      "passedCount": 0
+    },
+    "scheduleInfo": {
+      "scheduleId": 5669,
+      "doctorId": 6,
+      "date": "2025-11-20",
+      "timeSection": "上午"
+    },
+    "currentPatient": {
+      "orderId": 117,
+      "patientId": 5,
+      "patientName": "测试用户003",
+      "gender": "女",
+      "age": null,
+      "queueNumber": "A001",
+      "status": "confirmed",
+      "isCall": true,
+      "callTime": "2025-11-21 00:32:45",
+      "visitTime": "2025-11-20 10:23:00",
+      "passCount": 0,
+      "priority": 0
+    },
+    "nextPatient": null,
+    "queue": [],
+    "waitlist": []
+  }
+}
+```
+
+### 2.2 叫下一个患者
+
+**接口地址**：`POST /doctor/consultation/next`
+
+**请求参数**：
+```json
+{
+  "schedule_id": 5669
+}
+```
+
+**响应示例**：
+```json
+{
+  "code": 0,
+  "message": {
+    "calledPatient": {
+      "orderId": 117,
+      "patientId": 5,
+      "patientName": "测试用户003",
+      "gender": "女",
+      "age": null,
+      "queueNumber": "A001",
+      "status": "confirmed",
+      "isCall": true,
+      "callTime": "2025-11-21 00:32:45",
+      "visitTime": "2025-11-20 10:23:00",
+      "passCount": 0,
+      "priority": 0
+    },
+    "scheduleId": 5669
+  }
+}
+```
+
+### 2.3 患者过号（未到场）
+
+**接口地址**：`POST /doctor/consultation/pass`
+
+**请求参数**：
+```json
+{
+  "patient_order_id": 117
+}
+```
+
+**响应示例**：
+```json
+{
+  "code": 0,
+  "message": {
+    "passedPatient": {
+      "orderId": 117,
+      "patientId": 5,
+      "patientName": "测试用户003",
+      "gender": "女",
+      "age": null,
+      "queueNumber": "A001",
+      "status": "confirmed",
+      "isCall": false,
+      "callTime": "2025-11-21 00:32:45",
+      "visitTime": "2025-11-20 10:23:00",
+      "passCount": 1,
+      "priority": 0
+    },
+    "nextPatient": null,
+    "scheduleId": 5669
+  }
+}
+```
+
+### 2.4 完成患者就诊
+
+**接口地址**：`POST /doctor/consultation/complete`
+
+**请求参数**：
+```json
+{
+  "patient_id": 5,
+  "schedule_id": 5669
+}
+```
+
+**响应示例**：
+```json
+{
+  "code": 0,
+  "message": {
+    "detail": "就诊完成",
+    "completedPatient": {
+      "orderId": 117,
+      "patientId": 5,
+      "patientName": "测试用户003",
+      "gender": "女",
+      "age": null,
+      "queueNumber": "A001",
+      "status": "completed",
+      "isCall": false,
+      "callTime": "2025-11-21 00:32:45",
+      "visitTime": "2025-11-20 10:23:00",
+      "passCount": 0,
+      "priority": 0
+    },
+    "scheduleId": 5669
+  }
+}
+```
+
+**字段说明**：
+- `stats`: 队列统计信息
+  - `totalSlots`: 总号源数量
+  - `confirmedCount`: 已确认患者数量
+  - `waitlistCount`: 候补患者数量
+  - `completedCount`: 已完成就诊数量
+  - `waitingCount`: 等待就诊数量
+  - `passedCount`: 过号患者数量
+- `scheduleInfo`: 排班信息
+- `currentPatient`: 当前正在就诊的患者（`isCall: true`）
+- `nextPatient`: 下一位待叫号的患者
+- `queue`: 正在等待的患者队列（不包含正在就诊的患者）
+- `waitlist`: 候补队列
+- `passCount`: 患者过号次数
+- `priority`: 优先级（数字越小优先级越高）
 
 ---
