@@ -42,7 +42,10 @@ from app.services.admin_helpers import (
     _slot_type_to_str,
     _str_to_slot_type,
     get_administrator_id,
-    calculate_leave_days
+    calculate_leave_days,
+    bulk_get_doctor_prices,
+    bulk_get_clinic_prices,
+    bulk_get_minor_dept_prices,
 )
 from app.services.absence_detection_service import (
     mark_absent_for_date,
@@ -958,10 +961,12 @@ async def delete_minor_department(
 @router.get("/minor-departments", response_model=ResponseModel[Union[MinorDepartmentListResponse, AuthErrorResponse]])
 async def get_minor_departments(
     major_dept_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
-    """获取小科室列表 - 仅管理员可操作，可按大科室过滤"""
+    """获取小科室列表 - 仅管理员可操作，可按大科室过滤，支持分页"""
     try:
         if not current_user.is_admin:
             raise AuthHTTPException(
@@ -969,34 +974,52 @@ async def get_minor_departments(
                 msg="无权限，仅管理员可操作",
                 status_code=403
             )
-        
-        # 构建查询条件
+        # 构建查询条件并获取小科室列表
         filters = []
-        if major_dept_id:
+        if major_dept_id is not None:
             filters.append(MinorDepartment.major_dept_id == major_dept_id)
+
+        # 查询总数
+        count_query = select(func.count()).select_from(MinorDepartment).where(and_(*filters) if filters else True)
+        total = await db.scalar(count_query)
         
-        result = await db.execute(select(MinorDepartment).where(and_(*filters) if filters else True))
-        departments = result.scalars().all()
-        
-        dept_list = []
-        for dept in departments:
-            # 获取小科室的价格配置
-            prices = await get_entity_prices(db, "MINOR_DEPT", dept.minor_dept_id)
-            
-            dept_list.append({
-                "minor_dept_id": dept.minor_dept_id,
-                "major_dept_id": dept.major_dept_id,
-                "name": dept.name,
-                "description": dept.description,
-                "default_price_normal": prices["default_price_normal"],
-                "default_price_expert": prices["default_price_expert"],
-                "default_price_special": prices["default_price_special"]
-            })
-        
-        return ResponseModel(
-            code=0,
-            message=MinorDepartmentListResponse(departments=dept_list)
+        # 分页查询
+        offset = (page - 1) * page_size
+        result = await db.execute(
+            select(MinorDepartment)
+            .where(and_(*filters) if filters else True)
+            .offset(offset)
+            .limit(page_size)
         )
+        depts = result.scalars().all()
+
+        # 批量获取所有小科室的价格配置，避免 N+1 查询
+        prices_map = await bulk_get_minor_dept_prices(db, depts)
+
+        dept_list = []
+        for d in depts:
+            prices = prices_map.get(d.minor_dept_id, {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            })
+
+            dept_list.append({
+                "minor_dept_id": d.minor_dept_id,
+                "major_dept_id": d.major_dept_id,
+                "name": d.name,
+                "description": d.description,
+                "default_price_normal": prices.get("default_price_normal"),
+                "default_price_expert": prices.get("default_price_expert"),
+                "default_price_special": prices.get("default_price_special")
+            })
+
+        return ResponseModel(code=0, message={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "departments": dept_list
+        })
     except AuthHTTPException:
         raise
     except BusinessHTTPException:
@@ -1189,10 +1212,12 @@ async def create_doctor(
 async def get_doctors(
     dept_id: Optional[int] = None,
     name: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
-    """获取医生列表 - 仅管理员可操作，可按科室过滤和姓名模糊搜索"""
+    """获取医生列表 - 仅管理员可操作，可按科室过滤和姓名模糊搜索，支持分页"""
     try:
         if not current_user.is_admin:
             raise AuthHTTPException(
@@ -1208,7 +1233,18 @@ async def get_doctors(
         if name:
             filters.append(Doctor.name.like(f"%{name}%"))
         
-        result = await db.execute(select(Doctor).where(and_(*filters) if filters else True))
+        # 查询总数
+        count_query = select(func.count()).select_from(Doctor).where(and_(*filters) if filters else True)
+        total = await db.scalar(count_query)
+        
+        # 分页查询
+        offset = (page - 1) * page_size
+        result = await db.execute(
+            select(Doctor)
+            .where(and_(*filters) if filters else True)
+            .offset(offset)
+            .limit(page_size)
+        )
         doctors = result.scalars().all()
         
         # 预取所有关联的 user（避免循环中多次查询）
@@ -1219,17 +1255,22 @@ async def get_doctors(
             users = res_users.scalars().all()
             users_map = {u.user_id: u for u in users}
 
+        # 批量获取价格，避免循环内 await 造成 N+1 查询
+        prices_map = await bulk_get_doctor_prices(db, doctors)
+
         doctor_list = []
         for doctor in doctors:
             is_registered = False
             if doctor.user_id:
                 u = users_map.get(doctor.user_id)
-                # 更严格的注册定义：对应 User 存在且未删除且处于激活状态
                 if u and getattr(u, "is_active", False) and not getattr(u, "is_deleted", False):
                     is_registered = True
 
-            # 获取医生的价格配置
-            prices = await get_entity_prices(db, "DOCTOR", doctor.doctor_id)
+            prices = prices_map.get(doctor.doctor_id, {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            })
 
             doctor_list.append({
                 "doctor_id": doctor.doctor_id,
@@ -1249,7 +1290,12 @@ async def get_doctors(
         
         return ResponseModel(
             code=0,
-            message=DoctorListResponse(doctors=doctor_list)
+            message={
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "doctors": doctor_list
+            }
         )
     except AuthHTTPException:
         raise
@@ -2123,10 +2169,12 @@ async def run_full_crawler_pipeline(
 @router.get("/clinics", response_model=ResponseModel[Union[ClinicListResponse, AuthErrorResponse]])
 async def get_clinics(
     dept_id: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
-    """获取科室门诊列表 - 仅管理员可操作，可按小科室过滤"""
+    """获取科室门诊列表 - 仅管理员可操作，可按小科室过滤，支持分页"""
     try:
         if not current_user.is_admin:
             raise AuthHTTPException(
@@ -2139,13 +2187,30 @@ async def get_clinics(
         if dept_id:
             filters.append(Clinic.minor_dept_id == dept_id)
 
-        result = await db.execute(select(Clinic).where(and_(*filters) if filters else True))
+        # 查询总数
+        count_query = select(func.count()).select_from(Clinic).where(and_(*filters) if filters else True)
+        total = await db.scalar(count_query)
+        
+        # 分页查询
+        offset = (page - 1) * page_size
+        result = await db.execute(
+            select(Clinic)
+            .where(and_(*filters) if filters else True)
+            .offset(offset)
+            .limit(page_size)
+        )
         clinics = result.scalars().all()
+
+        # 批量获取所有门诊的价格配置，避免 N+1 查询
+        prices_map = await bulk_get_clinic_prices(db, clinics)
 
         clinic_list = []
         for c in clinics:
-            # 获取诊室的价格配置
-            prices = await get_entity_prices(db, "CLINIC", c.clinic_id)
+            prices = prices_map.get(c.clinic_id, {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            })
             
             clinic_list.append({
                 "clinic_id": c.clinic_id,

@@ -316,14 +316,14 @@ docker run -d --name hospital-backend -p 8000:8000 --env-file backend/.env bjtu-
 
     - 小科室（MinorDepartment）
         - POST `/minor-departments`：创建小科室（需指定所属大科室 id）
-        - GET `/minor-departments`：获取小科室列表（可按大科室过滤）
+        - GET `/minor-departments`：获取小科室列表（可按大科室过滤，支持分页）
         - PUT `/minor-departments/{minor_dept_id}`：更新（支持将小科室转移到另一个大科室）
         - DELETE `/minor-departments/{minor_dept_id}`：删除（若存在关联医生则拒绝）
 
     - 医生（Doctor）管理
         - POST `/doctors`：创建医生档案（可选同时在请求中提供 `identifier` 与 `password` 来一并创建用户账号并关联）
             - 如果提供 `identifier` 与 `password`，会在同一事务中创建 `User` 并将 `doctor.user_id` 关联到新用户；若只提供 `identifier` 而未提供 `password` 会返回错误。
-        - GET `/doctors`：获取医生列表（可按科室过滤）
+        - GET `/doctors`：获取医生列表（可按科室过滤，支持分页）
         - PUT `/doctors/{doctor_id}`：更新医生信息
         - DELETE `/doctors/{doctor_id}`：删除医生。实现说明：若医生有关联的 `User`，会对该 User 做“懒删除（软删除）`is_deleted=True` 并 `is_active=False`”，同时尝试清理 Redis 中该用户的 token 映射，然后解除关联并删除医生记录。
         - POST `/doctors/{doctor_id}/create-account`：单独为医生创建账号并关联（管理员操作）
@@ -719,15 +719,29 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
 }
 ```
 
-#### 2.6 获取小科室列表
-- GET `/minor-departments?major_dept_id={major_dept_id}`
-- 参数 `major_dept_id` 可选，用于按大科室过滤
+#### 2.6 获取小科室列表（支持分页）
+- GET `/minor-departments?major_dept_id={major_dept_id}&page={page}&page_size={page_size}`
+- 参数：
+  - `major_dept_id` (可选)：按大科室过滤
+  - `page` (可选)：页码，从 1 开始，默认 1
+  - `page_size` (可选)：每页数量，默认 50
 
-响应（**包含价格信息**）：
+请求示例：
+```
+GET /minor-departments                        # 获取全部
+GET /minor-departments?major_dept_id=1        # 按大科室过滤
+GET /minor-departments?page=1&page_size=20    # 分页查询
+GET /minor-departments?major_dept_id=1&page=1&page_size=10  # 过滤+分页
+```
+
+响应（**包含价格信息和分页信息**）：
 ```json
 {
     "code": 0,
     "message": {
+        "total": 45,
+        "page": 1,
+        "page_size": 20,
         "departments": [
             {
                 "minor_dept_id": 1,
@@ -739,7 +753,7 @@ PUT /admin/global-prices?default_price_normal=60&default_price_expert=120
                 "default_price_special": 550.00,
                 "create_time": "2024-01-01T10:00:00"
             },
-            // ... 其他小科室
+            // ... 其他小科室（当前页共20条）
         ]
     }
 }
@@ -945,23 +959,30 @@ curl -X POST "http://127.0.0.1:8000/crawler/schedules/run?skip_crawl=true" -H "A
 }
 ```
 
-### 3.2 获取医生列表
-- GET `/doctors?dept_id={dept_id}&name={name}`
+### 3.2 获取医生列表（支持分页）
+- GET `/doctors?dept_id={dept_id}&name={name}&page={page}&page_size={page_size}`
 - 参数：
   - `dept_id` (可选)：按科室 ID 过滤
   - `name` (可选)：按医生姓名模糊搜索
+  - `page` (可选)：页码，从 1 开始，默认 1
+  - `page_size` (可选)：每页数量，默认 50
 
 请求示例：
 ```
 GET /doctors?name=张
 GET /doctors?dept_id=1&name=王
+GET /doctors?page=1&page_size=20           # 分页查询：第1页，每页20条
+GET /doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
 ```
 
-响应（**包含价格信息**）：
+响应（**包含价格信息和分页信息**）：
 ```json
 {
     "code": 0,
     "message": {
+        "total": 150,
+        "page": 1,
+        "page_size": 20,
         "doctors": [
             {
                 "doctor_id": 1,
@@ -979,7 +1000,7 @@ GET /doctors?dept_id=1&name=王
                 "default_price_special": 888.00,
                 "create_time": "2024-01-01T10:00:00"
             },
-            // ... 其他医生
+            // ... 其他医生（当前页共20条）
         ]
     }
 }
@@ -1663,16 +1684,30 @@ Authorization: Bearer <token>
 
 ## 7. 门诊管理
 
-### 7.1 获取科室门诊列表
-- GET `/admin/clinics?dept_id={dept_id}`
-- 说明：获取门诊列表，可按小科室过滤
-- 参数 `dept_id` 可选，用于按小科室过滤
+### 7.1 获取科室门诊列表（支持分页）
+- GET `/admin/clinics?dept_id={dept_id}&page={page}&page_size={page_size}`
+- 说明：获取门诊列表，可按小科室过滤，支持分页
+- 参数：
+  - `dept_id` (可选)：按小科室过滤
+  - `page` (可选)：页码，从 1 开始，默认 1
+  - `page_size` (可选)：每页数量，默认 50
 
-响应（**包含价格信息**）：
+请求示例：
+```
+GET /admin/clinics                           # 获取全部
+GET /admin/clinics?dept_id=1                 # 按科室过滤
+GET /admin/clinics?page=1&page_size=20       # 分页查询
+GET /admin/clinics?dept_id=1&page=1&page_size=10  # 过滤+分页
+```
+
+响应（**包含价格信息和分页信息**）：
 ```json
 {
     "code": 0,
     "message": {
+        "total": 80,
+        "page": 1,
+        "page_size": 20,
         "clinics": [
             {
                 "clinic_id": 1,
@@ -1686,6 +1721,7 @@ Authorization: Bearer <token>
                 "default_price_special": null,
                 "create_time": "2025-10-17T00:51:23"
             }
+            // ... 其他门诊（当前页共20条）
         ]
     }
 }

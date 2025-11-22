@@ -224,13 +224,19 @@ async def department_registrations(
                  RegistrationOrder.status != "cancelled")
         ).group_by(RegistrationOrder.doctor_id)
         rows = await db.execute(doctors_q)
+        stats_list = rows.all()
+        
+        # 批量获取医生信息，避免 N+1 查询
+        doctor_ids = [did for did, _, _ in stats_list if did]
+        doctors_map = {}
+        if doctor_ids:
+            docs_result = await db.execute(select(Doctor).where(Doctor.doctor_id.in_(doctor_ids)))
+            for doc in docs_result.scalars().all():
+                doctors_map[doc.doctor_id] = doc
+        
         doctors = []
-        for did, cnt, rev in rows.all():
-            # fetch doctor basic info
-            doc = None
-            if did:
-                dres = await db.execute(select(Doctor).where(Doctor.doctor_id == did))
-                doc = dres.scalar_one_or_none()
+        for did, cnt, rev in stats_list:
+            doc = doctors_map.get(did)
             doctors.append({
                 "doctor_id": did,
                 "doctor_name": doc.name if doc else None,
@@ -305,18 +311,23 @@ async def doctor_registrations(
             and_(Schedule.doctor_id == doctor_id, Schedule.date >= start_date, Schedule.date <= end_date)
         ).group_by(Schedule.schedule_id)
         rows = await db.execute(sched_q)
+        sched_list = rows.all()
+        
+        # 批量获取门诊信息，避免 N+1 查询
+        clinic_ids = [cid for _, cid, _, _, _, _ in sched_list if cid]
+        clinics_map = {}
+        if clinic_ids:
+            clinics_result = await db.execute(select(Clinic).where(Clinic.clinic_id.in_(clinic_ids)))
+            for clinic in clinics_result.scalars().all():
+                clinics_map[clinic.clinic_id] = clinic
+        
         schedules = []
-        for sid, cid, tsec, stype, total_slots, regs in rows.all():
+        for sid, cid, tsec, stype, total_slots, regs in sched_list:
             utilization = float(regs) / float(total_slots) if total_slots and total_slots > 0 else 0.0
-            # clinic name
-            clinic_name = None
-            if cid:
-                cres = await db.execute(select(Clinic).where(Clinic.clinic_id == cid))
-                cobj = cres.scalar_one_or_none()
-                clinic_name = cobj.name if cobj else None
+            clinic = clinics_map.get(cid)
             schedules.append({
                 "schedule_id": sid,
-                "clinic_name": clinic_name,
+                "clinic_name": clinic.name if clinic else None,
                 "time_section": tsec,
                 "slot_type": stype,
                 "registrations": int(regs or 0),
@@ -359,29 +370,61 @@ async def departments_ranking(
             raise Exception("仅管理员可访问")
         start_date, end_date = _parse_date_range(date, None)
 
-        # 聚合到 minor_dept via clinic
-        agg_q = select(Clinic.minor_dept_id.label("minor_dept_id"), func.count(RegistrationOrder.order_id).label("registrations"), func.coalesce(func.sum(Schedule.price), 0).label("revenue")).select_from(RegistrationOrder).join(Schedule, RegistrationOrder.schedule_id == Schedule.schedule_id).join(Clinic, Schedule.clinic_id == Clinic.clinic_id).where(
-            and_(RegistrationOrder.slot_date >= start_date, RegistrationOrder.slot_date <= end_date, RegistrationOrder.status != "cancelled")
-        ).group_by(Clinic.minor_dept_id)
-        if order_by == "revenue":
-            agg_q = agg_q.order_by(func.coalesce(func.sum(Schedule.price), 0).desc())
-        else:
-            agg_q = agg_q.order_by(func.count(RegistrationOrder.order_id).desc())
-        agg_q = agg_q.limit(limit)
+        # 优化: 先获取 clinic_id -> minor_dept_id 映射,避免重复 JOIN
+        clinics_result = await db.execute(select(Clinic.clinic_id, Clinic.minor_dept_id))
+        clinic_to_dept = {c_id: d_id for c_id, d_id in clinics_result.all()}
+        
+        # 聚合查询只 JOIN Schedule 获取价格
+        agg_q = select(
+            Schedule.clinic_id.label("clinic_id"),
+            func.count(RegistrationOrder.order_id).label("registrations"),
+            func.coalesce(func.sum(Schedule.price), 0).label("revenue")
+        ).select_from(RegistrationOrder).join(
+            Schedule, RegistrationOrder.schedule_id == Schedule.schedule_id
+        ).where(
+            and_(
+                RegistrationOrder.slot_date >= start_date,
+                RegistrationOrder.slot_date <= end_date,
+                RegistrationOrder.status != "cancelled"
+            )
+        ).group_by(Schedule.clinic_id)
+        
         rows = await db.execute(agg_q)
+        clinic_stats = rows.all()
+        
+        # 按科室聚合
+        dept_stats = {}
+        for clinic_id, regs, rev in clinic_stats:
+            dept_id = clinic_to_dept.get(clinic_id)
+            if dept_id:
+                if dept_id not in dept_stats:
+                    dept_stats[dept_id] = {"registrations": 0, "revenue": 0.0}
+                dept_stats[dept_id]["registrations"] += int(regs or 0)
+                dept_stats[dept_id]["revenue"] += float(rev or 0.0)
+        
+        # 排序
+        sorted_depts = sorted(
+            dept_stats.items(),
+            key=lambda x: x[1][order_by] if order_by in x[1] else x[1]["registrations"],
+            reverse=True
+        )[:limit]
+        
+        # 批量获取科室信息
+        dept_ids = [dept_id for dept_id, _ in sorted_depts]
+        depts_map = {}
+        if dept_ids:
+            depts_result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id.in_(dept_ids)))
+            for dept in depts_result.scalars().all():
+                depts_map[dept.minor_dept_id] = dept
+        
         ranking = []
-        for mid, regs, rev in rows.all():
-            # fetch dept name
-            dname = None
-            if mid:
-                dres = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == mid))
-                dobj = dres.scalar_one_or_none()
-                dname = dobj.name if dobj else None
+        for dept_id, stats in sorted_depts:
+            dept = depts_map.get(dept_id)
             ranking.append({
-                "minor_dept_id": mid,
-                "dept_name": dname,
-                "registrations": int(regs or 0),
-                "revenue": float(rev or 0.0)
+                "minor_dept_id": dept_id,
+                "dept_name": dept.name if dept else None,
+                "registrations": stats["registrations"],
+                "revenue": stats["revenue"]
             })
         return ResponseModel(code=0, message={"date": str(start_date), "order_by": order_by, "ranking": ranking})
     except Exception as e:
@@ -402,37 +445,71 @@ async def doctors_ranking(
             raise Exception("仅管理员可访问")
         start_date, end_date = _parse_date_range(date, None)
 
-        agg_q = select(RegistrationOrder.doctor_id.label("doctor_id"), func.count(RegistrationOrder.order_id).label("registrations"), func.coalesce(func.sum(Schedule.price), 0).label("revenue")).select_from(RegistrationOrder).join(Schedule, RegistrationOrder.schedule_id == Schedule.schedule_id).where(
-            and_(RegistrationOrder.slot_date >= start_date, RegistrationOrder.slot_date <= end_date, RegistrationOrder.status != "cancelled")
-        ).group_by(RegistrationOrder.doctor_id)
+        # 如果指定科室,先过滤医生 ID
+        doctor_filter = []
         if dept_id:
-            agg_q = agg_q.join(Doctor, RegistrationOrder.doctor_id == Doctor.doctor_id).where(Doctor.dept_id == dept_id)
+            docs_in_dept = await db.execute(select(Doctor.doctor_id).where(Doctor.dept_id == dept_id))
+            doctor_filter = [did for (did,) in docs_in_dept.all()]
+            if not doctor_filter:
+                # 该科室无医生
+                return ResponseModel(code=0, message={"date": str(start_date), "order_by": order_by, "ranking": []})
+        
+        # 聚合查询(无需 JOIN Doctor 表)
+        agg_q = select(
+            RegistrationOrder.doctor_id.label("doctor_id"),
+            func.count(RegistrationOrder.order_id).label("registrations"),
+            func.coalesce(func.sum(Schedule.price), 0).label("revenue")
+        ).select_from(RegistrationOrder).join(
+            Schedule, RegistrationOrder.schedule_id == Schedule.schedule_id
+        ).where(
+            and_(
+                RegistrationOrder.slot_date >= start_date,
+                RegistrationOrder.slot_date <= end_date,
+                RegistrationOrder.status != "cancelled"
+            )
+        )
+        
+        if doctor_filter:
+            agg_q = agg_q.where(RegistrationOrder.doctor_id.in_(doctor_filter))
+        
+        agg_q = agg_q.group_by(RegistrationOrder.doctor_id)
+        
+        # 排序
         if order_by == "revenue":
             agg_q = agg_q.order_by(func.coalesce(func.sum(Schedule.price), 0).desc())
         else:
             agg_q = agg_q.order_by(func.count(RegistrationOrder.order_id).desc())
+        
         agg_q = agg_q.limit(limit)
         rows = await db.execute(agg_q)
+        stats_list = rows.all()
+        
+        # 批量获取医生和科室信息
+        doctor_ids = [did for did, _, _ in stats_list if did]
+        doctors_map = {}
+        dept_ids_set = set()
+        if doctor_ids:
+            docs_result = await db.execute(select(Doctor).where(Doctor.doctor_id.in_(doctor_ids)))
+            for doc in docs_result.scalars().all():
+                doctors_map[doc.doctor_id] = doc
+                if doc.dept_id:
+                    dept_ids_set.add(doc.dept_id)
+        
+        depts_map = {}
+        if dept_ids_set:
+            depts_result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id.in_(list(dept_ids_set))))
+            for dept in depts_result.scalars().all():
+                depts_map[dept.minor_dept_id] = dept
+        
         ranking = []
-        for did, regs, rev in rows.all():
-            dname = None
-            title = None
-            dept_name = None
-            if did:
-                dres = await db.execute(select(Doctor).where(Doctor.doctor_id == did))
-                dobj = dres.scalar_one_or_none()
-                if dobj:
-                    dname = dobj.name
-                    title = dobj.title
-                    if dobj.dept_id:
-                        mdres = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == dobj.dept_id))
-                        mdobj = mdres.scalar_one_or_none()
-                        dept_name = mdobj.name if mdobj else None
+        for did, regs, rev in stats_list:
+            doc = doctors_map.get(did)
+            dept = depts_map.get(doc.dept_id) if doc and doc.dept_id else None
             ranking.append({
                 "doctor_id": did,
-                "doctor_name": dname,
-                "title": title,
-                "dept_name": dept_name,
+                "doctor_name": doc.name if doc else None,
+                "title": doc.title if doc else None,
+                "dept_name": dept.name if dept else None,
                 "registrations": int(regs or 0),
                 "revenue": float(rev or 0.0)
             })

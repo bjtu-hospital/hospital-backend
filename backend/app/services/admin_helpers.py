@@ -159,6 +159,218 @@ async def update_entity_prices(
     await db.commit()
 
 
+async def bulk_get_doctor_prices(
+    db: AsyncSession,
+    doctors: list
+) -> dict[int, dict]:
+    """批量获取医生的挂号价格，避免 N+1 查询
+    优先级: DOCTOR > MINOR_DEPT > GLOBAL
+
+    返回: { doctor_id: {default_price_normal, default_price_expert, default_price_special} }
+    未配置的字段填 None。
+    """
+    if not doctors:
+        return {}
+
+    from sqlalchemy import or_  # local import to keep top clean
+
+    doctor_ids = [d.doctor_id for d in doctors]
+    dept_ids = list({d.dept_id for d in doctors})
+
+    # 查询所有相关的配置 (一次往返)
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.is_active == True,  # noqa: E712
+            or_(
+                and_(SystemConfig.scope_type == "DOCTOR", SystemConfig.scope_id.in_(doctor_ids)),
+                and_(SystemConfig.scope_type == "MINOR_DEPT", SystemConfig.scope_id.in_(dept_ids)),
+                and_(SystemConfig.scope_type == "GLOBAL", SystemConfig.scope_id.is_(None))
+            )
+        )
+    )
+    result = await db.execute(query)
+    configs = result.scalars().all()
+
+    doctor_level = {}
+    dept_level = {}
+    global_level = None
+    for cfg in configs:
+        if cfg.scope_type == "DOCTOR":
+            doctor_level[cfg.scope_id] = cfg.config_value or {}
+        elif cfg.scope_type == "MINOR_DEPT":
+            dept_level[cfg.scope_id] = cfg.config_value or {}
+        elif cfg.scope_type == "GLOBAL":
+            global_level = cfg.config_value or {}
+
+    def extract(cfg_dict: dict | None) -> dict:
+        if not cfg_dict:
+            return {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            }
+        return {
+            "default_price_normal": float(cfg_dict["default_price_normal"]) if cfg_dict.get("default_price_normal") is not None else None,
+            "default_price_expert": float(cfg_dict["default_price_expert"]) if cfg_dict.get("default_price_expert") is not None else None,
+            "default_price_special": float(cfg_dict["default_price_special"]) if cfg_dict.get("default_price_special") is not None else None,
+        }
+
+    global_prices = extract(global_level)
+
+    price_map: dict[int, dict] = {}
+    for d in doctors:
+        # 层级覆盖: 先全局，再科室，再医生
+        merged = dict(global_prices)
+        dept_cfg = extract(dept_level.get(d.dept_id))
+        for k, v in dept_cfg.items():
+            if v is not None:
+                merged[k] = v
+        doc_cfg = extract(doctor_level.get(d.doctor_id))
+        for k, v in doc_cfg.items():
+            if v is not None:
+                merged[k] = v
+        price_map[d.doctor_id] = merged
+
+    return price_map
+
+
+async def bulk_get_clinic_prices(db: AsyncSession, clinics: list) -> dict[int, dict]:
+    """
+    批量获取多个门诊的价格配置 (避免 N+1 查询)
+    返回 {clinic_id: {"default_price_normal": float|None, ...}}
+    优先级: CLINIC > MINOR_DEPT > GLOBAL
+    """
+    from sqlalchemy import or_
+
+    if not clinics:
+        return {}
+
+    clinic_ids = [c.clinic_id for c in clinics]
+    dept_ids = list({c.minor_dept_id for c in clinics if c.minor_dept_id})
+
+    # 一次查询所有相关配置
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.is_active == True,  # noqa: E712
+            or_(
+                and_(SystemConfig.scope_type == "CLINIC", SystemConfig.scope_id.in_(clinic_ids)),
+                and_(SystemConfig.scope_type == "MINOR_DEPT", SystemConfig.scope_id.in_(dept_ids)) if dept_ids else False,
+                and_(SystemConfig.scope_type == "GLOBAL", SystemConfig.scope_id.is_(None))
+            )
+        )
+    )
+    result = await db.execute(query)
+    configs = result.scalars().all()
+
+    clinic_level = {}
+    dept_level = {}
+    global_level = None
+    for cfg in configs:
+        if cfg.scope_type == "CLINIC":
+            clinic_level[cfg.scope_id] = cfg.config_value or {}
+        elif cfg.scope_type == "MINOR_DEPT":
+            dept_level[cfg.scope_id] = cfg.config_value or {}
+        elif cfg.scope_type == "GLOBAL":
+            global_level = cfg.config_value or {}
+
+    def extract(cfg_dict: dict | None) -> dict:
+        if not cfg_dict:
+            return {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            }
+        return {
+            "default_price_normal": float(cfg_dict["default_price_normal"]) if cfg_dict.get("default_price_normal") is not None else None,
+            "default_price_expert": float(cfg_dict["default_price_expert"]) if cfg_dict.get("default_price_expert") is not None else None,
+            "default_price_special": float(cfg_dict["default_price_special"]) if cfg_dict.get("default_price_special") is not None else None,
+        }
+
+    global_prices = extract(global_level)
+
+    price_map: dict[int, dict] = {}
+    for c in clinics:
+        # 层级覆盖: GLOBAL -> MINOR_DEPT -> CLINIC
+        merged = dict(global_prices)
+        if c.minor_dept_id:
+            dept_cfg = extract(dept_level.get(c.minor_dept_id))
+            for k, v in dept_cfg.items():
+                if v is not None:
+                    merged[k] = v
+        clinic_cfg = extract(clinic_level.get(c.clinic_id))
+        for k, v in clinic_cfg.items():
+            if v is not None:
+                merged[k] = v
+        price_map[c.clinic_id] = merged
+
+    return price_map
+
+
+async def bulk_get_minor_dept_prices(db: AsyncSession, departments: list) -> dict[int, dict]:
+    """
+    批量获取多个小科室的价格配置 (避免 N+1 查询)
+    返回 {minor_dept_id: {"default_price_normal": float|None, ...}}
+    优先级: MINOR_DEPT > GLOBAL
+    """
+    from sqlalchemy import or_
+
+    if not departments:
+        return {}
+
+    dept_ids = [d.minor_dept_id for d in departments]
+
+    # 一次查询所有相关配置
+    query = select(SystemConfig).where(
+        and_(
+            SystemConfig.config_key == "registration.price",
+            SystemConfig.is_active == True,  # noqa: E712
+            or_(
+                and_(SystemConfig.scope_type == "MINOR_DEPT", SystemConfig.scope_id.in_(dept_ids)),
+                and_(SystemConfig.scope_type == "GLOBAL", SystemConfig.scope_id.is_(None))
+            )
+        )
+    )
+    result = await db.execute(query)
+    configs = result.scalars().all()
+
+    dept_level = {}
+    global_level = None
+    for cfg in configs:
+        if cfg.scope_type == "MINOR_DEPT":
+            dept_level[cfg.scope_id] = cfg.config_value or {}
+        elif cfg.scope_type == "GLOBAL":
+            global_level = cfg.config_value or {}
+
+    def extract(cfg_dict: dict | None) -> dict:
+        if not cfg_dict:
+            return {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            }
+        return {
+            "default_price_normal": float(cfg_dict["default_price_normal"]) if cfg_dict.get("default_price_normal") is not None else None,
+            "default_price_expert": float(cfg_dict["default_price_expert"]) if cfg_dict.get("default_price_expert") is not None else None,
+            "default_price_special": float(cfg_dict["default_price_special"]) if cfg_dict.get("default_price_special") is not None else None,
+        }
+
+    global_prices = extract(global_level)
+
+    price_map: dict[int, dict] = {}
+    for d in departments:
+        # 层级覆盖: GLOBAL -> MINOR_DEPT
+        merged = dict(global_prices)
+        dept_cfg = extract(dept_level.get(d.minor_dept_id))
+        for k, v in dept_cfg.items():
+            if v is not None:
+                merged[k] = v
+        price_map[d.minor_dept_id] = merged
+
+    return price_map
+
+
 def _weekday_to_cn(week_day: int) -> str:
     mapping = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
     return mapping.get(week_day, "")
