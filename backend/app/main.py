@@ -9,7 +9,7 @@ import sys
 from redis.asyncio import Redis
 
 from app.api import auth,statistics
-from app.api import admin,doctor
+from app.api import admin,doctor, patient
 from app.core.exception_handler import register_exception_handlers
 from app.core.log_middleware import LogMiddleware
 from app.core.config import settings
@@ -131,6 +131,7 @@ try:
     app.include_router(router=statistics.router, prefix="/statistics", tags=["statistics"])
     app.include_router(router=admin.router, prefix="/admin", tags=["admin"])
     app.include_router(router=doctor.router, prefix="/doctor", tags=["doctor"])
+    app.include_router(router=patient.router, prefix="/patient", tags=["patient"])
     logger.info("All routers registered successfully")
 except Exception as e:
     logger.error(f"Failed to register routers: {e}", exc_info=True)
