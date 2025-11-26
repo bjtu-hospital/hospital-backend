@@ -2514,7 +2514,7 @@ Authorization: Bearer <token>
 
 
 
-## 四、统计 API 接口 `/statistics`
+# 四、统计 API 接口 `/statistics`
 
 **概览**
 - 本项目在 `backend/app/api/statistics.py` 提供了一组统计接口，用于运营与统计报表。接口路径前缀为 `/statistics`，统一返回 `ResponseModel`：`{ "code": int, "message": ... }`。
@@ -3423,5 +3423,569 @@ Authorization: Bearer <token>
 **说明**：
 - 若患者存在且当前用户为医生/管理员则返回基本信息。
 - 年龄通过出生日期动态计算；若无出生日期则返回 `null`。
+
+---
+
+# 六、患者 API 接口详细
+
+患者端 API 接口包含公开查询接口（无需登录）和预约管理接口（需要登录）。所有接口统一返回格式：`{ "code": 0, "message": {...} }`。
+
+## 1. 公开查询接口（无需登录）
+
+### 1.1 获取院区列表 Get: `/hospitals`
+
+获取所有院区信息或指定院区信息，包含院区地图图片的base64编码数据。
+
+#### Query 参数:
+- `area_id` (可选): 院区ID，不传则返回所有院区
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"areas\": [
+            {
+                \"area_id\": 1,
+                \"name\": \"东院区\",
+                \"destination\": \"北京市海淀区上园村3号\",
+                \"latitude\": 39.984,
+                \"longitude\": 116.318,
+                \"image_type\": \"image/jpeg\",
+                \"image_data\": \"base64编码的图片数据\",
+                \"create_time\": \"2024-01-01T00:00:00\"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `image_type`: MIME类型（如 \"image/jpeg\", \"image/png\"）
+- `image_data`: base64编码的图片数据，前端可构造 `data:{image_type};base64,{image_data}` 直接显示
+
+---
+
+### 1.2 获取大科室列表 Get: `/major-departments`
+
+获取所有大科室信息。
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"departments\": [
+            {
+                \"major_dept_id\": 1,
+                \"name\": \"内科\",
+                \"description\": \"内科相关科室\"
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 1.3 获取小科室列表 Get: `/minor-departments`
+
+获取小科室列表，支持按大科室过滤和分页。
+
+#### Query 参数:
+- `major_dept_id` (可选): 大科室ID，用于过滤
+- `page` (可选): 页码，默认 1
+- `page_size` (可选): 每页数量，默认 50
+
+#### 请求示例:
+```
+GET /minor-departments
+GET /minor-departments?major_dept_id=1
+GET /minor-departments?page=1&page_size=20
+```
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"total\": 45,
+        \"page\": 1,
+        \"page_size\": 20,
+        \"departments\": [
+            {
+                \"minor_dept_id\": 1,
+                \"major_dept_id\": 1,
+                \"name\": \"心内科\",
+                \"description\": \"心脏内科\",
+                \"default_price_normal\": 60.00,
+                \"default_price_expert\": null,
+                \"default_price_special\": 550.00
+            }
+        ]
+    }
+}
+```
+
+---
+
+### 1.4 获取门诊列表 Get: `/clinics`
+
+获取门诊列表，支持按科室/院区过滤和分页。
+
+#### Query 参数:
+- `dept_id` (可选): 小科室ID
+- `area_id` (可选): 院区ID
+- `page` (可选): 页码，默认 1
+- `page_size` (可选): 每页数量，默认 50
+
+#### 请求示例:
+```
+GET /clinics
+GET /clinics?dept_id=1
+GET /clinics?area_id=1&page=1&page_size=20
+```
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"total\": 80,
+        \"page\": 1,
+        \"page_size\": 20,
+        \"clinics\": [
+            {
+                \"clinic_id\": 1,
+                \"area_id\": 1,
+                \"name\": \"心血管内科普通门诊\",
+                \"address\": \"门诊楼2层\",
+                \"minor_dept_id\": 1,
+                \"clinic_type\": 0,
+                \"default_price_normal\": 60.00,
+                \"default_price_expert\": 180.00,
+                \"default_price_special\": null
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `clinic_type`: 门诊类型，0-普通，1-国疗，2-特需
+
+---
+
+### 1.5 获取医生列表 Get: `/doctors`
+
+获取医生列表，支持按科室过滤、姓名模糊搜索和分页。
+
+#### Query 参数:
+- `dept_id` (可选): 小科室ID
+- `name` (可选): 医生姓名（模糊搜索）
+- `page` (可选): 页码，默认 1
+- `page_size` (可选): 每页数量，默认 50
+
+#### 请求示例:
+```
+GET /doctors
+GET /doctors?dept_id=1
+GET /doctors?name=张
+GET /doctors?dept_id=1&name=王&page=1&page_size=20
+```
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"total\": 150,
+        \"page\": 1,
+        \"page_size\": 20,
+        \"doctors\": [
+            {
+                \"doctor_id\": 1,
+                \"user_id\": 10,
+                \"is_registered\": true,
+                \"dept_id\": 1,
+                \"name\": \"张三\",
+                \"title\": \"主治医师\",
+                \"specialty\": \"心血管疾病\",
+                \"introduction\": \"从事心血管疾病临床工作多年...\",
+                \"photo_path\": null,
+                \"original_photo_url\": null,
+                \"default_price_normal\": 80.00,
+                \"default_price_expert\": null,
+                \"default_price_special\": 888.00
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `is_registered`: 医生是否已有系统账号（is_active=true 且 is_deleted=false）
+
+---
+
+### 1.6 获取科室排班 Get: `/departments/{dept_id}/schedules`
+
+获取指定小科室在日期范围内的所有排班。
+
+#### Path 参数:
+- `dept_id`: 小科室ID
+
+#### Query 参数:
+- `start_date` (必填): 开始日期，格式 YYYY-MM-DD
+- `end_date` (必填): 结束日期，格式 YYYY-MM-DD
+
+#### 请求示例:
+```
+GET /departments/1/schedules?start_date=2025-11-20&end_date=2025-11-30
+```
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"schedules\": [
+            {
+                \"schedule_id\": 123,
+                \"doctor_id\": 1,
+                \"doctor_name\": \"张三\",
+                \"clinic_id\": 5,
+                \"clinic_name\": \"心内科门诊\",
+                \"clinic_type\": 0,
+                \"date\": \"2025-11-20\",
+                \"week_day\": \"三\",
+                \"time_section\": \"上午\",
+                \"slot_type\": \"普通\",
+                \"total_slots\": 20,
+                \"remaining_slots\": 15,
+                \"status\": \"正常\",
+                \"price\": 60.00
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `week_day`: 星期几（\"一\"/\"二\"/\"三\"/\"四\"/\"五\"/\"六\"/\"日\"）
+- `time_section`: 时间段（\"上午\"/\"下午\"/\"晚上\"）
+- `slot_type`: 号源类型（\"普通\"/\"专家\"/\"特需\"）
+- `status`: 排班状态（\"正常\"/\"停诊\"）
+
+---
+
+### 1.7 获取医生排班 Get: `/doctors/{doctor_id}/schedules`
+
+获取指定医生在日期范围内的所有排班。
+
+#### Path 参数:
+- `doctor_id`: 医生ID
+
+#### Query 参数:
+- `start_date` (必填): 开始日期，格式 YYYY-MM-DD
+- `end_date` (必填): 结束日期，格式 YYYY-MM-DD
+
+#### 请求示例:
+```
+GET /doctors/1/schedules?start_date=2025-11-20&end_date=2025-11-30
+```
+
+#### 输出: 同 1.6 科室排班
+
+---
+
+### 1.8 获取门诊排班 Get: `/clinics/{clinic_id}/schedules`
+
+获取指定门诊在日期范围内的所有排班。
+
+#### Path 参数:
+- `clinic_id`: 门诊ID
+
+#### Query 参数:
+- `start_date` (必填): 开始日期，格式 YYYY-MM-DD
+- `end_date` (必填): 结束日期，格式 YYYY-MM-DD
+
+#### 请求示例:
+```
+GET /clinics/1/schedules?start_date=2025-11-20&end_date=2025-11-30
+```
+
+#### 输出: 同 1.6 科室排班
+
+---
+
+### 1.9 获取医生排班列表（综合查询）Get: `/hospitals/schedules`
+
+根据院区、科室、日期查询排班，支持未来7天默认查询。
+
+#### Query 参数:
+- `hospitalId` (可选): 院区ID
+- `departmentId` (必填): 小科室ID
+- `date` (可选): 日期，格式 YYYY-MM-DD，不传则查询未来7天
+
+#### 请求示例:
+```
+GET /hospitals/schedules?departmentId=1
+GET /hospitals/schedules?hospitalId=1&departmentId=1&date=2025-11-20
+```
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"schedules\": [
+            {
+                \"schedule_id\": 123,
+                \"doctor_id\": 1,
+                \"doctor_name\": \"张三\",
+                \"doctor_title\": \"主治医师\",
+                \"clinic_id\": 5,
+                \"clinic_name\": \"心内科门诊\",
+                \"clinic_type\": 0,
+                \"area_id\": 1,
+                \"date\": \"2025-11-20\",
+                \"week_day\": \"三\",
+                \"time_section\": \"上午\",
+                \"slot_type\": \"普通\",
+                \"total_slots\": 20,
+                \"remaining_slots\": 15,
+                \"status\": \"正常\",
+                \"price\": 60.00
+            }
+        ]
+    }
+}
+```
+
+---
+
+## 2. 预约管理接口（需要登录）
+
+所有预约管理接口需要在请求头中携带 token：
+```
+Authorization: Bearer <token>
+```
+
+### 2.1 创建预约挂号 Post: `/appointments`
+
+创建新的预约挂号订单。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Body:
+```json
+{
+    \"scheduleId\": 123,
+    \"patientId\": 5,
+    \"symptoms\": \"头痛发热\"
+}
+```
+
+字段说明：
+- `scheduleId` (必填): 排班ID
+- `patientId` (必填): 患者ID（必须是当前用户的就诊人）
+- `symptoms` (可选): 症状描述
+
+#### 业务规则:
+1. 预约成功后立即锁定号源（remaining_slots - 1）
+2. 同一患者同一天同一排班只能挂1个号
+3. 根据配置限制预约数量（默认8天内最多10个号，支持医生级别配置）
+4. 检查号源是否充足
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"id\": 1001,
+        \"orderNo\": \"2025112012345678\",
+        \"queueNumber\": 5,
+        \"needPay\": true,
+        \"payAmount\": 60.00,
+        \"appointmentDate\": \"2025-11-20\",
+        \"appointmentTime\": \"上午\",
+        \"status\": \"pending\",
+        \"paymentStatus\": \"pending\"
+    }
+}
+```
+
+#### 错误示例:
+```json
+{
+    \"code\": 1001,
+    \"message\": {
+        \"error\": \"业务规则错误\",
+        \"msg\": \"该时段号源已满\"
+    }
+}
+```
+
+```json
+{
+    \"code\": 1003,
+    \"message\": {
+        \"error\": \"业务规则错误\",
+        \"msg\": \"8天内最多可挂10个号\"
+    }
+}
+```
+
+---
+
+### 2.2 获取我的预约列表 Get: `/appointments`
+
+获取当前用户的所有预约记录，支持状态过滤和分页。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `status` (可选): 状态过滤，默认 \"all\"
+  - `all`: 全部
+  - `pending`: 待支付
+  - `completed`: 已完成
+  - `cancelled`: 已取消
+- `page` (可选): 页码，默认 1
+- `pageSize` (可选): 每页数量，默认 10
+
+#### 请求示例:
+```
+GET /appointments
+GET /appointments?status=pending&page=1&pageSize=20
+```
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"total\": 25,
+        \"page\": 1,
+        \"pageSize\": 10,
+        \"list\": [
+            {
+                \"id\": 1001,
+                \"orderNo\": \"2025112012345678\",
+                \"hospitalId\": 1,
+                \"hospitalName\": \"东院区\",
+                \"departmentId\": 1,
+                \"departmentName\": \"心内科\",
+                \"doctorName\": \"张三\",
+                \"doctorTitle\": \"主治医师\",
+                \"scheduleId\": 123,
+                \"appointmentDate\": \"2025-11-20\",
+                \"appointmentTime\": \"上午\",
+                \"patientName\": \"李四\",
+                \"patientId\": 5,
+                \"queueNumber\": null,
+                \"price\": 60.00,
+                \"status\": \"pending\",
+                \"paymentStatus\": \"pending\",
+                \"canCancel\": true,
+                \"canReschedule\": false,
+                \"createdAt\": \"2025-11-19 14:30:00\"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `canCancel`: 是否可取消，根据配置动态计算（默认需在就诊前2小时）
+- `canReschedule`: 是否可改约（暂未实现）
+- `queueNumber`: 队列号（TODO: 实时计算）
+
+#### 取消规则计算:
+系统根据以下配置动态计算是否允许取消：
+1. 从医生级别配置读取 `cancelHoursBefore`（默认2小时）
+2. 从排班配置读取对应时段的开始时间：
+   - 上午: `morningStart`（默认 08:00）
+   - 下午: `afternoonStart`（默认 13:30）
+   - 晚上: `eveningStart`（默认 18:00）
+3. 计算截止时间 = 就诊开始时间 - cancelHoursBefore
+4. 当前时间 < 截止时间 则 canCancel = true
+
+---
+
+### 2.3 取消预约 Put: `/appointments/{appointmentId}/cancel`
+
+取消指定的预约订单。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `appointmentId`: 预约订单ID
+
+#### 请求示例:
+```
+PUT /appointments/1001/cancel
+```
+
+#### 取消规则:
+- 根据配置动态计算截止时间（默认就诊前2小时）
+- 超过时间需到医院挂号窗口办理
+- 取消后释放号源（remaining_slots + 1）
+- 已支付订单自动退款
+
+#### 输出:
+```json
+{
+    \"code\": 0,
+    \"message\": {
+        \"success\": true,
+        \"refundAmount\": 60.00
+    }
+}
+```
+
+字段说明：
+- `refundAmount`: 退款金额，未支付则为 null
+
+#### 错误示例:
+```json
+{
+    \"code\": 1006,
+    \"message\": {
+        \"error\": \"业务规则错误\",
+        \"msg\": \"需在就诊时间前2小时取消,已超时请到医院窗口办理\"
+    }
+}
+```
+
+---
+
+## 3. 配置说明
+
+患者端挂号受以下配置影响（支持分级配置：DOCTOR > CLINIC > MINOR_DEPT > GLOBAL）：
+
+### 挂号配置（registration）:
+- `maxAppointmentsPerPeriod`: 时间段内最多预约数（默认 10）
+- `appointmentPeriodDays`: 统计周期天数（默认 8）
+- `cancelHoursBefore`: 取消提前小时数（默认 2）
+- `advanceBookingDays`: 提前预约天数（默认 14）
+- `noShowLimit`: 爽约次数限制（默认 3）
+- `sameClinicInterval`: 同科室挂号间隔天数（默认 7）
+
+### 排班配置（schedule）:
+- `morningStart/End`: 上午时段时间（默认 08:00-12:00）
+- `afternoonStart/End`: 下午时段时间（默认 13:30-17:30）
+- `eveningStart/End`: 晚间时段时间（默认 18:00-21:00）
+- `consultationDuration`: 单次就诊时长分钟（默认 15）
+- `intervalTime`: 就诊间隔时间分钟（默认 5）
 
 ---
