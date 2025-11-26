@@ -36,6 +36,7 @@ from app.schemas.workbench import (
 )
 from app.db.base import redis
 from app.services.add_slot_service import execute_add_slot_and_register
+from app.services.config_service import get_schedule_config
 from app.services.consultation_service import (
 	get_consultation_queue,
 	call_next_patient,
@@ -118,69 +119,35 @@ async def _get_time_section_config(
 	db: AsyncSession,
 	time_section: str,
 	clinic_id: int | None = None
-) -> tuple[str, str]:
+) -> tuple:
 	"""
 	分级查询时间段配置
 	优先级: CLINIC > GLOBAL
 	返回: (start_time, end_time)
 	"""
-	# 标准化时间段名称映射
-	label_to_key = {
-		"上午": "MORNING",
-		"早": "MORNING",
-		"morning": "MORNING",
-		"下午": "AFTERNOON",
-		"after": "AFTERNOON",
-		"afternoon": "AFTERNOON",
-		"晚": "EVENING",
-		"晚上": "EVENING",
-		"晚间": "EVENING",
-		"evening": "EVENING",
-		"夜": "EVENING"
-	}
+	# 使用配置服务获取排班配置
+	schedule_config = await get_schedule_config(
+		db,
+		scope_type="CLINIC" if clinic_id else "GLOBAL",
+		scope_id=clinic_id
+	)
 	
-	search_key = label_to_key.get(time_section, None)
-	
-	# 查询顺序: CLINIC -> GLOBAL
-	search_order = []
-	if clinic_id:
-		search_order.append(("CLINIC", clinic_id))
-	search_order.append(("GLOBAL", None))
-	
-	for scope_type, scope_id in search_order:
-		query = select(SystemConfig).where(
-			and_(
-				SystemConfig.config_key == "scheduling.time_sections",
-				SystemConfig.scope_type == scope_type,
-				SystemConfig.is_active == True
-			)
+	# 根据时间段返回对应的开始和结束时间
+	if time_section in ["上午", "早", "morning"]:
+		return (
+			schedule_config.get("morningStart", "08:00"),
+			schedule_config.get("morningEnd", "12:00")
 		)
-		
-		if scope_type == "GLOBAL":
-			query = query.where(SystemConfig.scope_id.is_(None))
-		else:
-			query = query.where(SystemConfig.scope_id == scope_id)
-		
-		result = await db.execute(query)
-		config = result.scalar_one_or_none()
-		
-		if config and config.config_value:
-			# config_value 是 JSON 数组: [{"key": "MORNING", "label": "上午", "start": "08:00", "end": "12:00"}, ...]
-			sections = config.config_value if isinstance(config.config_value, list) else []
-			
-			# 优先按 key 匹配
-			if search_key:
-				for section in sections:
-					if section.get("key") == search_key:
-						return (section.get("start", "08:00"), section.get("end", "17:00"))
-			
-			# 再按 label 精确匹配
-			for section in sections:
-				if section.get("label") == time_section:
-					return (section.get("start", "08:00"), section.get("end", "17:00"))
-	
-	# 兜底默认值
-	return ("08:00", "17:00")
+	elif time_section in ["下午", "after", "afternoon"]:
+		return (
+			schedule_config.get("afternoonStart", "13:30"),
+			schedule_config.get("afternoonEnd", "17:30")
+		)
+	else:  # 晚间
+		return (
+			schedule_config.get("eveningStart", "18:00"),
+			schedule_config.get("eveningEnd", "21:00")
+		)
 
 
 def _human_duration(start: datetime, end: datetime) -> str:

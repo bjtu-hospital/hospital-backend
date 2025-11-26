@@ -47,6 +47,10 @@ from app.services.admin_helpers import (
     bulk_get_clinic_prices,
     bulk_get_minor_dept_prices,
 )
+from app.services.config_service import (
+    get_registration_config,
+    get_schedule_config
+)
 from app.services.absence_detection_service import (
     mark_absent_for_date,
     mark_absent_for_date_range,
@@ -3820,50 +3824,9 @@ async def get_system_config(
                 status_code=403
             )
 
-        # 查询 registration 配置
-        registration_result = await db.execute(
-            select(SystemConfig).where(
-                and_(
-                    SystemConfig.config_key == 'registration',
-                    SystemConfig.scope_type == 'GLOBAL',
-                    SystemConfig.is_active == True
-                )
-            )
-        )
-        registration_config = registration_result.scalar_one_or_none()
-
-        # 查询 schedule 配置
-        schedule_result = await db.execute(
-            select(SystemConfig).where(
-                and_(
-                    SystemConfig.config_key == 'schedule',
-                    SystemConfig.scope_type == 'GLOBAL',
-                    SystemConfig.is_active == True
-                )
-            )
-        )
-        schedule_config = schedule_result.scalar_one_or_none()
-
-        # 如果配置不存在，返回默认值
-        registration_data = registration_config.config_value if registration_config else {
-            "advanceBookingDays": 14,
-            "sameDayDeadline": "08:00",
-            "noShowLimit": 3,
-            "cancelHoursBefore": 24,
-            "sameClinicInterval": 7
-        }
-
-        schedule_data = schedule_config.config_value if schedule_config else {
-            "maxFutureDays": 60,
-            "morningStart": "08:00",
-            "morningEnd": "12:00",
-            "afternoonStart": "13:30",
-            "afternoonEnd": "17:30",
-            "eveningStart": "18:00",
-            "eveningEnd": "21:00",
-            "consultationDuration": 15,
-            "intervalTime": 5
-        }
+        # 使用配置服务获取配置
+        registration_data = await get_registration_config(db)
+        schedule_data = await get_schedule_config(db)
 
         logger.info(f"获取系统配置成功")
         
