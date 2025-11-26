@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Integer, String, Date, DateTime, Boolean, Text, Enum, ForeignKey
+from sqlalchemy import Column, BigInteger, Integer, String, Date, DateTime, Boolean, Text, Enum, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 import enum
@@ -6,12 +6,21 @@ from datetime import datetime
 
 
 class OrderStatus(enum.Enum):
-    PENDING = "pending"
-    CONFIRMED = "confirmed"
-    CANCELLED = "cancelled"
-    COMPLETED = "completed"
-    NO_SHOW = "no_show"
-    WAITLIST = "waitlist"
+    PENDING = "pending"          # 待支付
+    CONFIRMED = "confirmed"      # 已确认(已支付)
+    CANCELLED = "cancelled"      # 已取消
+    COMPLETED = "completed"      # 已完成
+    NO_SHOW = "no_show"         # 未到场
+    WAITLIST = "waitlist"       # 候补中
+
+
+class PaymentStatus(enum.Enum):
+    PENDING = "pending"         # 待支付
+    PAYING = "paying"           # 支付中(锁定状态,防止重复支付)
+    PAID = "paid"              # 已支付
+    FAILED = "failed"          # 支付失败(超时等)
+    CANCELLED = "cancelled"    # 已取消(主动取消)
+    REFUNDED = "refunded"      # 已退款
 
 
 class RegistrationOrder(Base):
@@ -29,6 +38,8 @@ class RegistrationOrder(Base):
     __tablename__ = "registration_order"
 
     order_id = Column(BigInteger, primary_key=True, autoincrement=True, comment="挂号订单ID")
+    order_no = Column(String(50), unique=True, nullable=True, comment="订单号,格式: YYYYMMDD+流水号")
+    
     patient_id = Column(BigInteger, ForeignKey("patient.patient_id"), nullable=False, comment="关联 patient.patient_id")
     user_id = Column(Integer, ForeignKey("user.user_id"), nullable=True, comment="关联 user.user_id，冗余字段")
     doctor_id = Column(Integer, ForeignKey("doctor.doctor_id"), nullable=False, comment="关联 doctor.doctor_id")
@@ -39,6 +50,22 @@ class RegistrationOrder(Base):
 
     # 号别/挂号类型（如：普通/专家/特需/加号/候补等）
     slot_type = Column(String(50), nullable=True, comment="挂号号别/类型，例如: 普通/专家/特需/加号/候补")
+
+    # 挂号价格和症状描述
+    price = Column(Numeric(10, 2), nullable=True, comment="挂号费用")
+    symptoms = Column(Text, nullable=True, comment="症状描述")
+    
+    # 支付相关
+    payment_status = Column(
+        Enum(PaymentStatus, values_callable=lambda e: [v.value for v in e], name="paymentstatus", native_enum=False),
+        default=PaymentStatus.PENDING,
+        nullable=False,
+        comment="支付状态"
+    )
+    payment_time = Column(DateTime, nullable=True, comment="支付完成时间")
+    cancel_time = Column(DateTime, nullable=True, comment="取消时间")
+    refund_time = Column(DateTime, nullable=True, comment="退款时间")
+    refund_amount = Column(Numeric(10, 2), nullable=True, comment="退款金额")
 
     # 允许存储多个就诊时间的扩展字段（JSON 数组的字符串表现形式）
     visit_times = Column(Text, nullable=True, comment="JSON 字符串：用于存储一系列就诊时间")
