@@ -1,5 +1,5 @@
 from fastapi import FastAPI,Depends, Request, Response,status,HTTPException
- 
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from contextlib import asynccontextmanager
@@ -9,7 +9,7 @@ import sys
 from redis.asyncio import Redis
 
 from app.api import auth,statistics
-from app.api import admin,doctor, patient
+from app.api import admin,doctor, patient, common
 from app.core.exception_handler import register_exception_handlers
 from app.core.log_middleware import LogMiddleware
 from app.core.config import settings
@@ -107,6 +107,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME,lifespan=lifespan)
 
+# 挂载静态文件目录 (用于访问上传的图片)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
         
 # 注册全局异常处理器
 register_exception_handlers(app)
@@ -132,6 +134,7 @@ try:
     app.include_router(router=admin.router, prefix="/admin", tags=["admin"])
     app.include_router(router=doctor.router, prefix="/doctor", tags=["doctor"])
     app.include_router(router=patient.router, prefix="/patient", tags=["patient"])
+    app.include_router(router=common.router, prefix="/common", tags=["common"])
     logger.info("All routers registered successfully")
 except Exception as e:
     logger.error(f"Failed to register routers: {e}", exc_info=True)

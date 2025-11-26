@@ -34,6 +34,15 @@ from app.schemas.workbench import (
 	ShiftItem,
 	RecentConsultationItem
 )
+from app.schemas.leave import (
+	DayScheduleItem,
+	LeaveApplyRequest,
+	LeaveHistoryItem,
+	AttachmentItem,
+	ShiftEnum
+)
+from app.models.leave_audit import LeaveAudit
+from app.models.administrator import Administrator
 from app.db.base import redis
 from app.services.add_slot_service import execute_add_slot_and_register
 from app.services.config_service import get_schedule_config
@@ -1365,3 +1374,392 @@ async def get_patient_info(
             code=settings.DATA_GET_FAILED_CODE,
             msg=f"查询患者信息失败: {str(e)}"
         )
+
+
+
+# ==================== 医生请假 API ====================		
+@router.get("/leave/schedule", response_model=ResponseModel)
+async def get_leave_schedule(
+	year: int,
+	month: int,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	获取月度排班与请假状态
+	用于在日历上展示某个月份每一天的排班情况以及医生的请假状态
+	"""
+	try:
+		# 验证当前用户是否为医生
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		db_doctor = res.scalar_one_or_none()
+		if not db_doctor:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可查询请假排班",
+				status_code=403
+			)
+
+		# 验证月份参数
+		if not (1 <= month <= 12):
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg="月份参数错误，应为 1-12",
+				status_code=400
+			)
+
+		# 计算该月的起始和结束日期
+		from calendar import monthrange
+		_, last_day = monthrange(year, month)
+		start_date = date(year, month, 1)
+		end_date = date(year, month, last_day)
+
+		# 查询该医生在该月的所有排班
+		schedules_result = await db.execute(
+			select(Schedule)
+			.where(
+				and_(
+					Schedule.doctor_id == db_doctor.doctor_id,
+					Schedule.date >= start_date,
+					Schedule.date <= end_date
+				)
+			)
+		)
+		schedules = schedules_result.scalars().all()
+
+		# 构建日期->排班映射
+		schedule_map = {}
+		for sch in schedules:
+			date_str = sch.date.strftime("%Y-%m-%d")
+			if date_str not in schedule_map:
+				schedule_map[date_str] = []
+			schedule_map[date_str].append(sch)
+
+		# 查询该医生在该月的所有请假申请
+		leave_result = await db.execute(
+			select(LeaveAudit)
+			.where(
+				and_(
+					LeaveAudit.doctor_id == db_doctor.doctor_id,
+					LeaveAudit.leave_start_date <= end_date,
+					LeaveAudit.leave_end_date >= start_date
+				)
+			)
+		)
+		leaves = leave_result.scalars().all()
+
+		# 构建日期->请假状态映射 (区分全天与分时段)
+		# leave_map[date_str] = {"full": status, "morning": status, "afternoon": status, "night": status}
+		leave_map = {}
+		for leave in leaves:
+			current_date = leave.leave_start_date
+			shift_val = leave.shift or "full"
+			while current_date <= leave.leave_end_date:
+				date_str = current_date.strftime("%Y-%m-%d")
+				if start_date <= current_date <= end_date:
+					if date_str not in leave_map:
+						leave_map[date_str] = {}
+					
+					# 优先级处理（pending > approved > rejected）
+					def merge_status(old_status, new_status):
+						if old_status is None:
+							return new_status
+						if new_status == "pending" or old_status == "pending":
+							return "pending"
+						if new_status == "approved":
+							return "approved"
+						return old_status
+					
+					if shift_val == "full":
+						# 全天请假覆盖所有时段
+						for s in ["full", "morning", "afternoon", "night"]:
+							leave_map[date_str][s] = merge_status(leave_map[date_str].get(s), leave.status)
+					else:
+						# 单时段请假
+						leave_map[date_str][shift_val] = merge_status(leave_map[date_str].get(shift_val), leave.status)
+				current_date += timedelta(days=1)
+
+		# 构建响应数据
+		today = date.today()
+		result = []
+		from app.schemas.leave import ShiftLeaveStatus
+		for day in range(1, last_day + 1):
+			current_date = date(year, month, day)
+			date_str = current_date.strftime("%Y-%m-%d")
+	
+			# 判断是否有排班
+			has_shift = date_str in schedule_map
+			shift_info = None
+			if has_shift:
+				# 构建排班简要描述
+				time_sections = [sch.time_section for sch in schedule_map[date_str]]
+				shift_info = "、".join(sorted(set(time_sections)))
+
+			# 获取请假状态
+			day_leaves = leave_map.get(date_str, {})
+			leave_status = day_leaves.get("full")  # 全天请假状态
+			
+			# 分时段请假状态
+			shift_leave_statuses = []
+			for shift_key in ["morning", "afternoon", "night"]:
+				if shift_key in day_leaves and day_leaves[shift_key]:
+					shift_leave_statuses.append(ShiftLeaveStatus(
+						shift=shift_key,
+						leaveStatus=day_leaves[shift_key]
+					))
+
+			result.append(
+				DayScheduleItem(
+					date=date_str,
+					day=day,
+					hasShift=has_shift,
+					shiftInfo=shift_info,
+					leaveStatus=leave_status,
+					shiftLeaveStatuses=shift_leave_statuses,
+					isToday=(current_date == today)
+				)
+			)
+
+		return ResponseModel(code=0, message={"days": [item.dict() for item in result]})
+
+	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取月度排班失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取月度排班失败: {str(e)}"
+		)
+
+
+@router.post("/leave/apply", response_model=ResponseModel)
+async def apply_leave(
+	data: LeaveApplyRequest,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	提交请假申请
+	医生选择具体日期和时段后，提交请假申请
+	"""
+	try:
+		# 验证当前用户是否为医生
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		db_doctor = res.scalar_one_or_none()
+		if not db_doctor:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可提交请假申请",
+				status_code=403
+			)
+
+		# 业务日期校验（不同请假类型的提交时限）
+		leave_date = datetime.strptime(data.date, "%Y-%m-%d").date()
+		now = datetime.now()
+		today = date.today()
+		if data.shift == ShiftEnum.FULL:
+			# 全天需至少提前一天
+			if leave_date <= today:
+				raise BusinessHTTPException(
+					code=settings.REQ_ERROR_CODE,
+					msg="全天请假需至少提前一天提交",
+					status_code=400
+				)
+		else:
+			# 单时段请假：允许今天申请，但必须在该时段开始前
+			if leave_date < today:
+				raise BusinessHTTPException(
+					code=settings.REQ_ERROR_CODE,
+					msg="请假日期不能早于今天",
+					status_code=400
+				)
+			if leave_date == today:
+				# 获取排班配置时段起始时间
+				schedule_cfg = await get_schedule_config(db)
+				shift_start_map = {
+					ShiftEnum.MORNING: schedule_cfg.get("morningStart", "08:00"),
+					ShiftEnum.AFTERNOON: schedule_cfg.get("afternoonStart", "13:30"),
+					ShiftEnum.NIGHT: schedule_cfg.get("eveningStart", "18:00"),
+				}
+				start_str = shift_start_map.get(data.shift)
+				try:
+					hour, minute = [int(x) for x in start_str.split(":")]
+				except Exception:
+					hour, minute = 0, 0
+				shift_start_dt = datetime(today.year, today.month, today.day, hour, minute)
+				if now >= shift_start_dt:
+					raise BusinessHTTPException(
+						code=settings.REQ_ERROR_CODE,
+						msg="该时段已开始，无法申请当天请假",
+						status_code=400
+					)
+
+		# 根据时段确定请假的起止日期
+		leave_start_date = leave_date
+		leave_end_date = leave_date
+
+		# 检查是否已有同日期同时段的待审核或已通过的请假申请
+		existing = await db.execute(
+			select(LeaveAudit)
+			.where(
+				and_(
+					LeaveAudit.doctor_id == db_doctor.doctor_id,
+					LeaveAudit.leave_start_date <= leave_end_date,
+					LeaveAudit.leave_end_date >= leave_start_date,
+					LeaveAudit.status.in_(["pending", "approved"])
+				)
+			)
+		)
+		existing_leaves = existing.scalars().all()
+		
+		# 检查时段冲突
+		for exist in existing_leaves:
+			exist_shift = exist.shift or "full"
+			# 如果已有全天请假，或当前申请全天，或时段相同，则冲突
+			if exist_shift == "full" or data.shift.value == "full" or exist_shift == data.shift.value:
+				raise BusinessHTTPException(
+					code=settings.REQ_ERROR_CODE,
+					msg=f"该日期该时段已有待审核或已通过的请假申请",
+					status_code=400
+				)
+
+		# 构建附件数据
+		attachments_data = []
+		if data.attachments:
+			for att in data.attachments:
+				# 将 AttachmentItem 对象转换为字典
+				attachments_data.append({"url": att.url, "name": att.name})
+
+		# 创建请假申请
+		new_leave = LeaveAudit(
+			doctor_id=db_doctor.doctor_id,
+			leave_start_date=leave_start_date,
+			leave_end_date=leave_end_date,
+			shift=data.shift.value,
+			reason=data.reason,
+			attachment_data_json=attachments_data if attachments_data else None,
+			status="pending",
+			submit_time=datetime.now()
+		)
+		db.add(new_leave)
+		await db.commit()
+		await db.refresh(new_leave)
+
+		return ResponseModel(code=0, message={"applicationId": str(new_leave.audit_id)})
+
+	except AuthHTTPException:
+		await db.rollback()
+		raise
+	except BusinessHTTPException:
+		await db.rollback()
+		raise
+	except Exception as e:
+		await db.rollback()
+		import logging
+		logging.getLogger(__name__).error(f"提交请假申请失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.REQ_ERROR_CODE,
+			msg=f"提交请假申请失败: {str(e)}"
+		)
+
+
+@router.get("/leave/history", response_model=ResponseModel)
+async def get_leave_history(
+	page: int = 1,
+	pageSize: int = 20,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	获取请假历史记录
+	获取当前医生的所有请假申请记录，按时间倒序排列
+	"""
+	try:
+		# 验证当前用户是否为医生
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		db_doctor = res.scalar_one_or_none()
+		if not db_doctor:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可查询请假历史",
+				status_code=403
+			)
+
+		# 查询总数
+		from sqlalchemy import func
+		count_result = await db.execute(
+			select(func.count())
+			.select_from(LeaveAudit)
+			.where(LeaveAudit.doctor_id == db_doctor.doctor_id)
+		)
+		total = count_result.scalar()
+
+		# 分页查询
+		offset = (page - 1) * pageSize
+		result = await db.execute(
+			select(LeaveAudit, Administrator.name)
+			.outerjoin(Administrator, Administrator.admin_id == LeaveAudit.auditor_admin_id)
+			.where(LeaveAudit.doctor_id == db_doctor.doctor_id)
+			.order_by(LeaveAudit.submit_time.desc())
+			.offset(offset)
+			.limit(pageSize)
+		)
+		rows = result.all()
+
+		# 时段映射
+		shift_map = {
+			"morning": "上午",
+			"afternoon": "下午", 
+			"night": "晚间",
+			"full": "全天"
+		}
+
+		history_list = []
+		for leave, approver_name in rows:
+			# 从数据库读取实际 shift 值
+			shift = leave.shift or "full"
+			date_str = leave.leave_start_date.strftime("%Y-%m-%d")
+	
+			# 获取附件列表
+			attachments: list[AttachmentItem] = []
+			if leave.attachment_data_json and isinstance(leave.attachment_data_json, list):
+				for item in leave.attachment_data_json:
+					if isinstance(item, dict):
+						url = item.get("url") or item.get("path") or ""
+						name = item.get("name")
+						if url:
+							attachments.append(AttachmentItem(url=url, name=name))
+					elif isinstance(item, str):
+						attachments.append(AttachmentItem(url=item, name=None))
+
+			history_list.append(
+				LeaveHistoryItem(
+					id=str(leave.audit_id),
+					date=date_str,
+					shift=shift,
+					reason=leave.reason,
+					status=leave.status,
+					createTime=leave.submit_time.strftime("%Y-%m-%d %H:%M:%S"),
+					approver=approver_name,
+					rejectReason=leave.audit_remark if leave.status == "rejected" else None,
+					attachments=attachments
+				)
+			)
+
+		return ResponseModel(code=0, message={
+			"total": total,
+			"list": [item.dict() for item in history_list]
+		})
+
+	except AuthHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取请假历史失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取请假历史失败: {str(e)}"
+		)

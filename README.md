@@ -3426,6 +3426,270 @@ Authorization: Bearer <token>
 
 ---
 
+## 3. 医生请假管理接口
+
+医生可以查询可请假日历、提交请假申请、查询请假历史。所有接口需要医生身份认证。
+
+### 3.1 获取请假日历 Get: `/doctor/leave/schedule`
+
+获取指定月份的请假日历，显示每天每个时段的请假状态。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `year` (必填): 年份，格式 YYYY
+- `month` (必填): 月份，格式 MM（01-12）
+
+#### 请求示例:
+```
+GET /doctor/leave/schedule?year=2025&month=12
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "year": 2025,
+        "month": 12,
+        "days": [
+            {
+                "date": "2025-12-01",
+                "weekday": "一",
+                "hasSchedule": true,
+                "canApplyLeave": true,
+                "shiftLeaveStatuses": [
+                    {
+                        "shift": "morning",
+                        "leaveStatus": null
+                    },
+                    {
+                        "shift": "afternoon",
+                        "leaveStatus": null
+                    },
+                    {
+                        "shift": "night",
+                        "leaveStatus": null
+                    },
+                    {
+                        "shift": "full",
+                        "leaveStatus": null
+                    }
+                ]
+            },
+            {
+                "date": "2025-12-20",
+                "weekday": "六",
+                "hasSchedule": true,
+                "canApplyLeave": false,
+                "shiftLeaveStatuses": [
+                    {
+                        "shift": "morning",
+                        "leaveStatus": null
+                    },
+                    {
+                        "shift": "afternoon",
+                        "leaveStatus": null
+                    },
+                    {
+                        "shift": "night",
+                        "leaveStatus": null
+                    },
+                    {
+                        "shift": "full",
+                        "leaveStatus": "pending"
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `hasSchedule`: 该日是否有排班
+- `canApplyLeave`: 是否可以申请请假（基于时间规则和现有申请）
+- `shiftLeaveStatuses`: 各时段的请假状态数组
+  - `shift`: 时段类型（"morning"/"afternoon"/"night"/"full"）
+  - `leaveStatus`: 请假状态（null/"pending"/"approved"/"rejected"）
+- `weekday`: 星期几（"一"/"二"/"三"/"四"/"五"/"六"/"日"）
+
+---
+
+### 3.2 提交请假申请 Post: `/doctor/leave/apply`
+
+医生提交请假申请，支持上传附件（图片凭证）。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Body:
+```json
+{
+    "date": "2025-12-20",
+    "shift": "full",
+    "reason": "因个人原因需要请假",
+    "attachments": [
+        {
+            "url": "static/images/audit/2025/11/26/20251126184713_582f3d12_诊断证明.jpg",
+            "name": "诊断证明.jpg"
+        },
+        {
+            "url": "static/images/audit/2025/11/26/20251126184716_93de0889_病历单.jpg",
+            "name": "病历单.jpg"
+        }
+    ]
+}
+```
+
+字段说明：
+- `date` (必填): 请假日期，格式 YYYY-MM-DD
+- `shift` (必填): 请假时段
+  - `"morning"`: 上午班
+  - `"afternoon"`: 下午班
+  - `"night"`: 晚班
+  - `"full"`: 全天
+- `reason` (必填): 请假原因，1-500字符
+- `attachments` (可选): 附件数组
+  - `url`: 附件URL（通过 `/common/upload` 接口上传后获得）
+  - `name`: 附件名称
+
+#### 请假时限规则:
+1. **全天请假**：需要至少提前一天提交（leave_date > 今天）
+2. **单时段请假**：
+   - 可以申请当天的请假
+   - 但必须在该时段开始之前提交
+   - 时段开始时间基于系统配置（morningStart: 08:00, afternoonStart: 13:30, eveningStart: 18:00）
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "id": 16,
+        "doctor_id": 1,
+        "leave_date": "2025-12-20",
+        "shift": "full",
+        "reason": "因个人原因需要请假",
+        "status": "pending",
+        "submit_time": "2025-11-26T18:47:20",
+        "attachments": [
+            {
+                "url": "static/images/audit/2025/11/26/20251126184713_582f3d12_诊断证明.jpg",
+                "name": "诊断证明.jpg"
+            },
+            {
+                "url": "static/images/audit/2025/11/26/20251126184716_93de0889_病历单.jpg",
+                "name": "病历单.jpg"
+            }
+        ]
+    }
+}
+```
+
+#### 错误示例:
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "请求参数错误",
+        "msg": "全天请假需至少提前一天提交"
+    }
+}
+```
+
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "请求参数错误",
+        "msg": "该时段已开始，无法申请当天请假"
+    }
+}
+```
+
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "请求参数错误",
+        "msg": "该日期该时段已有请假申请，请勿重复提交"
+    }
+}
+```
+
+---
+
+### 3.3 查询请假历史 Get: `/doctor/leave/history`
+
+查询当前医生的请假申请历史记录。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `status` (可选): 状态筛选
+  - 不传或 "all": 全部
+  - "pending": 待审核
+  - "approved": 已通过
+  - "rejected": 已拒绝
+
+#### 请求示例:
+```
+GET /doctor/leave/history
+GET /doctor/leave/history?status=pending
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "records": [
+            {
+                "id": 16,
+                "doctor_id": 1,
+                "leave_date": "2025-12-20",
+                "shift": "full",
+                "reason": "因个人原因需要请假",
+                "status": "pending",
+                "submit_time": "2025-11-26T18:47:20",
+                "auditor_id": null,
+                "audit_time": null,
+                "audit_remark": null,
+                "attachments": [
+                    {
+                        "url": "static/images/audit/2025/11/26/20251126184713_582f3d12_诊断证明.jpg",
+                        "name": "诊断证明.jpg"
+                    },
+                    {
+                        "url": "static/images/audit/2025/11/26/20251126184716_93de0889_病历单.jpg",
+                        "name": "病历单.jpg"
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `shift`: 请假时段（"morning"/"afternoon"/"night"/"full"）
+- `status`: 审核状态（"pending"/"approved"/"rejected"）
+- `auditor_id`: 审核人ID（审核后填写）
+- `audit_time`: 审核时间（审核后填写）
+- `audit_remark`: 审核备注（审核后填写）
+- `attachments`: 附件数组，可能为空数组
+
+---
+
 # 六、患者 API 接口详细
 
 患者端 API 接口包含公开查询接口（无需登录）和预约管理接口（需要登录）。所有接口统一返回格式：`{ "code": 0, "message": {...} }`。
@@ -3989,3 +4253,78 @@ PUT /appointments/1001/cancel
 - `intervalTime`: 就诊间隔时间分钟（默认 5）
 
 ---
+
+## 七、通用图片上传 API (`/common`)
+
+该模块为通用文件（主要是医生请假凭证图片）上传接口，前端在提交请假前应先调用上传接口获取文件 `url` 与 `name`，再把这些对象放入请假申请的 `attachments` 字段。
+
+### 1) POST `/common/upload`
+
+**描述**: 单文件上传，返回 `{url, name}`，`url` 为可通过静态路由访问的相对路径（以 `/static/` 挂载）。
+
+**请求**:
+- Content-Type: `multipart/form-data`
+- 字段名: `file`
+
+**限制**:
+- 支持图片类型: `jpg|jpeg|png|gif|bmp|webp`
+- 单文件默认最大 5MB（可在服务端配置调整）
+
+**保存路径示例**:
+- 服务器路径: `backend/app/static/images/audit/{YYYY}/{MM}/{DD}/<generated_filename>.jpg`
+- 访问路径: `/static/images/audit/2025/11/26/xxx.jpg`
+
+**成功响应示例**:
+```json
+{
+    "code": 0,
+    "message": {
+        "url": "static/images/audit/2025/11/26/1732619234_abc123.jpg",
+        "name": "诊断证明.jpg"
+    }
+}
+```
+
+**实现要点**:
+- 前端上传后得到的 `url` 可直接放入 `doctor/leave/apply` 的 `attachments` 字段
+- 后端会把 `attachments` 原样保存到 `leave_audit.attachment_data_json`（JSON 列表）
+- 在 `GET /doctor/leave/history` 返回时透传附件信息
+- 静态文件通过 `app.mount('/static', StaticFiles(directory=...))` 暴露，部署时请确认容器/服务对该目录有读写权限
+
+**示例前端流程**:
+1. 调用 `POST /common/upload` 上传凭证图片，保存返回的 `{url, name}`
+2. 构造请假请求体，将 `{url, name}` 列表放入 `attachments` 字段
+3. 调用 `POST /doctor/leave/apply` 提交请假
+
+**PowerShell 测试示例**:
+```powershell
+# 1. 先登录获取 token
+$loginResponse = Invoke-RestMethod -Uri "http://localhost:8000/auth/staff/login" `
+    -Method POST -ContentType "application/json" `
+    -Body '{"identifier":"doctor001","password":"123456"}'
+$token = $loginResponse.message
+
+# 2. 上传图片文件
+$headers = @{ "Authorization" = "Bearer $token" }
+$form = @{ file = Get-Item "C:\path\to\image.jpg" }
+$uploadResponse = Invoke-RestMethod -Uri "http://localhost:8000/common/upload" `
+    -Method POST -Headers $headers -Form $form
+
+# 3. 查看上传结果
+$uploadResponse
+# 输出: { "code": 0, "message": { "url": "static/images/...", "name": "image.jpg" } }
+```
+
+**错误示例**:
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "请求参数错误",
+        "msg": "不支持的文件类型"
+    }
+}
+```
+
+---
+

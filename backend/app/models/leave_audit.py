@@ -21,6 +21,7 @@ class LeaveAudit(Base):
     # 请假详情
     leave_start_date = Column(Date, nullable=False, comment='请假起始日期')
     leave_end_date = Column(Date, nullable=False, comment='请假结束日期')
+    shift = Column(String(16), default='full', nullable=False, comment='请假时段: morning/afternoon/night/full')
     reason = Column(Text, nullable=False, comment='请假详细原因')
     
     # 附件数据
