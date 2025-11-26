@@ -43,6 +43,8 @@ from app.schemas.leave import (
 )
 from app.models.leave_audit import LeaveAudit
 from app.models.administrator import Administrator
+from app.models.patient import Patient
+from app.models.visit_history import VisitHistory
 from app.db.base import redis
 from app.services.add_slot_service import execute_add_slot_and_register
 from app.services.config_service import get_schedule_config
@@ -1301,81 +1303,6 @@ async def pass_current_patient(
 		)
 
 
-@router.get("/patient/{patient_id}", response_model=ResponseModel)
-async def get_patient_info(
-    patient_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_user)
-):
-    """
-    根据患者ID查询患者信息
-    
-    - **patient_id**: 患者ID（必填）
-    
-    返回：
-    - patient_id: 患者ID
-    - name: 患者姓名
-    - gender: 性别
-    - age: 年龄（根据出生日期计算）
-    """
-    try:
-        # 权限检查：必须是医生或管理员
-        if not current_user.is_admin:
-            res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
-            current_doctor = res.scalar_one_or_none()
-            if not current_doctor:
-                raise AuthHTTPException(
-                    code=settings.INSUFFICIENT_AUTHORITY_CODE,
-                    msg="仅医生可查询患者信息",
-                    status_code=403
-                )
-        
-        # 查询患者信息
-        from app.models.patient import Patient
-        patient_res = await db.execute(
-            select(Patient).where(Patient.patient_id == patient_id)
-        )
-        patient = patient_res.scalar_one_or_none()
-        
-        if not patient:
-            raise ResourceHTTPException(
-                code=settings.DATA_GET_FAILED_CODE,
-                msg=f"患者ID {patient_id} 不存在",
-                status_code=404
-            )
-        
-        # 计算年龄
-        age = None
-        if patient.birth_date:
-            from datetime import date
-            today = date.today()
-            age = today.year - patient.birth_date.year - (
-                (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day)
-            )
-        
-        return ResponseModel(
-            code=0,
-            message={
-                "patient_id": patient.patient_id,
-                "name": patient.name,
-                "gender": patient.gender,
-                "age": age
-            }
-        )
-        
-    except AuthHTTPException:
-        raise
-    except ResourceHTTPException:
-        raise
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"查询患者信息失败: {e}")
-        raise BusinessHTTPException(
-            code=settings.DATA_GET_FAILED_CODE,
-            msg=f"查询患者信息失败: {str(e)}"
-        )
-
-
 
 # ==================== 医生请假 API ====================		
 @router.get("/leave/schedule", response_model=ResponseModel)
@@ -1762,4 +1689,175 @@ async def get_leave_history(
 		raise BusinessHTTPException(
 			code=settings.DATA_GET_FAILED_CODE,
 			msg=f"获取请假历史失败: {str(e)}"
+		)
+
+
+@router.get("/patient/{patient_id}", response_model=ResponseModel)
+async def get_patient_detail(
+	patient_id: int,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	医生查看患者详情接口
+	- 获取患者基本信息
+	- 获取患者病史信息（既往病史、过敏史、家族病史）
+	- 获取患者就诊记录
+	"""
+	try:
+		# 权限检查：仅医生可访问
+		doctor = await _get_doctor(db, current_user)
+		
+		# 查询患者基本信息
+		patient_res = await db.execute(
+			select(Patient)
+			.options(selectinload(Patient.user))
+			.where(Patient.patient_id == patient_id)
+		)
+		patient = patient_res.scalar_one_or_none()
+		
+		if not patient:
+			raise ResourceHTTPException(
+				code=404,
+				msg="患者不存在",
+				status_code=404
+			)
+
+		# 授权校验：仅允许查看自己接诊过的患者
+		visit_check_res = await db.execute(
+			select(VisitHistory.visit_id)
+			.where(
+				VisitHistory.patient_id == patient_id,
+				VisitHistory.doctor_id == doctor.doctor_id
+			)
+			.limit(1)
+		)
+		if visit_check_res.scalar_one_or_none() is None:
+			raise ResourceHTTPException(
+				code=403,
+				msg="无权查看该患者信息",
+				status_code=403
+			)
+		
+		# 计算年龄
+		age = None
+		if patient.birth_date:
+			today = date.today()
+			age = today.year - patient.birth_date.year
+			if today.month < patient.birth_date.month or (
+				today.month == patient.birth_date.month and today.day < patient.birth_date.day
+			):
+				age -= 1
+		
+		# 手机号脱敏（保留前3位和后4位）
+		phone_masked = None
+		if patient.user and patient.user.phonenumber:
+			phone = str(patient.user.phonenumber)
+			if len(phone) >= 11:  # 标准手机号11位
+				phone_masked = phone[:3] + "****" + phone[-4:]
+			elif len(phone) >= 7:  # 至少7位才脱敏
+				phone_masked = phone[:3] + "****" + phone[-4:]
+			else:
+				# 太短的号码用星号代替
+				phone_masked = "*" * len(phone)
+		
+		# 身份证号脱敏（保留前6位和后4位） - 使用 student_id 作为身份证号
+		idcard_masked = None
+		if patient.student_id and len(patient.student_id) >= 10:
+			idcard = patient.student_id
+			idcard_masked = idcard[:6] + "********" + idcard[-4:]
+		elif patient.student_id:
+			idcard_masked = patient.student_id
+		
+		# 构建基本信息
+		basic_info = {
+			"name": patient.name,
+			"gender": patient.gender.value if patient.gender else "未知",
+			"age": age,
+			"height": None,  # 数据库暂无身高字段，返回 null
+			"phone": phone_masked,
+			"idCard": idcard_masked,
+			"address": "北京市海淀区学院路37号北京交通大学"  # 默认地址
+		}
+		
+		# 病史信息（目前数据库没有专门的病史表，返回空数组）
+		# 可以根据实际业务需求从其他表或字段读取
+		medical_history = {
+			"pastHistory": [],
+			"allergyHistory": [],
+			"familyHistory": []
+		}
+		
+		# 查询就诊记录
+		visit_res = await db.execute(
+			select(VisitHistory)
+			.options(
+				selectinload(VisitHistory.doctor).selectinload(Doctor.minor_department)
+			)
+			.where(
+				VisitHistory.patient_id == patient_id,
+				VisitHistory.doctor_id == doctor.doctor_id
+			)
+			.order_by(VisitHistory.visit_date.desc())
+		)
+		visit_records = visit_res.scalars().all()
+		
+		# 构建就诊记录列表
+		consultation_records = []
+		for visit in visit_records:
+			# 获取科室名称
+			department_name = "未知科室"
+			if visit.doctor and visit.doctor.minor_department:
+				department_name = visit.doctor.minor_department.name
+			
+			# 获取医生姓名
+			doctor_name = "未知医生"
+			if visit.doctor:
+				doctor_name = visit.doctor.name
+			
+			# 处理就诊日期时间
+			visit_datetime = visit.visit_date.strftime("%Y-%m-%d") if visit.visit_date else ""
+			if visit.create_time:
+				visit_datetime = visit.create_time.strftime("%Y-%m-%d %H:%M")
+			
+			# 状态处理
+			status = "completed"
+			if visit.followup_required:
+				status = "ongoing"
+			
+			record = {
+				"id": str(visit.visit_id),
+				"outpatientNo": f"{visit.visit_id:06d}",  # 使用就诊记录ID生成门诊号
+				"visitDate": visit_datetime,
+				"department": department_name,
+				"doctorName": doctor_name,
+				"chiefComplaint": visit.diagnosis or "",  # 主诉（使用诊断字段代替）
+				"presentIllness": visit.advice or "",  # 现病史（使用建议字段代替）
+				"auxiliaryExam": visit.attachments or "",  # 辅助检查
+				"diagnosis": visit.diagnosis or "",
+				"prescription": visit.prescription or "",
+				"status": status
+			}
+			
+			consultation_records.append(record)
+		
+		# 返回完整数据
+		return ResponseModel(code=0, message={
+			"patientId": str(patient_id),
+			"basicInfo": basic_info,
+			"medicalHistory": medical_history,
+			"consultationRecords": consultation_records
+		})
+		
+	except AuthHTTPException:
+		raise
+	except ResourceHTTPException:
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取患者详情失败: {e}")
+		raise BusinessHTTPException(
+			code=500,
+			msg=f"获取患者详情失败: {str(e)}",
+			status_code=500
 		)

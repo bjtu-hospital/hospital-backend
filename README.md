@@ -3690,6 +3690,150 @@ GET /doctor/leave/history?status=pending
 
 ---
 
+
+## 4、医生查看患者详情 API (`/doctor`)
+
+### 4.1 GET `/doctor/patient/{patient_id}`
+
+**描述**: 医生查看患者完整详情，包括基本信息、病史信息、就诊记录。
+
+**权限**: 
+- 仅医生可访问（需登录并携带 Token）
+- **严格授权模式（方案1）**：仅允许查看该医生曾经接诊过的患者（基于 `VisitHistory` 表的 `doctor_id` 匹配）
+- 返回的就诊记录仅限当前医生的记录
+
+**请求参数**:
+- `patient_id` (path): 患者ID（整数）
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+**成功响应示例** (code=0):
+```json
+{
+  "code": 0,
+  "message": {
+    "patientId": "77",
+    "basicInfo": {
+      "name": "张三",
+      "gender": "男",
+      "age": 25,
+      "height": null,
+      "phone": "138****5678",
+      "idCard": "110101********1234",
+      "address": "北京市海淀区学院路37号北京交通大学"
+    },
+    "medicalHistory": {
+      "pastHistory": [],
+      "allergyHistory": [],
+      "familyHistory": []
+    },
+    "consultationRecords": [
+      {
+        "id": "224",
+        "outpatientNo": "000224",
+        "visitDate": "2025-09-08 17:15",
+        "department": "呼吸内科",
+        "doctorName": "李医生",
+        "chiefComplaint": "咳嗽、咳痰",
+        "presentIllness": "咳嗽3天，伴咳痰",
+        "auxiliaryExam": "胸部X线：未见明显异常",
+        "diagnosis": "急性上呼吸道感染",
+        "prescription": "1. 阿莫西林胶囊 0.5g tid po\n2. 止咳糖浆 10ml tid po",
+        "status": "completed"
+      }
+    ]
+  }
+}
+```
+
+**授权失败响应** (code=403):
+```json
+{
+  "code": 403,
+  "message": {
+    "error": "资源操作失败",
+    "msg": "无权查看该患者信息"
+  }
+}
+```
+
+**患者不存在响应** (code=404):
+```json
+{
+  "code": 404,
+  "message": {
+    "error": "资源操作失败",
+    "msg": "患者不存在"
+  }
+}
+```
+
+**字段说明**:
+
+**basicInfo（基本信息）**:
+- `name`: 患者姓名
+- `gender`: 性别（男/女/未知）
+- `age`: 年龄（根据出生日期自动计算）
+- `height`: 身高（当前数据库暂无此字段，返回 null）
+- `phone`: 手机号（脱敏处理，保留前3位和后4位，如 `138****5678`；短号码用星号代替）
+- `idCard`: 身份证号（脱敏处理，保留前6位和后4位，如 `110101********1234`）
+- `address`: 地址（默认为学校地址）
+
+**medicalHistory（病史信息）**:
+- `pastHistory`: 既往病史列表（当前数据库暂无专门病史表，返回空数组）
+- `allergyHistory`: 过敏史列表（返回空数组）
+- `familyHistory`: 家族病史列表（返回空数组）
+
+**consultationRecords（就诊记录）**:
+- `id`: 就诊记录ID
+- `outpatientNo`: 门诊号（格式：6位数字，如 `000224`）
+- `visitDate`: 就诊时间（格式：`YYYY-MM-DD HH:MM`）
+- `department`: 就诊科室名称
+- `doctorName`: 接诊医生姓名
+- `chiefComplaint`: 主诉
+- `presentIllness`: 现病史
+- `auxiliaryExam`: 辅助检查结果
+- `diagnosis`: 诊断
+- `prescription`: 处方/医嘱
+- `status`: 就诊状态（`completed`：已完成，`ongoing`：随访中）
+
+**实现要点**:
+1. **严格授权检查**：查询 `VisitHistory` 表验证当前医生是否曾接诊该患者，若无记录则返回 403
+2. **数据脱敏**：
+   - 手机号：11位标准号显示为 `前3位****后4位`，短号码用星号替代
+   - 身份证/学号：显示为 `前6位********后4位`
+3. **就诊记录过滤**：仅返回当前医生的就诊记录（`doctor_id` 匹配）
+4. **年龄自动计算**：根据 `birth_date` 实时计算，考虑月日
+5. **记录排序**：就诊记录按 `visit_date` 降序排列（最新在前）
+
+**PowerShell 测试示例**:
+```powershell
+# 1. 医生登录获取 token
+$loginResponse = Invoke-RestMethod -Uri "http://localhost:8000/auth/staff/login" `
+    -Method POST -ContentType "application/json" `
+    -Body '{"identifier":"doctor001","password":"123456"}'
+$token = $loginResponse.message
+
+# 2. 查看患者详情
+$headers = @{ "Authorization" = "Bearer $token" }
+$patientDetail = Invoke-RestMethod -Uri "http://localhost:8000/doctor/patient/77" `
+    -Method GET -Headers $headers
+
+# 3. 查看结果
+$patientDetail | ConvertTo-Json -Depth 5
+```
+
+该脚本会：
+- 自动登录医生账号
+- 在患者ID范围内探测可查看与不可查看的患者
+- 验证授权逻辑和响应格式
+
+---
+
+
 # 六、患者 API 接口详细
 
 患者端 API 接口包含公开查询接口（无需登录）和预约管理接口（需要登录）。所有接口统一返回格式：`{ "code": 0, "message": {...} }`。
@@ -4254,7 +4398,8 @@ PUT /appointments/1001/cancel
 
 ---
 
-## 七、通用图片上传 API (`/common`)
+
+# 七、通用图片上传 API (`/common`)
 
 该模块为通用文件（主要是医生请假凭证图片）上传接口，前端在提交请假前应先调用上传接口获取文件 `url` 与 `name`，再把这些对象放入请假申请的 `attachments` 字段。
 
