@@ -32,7 +32,7 @@ class ScheduleAudit(Base):
     
     # 审核信息
     status = Column(String(20), default='pending', nullable=False, comment='审核状态: pending, approved, rejected')
-    auditor_admin_id = Column(Integer, ForeignKey('administrator.admin_id'), comment='审核人ID')
+    auditor_user_id = Column(Integer, ForeignKey('user.user_id'), comment='审核人User ID(可以是管理员或科室长)')
     audit_time = Column(DateTime, comment='审核时间')
     audit_remark = Column(Text, comment='审核备注/原因')
 
@@ -44,4 +44,4 @@ class ScheduleAudit(Base):
     clinic = relationship("Clinic", back_populates="schedule_audits")
     minor_department = relationship("MinorDepartment", back_populates="schedule_audits")
     doctor = relationship("Doctor", back_populates="schedule_audits")
-    administrator = relationship("Administrator", back_populates="schedule_audits")
+    auditor = relationship("User", foreign_keys=[auditor_user_id], back_populates="audited_schedule_audits")

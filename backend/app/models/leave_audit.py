@@ -32,11 +32,11 @@ class LeaveAudit(Base):
     submit_time = Column(DateTime, default=datetime.datetime.now, nullable=False, comment='提交申请时间')
     
     status = Column(String(20), default='pending', nullable=False, comment='审核状态: pending, approved, rejected')
-    auditor_admin_id = Column(Integer, ForeignKey('administrator.admin_id'), comment='审核人ID')
+    auditor_user_id = Column(Integer, ForeignKey('user.user_id'), comment='审核人User ID(可以是管理员或科室长)')
     audit_time = Column(DateTime, comment='审核时间')
     audit_remark = Column(Text, comment='审核备注/原因')
 
     # 关系
     doctor = relationship("Doctor", back_populates="leave_audits")
-    administrator = relationship("Administrator", back_populates="leave_audits")
+    auditor = relationship("User", foreign_keys=[auditor_user_id], back_populates="audited_leave_audits")
     

@@ -15,6 +15,3 @@ class Administrator(Base):
     
     # 关系字段
     user = relationship("User", back_populates="administrator")
-    schedule_audits = relationship("ScheduleAudit", back_populates="administrator")
-    leave_audits = relationship("LeaveAudit", back_populates="administrator")
-    add_slot_audits = relationship("AddSlotAudit", back_populates="auditor")

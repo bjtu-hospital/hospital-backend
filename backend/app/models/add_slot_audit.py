@@ -22,7 +22,7 @@ class AddSlotAudit(Base):
 
     submit_time = Column(DateTime, default=datetime.datetime.now, nullable=False, comment='提交时间')
     status = Column(String(20), default='pending', nullable=False, comment='审核状态: pending, approved, rejected')
-    auditor_admin_id = Column(Integer, ForeignKey('administrator.admin_id'), comment='审核人管理员ID')
+    auditor_user_id = Column(Integer, ForeignKey('user.user_id'), comment='审核人User ID(可以是管理员或科室长)')
     audit_time = Column(DateTime, comment='审核时间')
     audit_remark = Column(Text, comment='审核备注/原因')
 
@@ -34,5 +34,5 @@ class AddSlotAudit(Base):
     applicant = relationship("User", foreign_keys=[applicant_id], back_populates="add_slot_applications")
     # 指向 Patient 而非 User，便于直接访问患者业务 ID
     patient = relationship("Patient", foreign_keys=[patient_id], back_populates="add_slot_received")
-    # 审核管理员（Administrator）
-    auditor = relationship("Administrator", back_populates="add_slot_audits")
+    # 审核人（User）
+    auditor = relationship("User", foreign_keys=[auditor_user_id], back_populates="audited_add_slot_audits")
