@@ -30,7 +30,7 @@ from sqlalchemy import select, and_, delete, func, or_
 from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
 from app.schemas.audit import (
-    ScheduleAuditItem, ScheduleAuditListResponse, ScheduleDoctorInfo,AuditAction, AuditActionResponse,LeaveAttachment, LeaveAuditItem, LeaveAuditListResponse 
+    ScheduleAuditItem, ScheduleAuditListResponse, ScheduleDoctorInfo,AuditAction, AuditActionResponse,LeaveAuditItem, LeaveAuditListResponse 
 )
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
@@ -3025,7 +3025,7 @@ async def get_schedule_audits(
                 week_end=audit.week_end_date,
                 remark=audit.remark,
                 status=audit.status,
-                auditor_id=audit.auditor_admin_id,
+                auditor_id=audit.auditor_user_id,
                 audit_time=audit.audit_time,
                 audit_remark=audit.audit_remark,
                 # 假设 schedule_data_json 结构已符合 ScheduleAuditItem.schedule
@@ -3069,7 +3069,7 @@ async def get_add_slot_audits(
                 "applicant_id": a.applicant_id,
                 "submit_time": a.submit_time,
                 "status": a.status,
-                "auditor_admin_id": a.auditor_admin_id,
+                "auditor_user_id": a.auditor_user_id,
                 "audit_time": a.audit_time,
                 "audit_remark": a.audit_remark,
             })
@@ -3134,7 +3134,7 @@ async def get_schedule_audit_detail(
             week_end=audit.week_end_date,
             remark=audit.remark,
             status=audit.status,
-            auditor_id=audit.auditor_admin_id,
+            auditor_id=audit.auditor_user_id,
             audit_time=audit.audit_time,
             audit_remark=audit.audit_remark,
             schedule=audit.schedule_data_json
@@ -3175,13 +3175,12 @@ async def approve_schedule_audit(
         if db_audit.status != 'pending':
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
-        # 获取审核人 Admin ID
-        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        # 使用当前用户 User ID 作为审核人
         current_time = datetime.now()
         
         # 1. 更新审核表状态
         db_audit.status = 'approved'
-        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.auditor_user_id = current_user.user_id
         db_audit.audit_time = current_time
         db_audit.audit_remark = data.comment
         db.add(db_audit)
@@ -3237,7 +3236,7 @@ async def approve_schedule_audit(
         return ResponseModel(code=0, message=AuditActionResponse(
             audit_id=audit_id,
             status='approved',
-            auditor_id=auditor_admin_id,
+            auditor_id=current_user.user_id,
             audit_time=current_time
         ))
     except AuthHTTPException:
@@ -3348,8 +3347,17 @@ async def get_leave_audits(
         audit_list = []
         for audit, doctor_name, doctor_title, dept_name in result.all():
             leave_days = calculate_leave_days(audit.leave_start_date, audit.leave_end_date)
-            # 原因预览：截取前 50 个字符
+            # 原因预览:截取前 50 个字符
             reason_preview = (audit.reason[:50] + '...') if len(audit.reason) > 50 else audit.reason
+            
+            # 统一附件为字符串路径列表
+            attachments_list = []
+            if audit.attachment_data_json and isinstance(audit.attachment_data_json, list):
+                for item in audit.attachment_data_json:
+                    if isinstance(item, str):
+                        attachments_list.append(item)
+                    elif isinstance(item, dict) and 'url' in item:
+                        attachments_list.append(item['url'])
             
             audit_list.append(LeaveAuditItem(
                 id=audit.audit_id,
@@ -3362,10 +3370,10 @@ async def get_leave_audits(
                 leave_days=leave_days,
                 reason=audit.reason,
                 reason_preview=reason_preview,
-                attachments=audit.attachment_data_json or [], # 确保返回列表
+                attachments=attachments_list,
                 submit_time=audit.submit_time,
                 status=audit.status,
-                auditor_id=audit.auditor_admin_id,
+                auditor_id=audit.auditor_user_id,
                 audit_time=audit.audit_time,
                 audit_remark=audit.audit_remark
             ))
@@ -3433,10 +3441,14 @@ async def get_leave_audit_detail(
             leave_days=leave_days,
             reason=audit.reason,
             reason_preview=reason_preview,
-            attachments=audit.attachment_data_json or [],
+            # 统一附件为字符串路径列表
+            attachments=(
+                [att if isinstance(att, str) else att.get('url') for att in (audit.attachment_data_json or [])
+                 if isinstance(att, str) or (isinstance(att, dict) and att.get('url'))]
+            ),
             submit_time=audit.submit_time,
             status=audit.status,
-            auditor_id=audit.auditor_admin_id,
+            auditor_id=audit.auditor_user_id,
             audit_time=audit.audit_time,
             audit_remark=audit.audit_remark
         ))
@@ -3476,8 +3488,7 @@ async def approve_leave_audit(
         if db_audit.status != 'pending':
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
-        # 获取审核人 Admin ID
-        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
+        # 使用当前用户 User ID 作为审核人
         current_time = datetime.now()
 
         # 1. 将医生在请假期间的排班状态标记为"请假"（保留历史记录，便于追溯）
@@ -3501,7 +3512,7 @@ async def approve_leave_audit(
         
         # 2. 更新审核表状态
         db_audit.status = 'approved'
-        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.auditor_user_id = current_user.user_id
         db_audit.audit_time = current_time
         db_audit.audit_remark = data.comment
         db.add(db_audit)
@@ -3515,7 +3526,7 @@ async def approve_leave_audit(
         return ResponseModel(code=0, message=AuditActionResponse(
             audit_id=audit_id,
             status='approved',
-            auditor_id=auditor_admin_id,
+            auditor_id=current_user.user_id,
             audit_time=current_time
         ))
     except AuthHTTPException:
@@ -3560,12 +3571,11 @@ async def reject_leave_audit(
         if db_audit.status != 'pending':
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
-        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
         current_time = datetime.now()
 
         # 更新审核表状态
         db_audit.status = 'rejected'
-        db_audit.auditor_admin_id = auditor_admin_id
+        db_audit.auditor_user_id = current_user.user_id
         db_audit.audit_time = current_time
         db_audit.audit_remark = data.comment
         db.add(db_audit)
@@ -3577,7 +3587,7 @@ async def reject_leave_audit(
         return ResponseModel(code=0, message=AuditActionResponse(
             audit_id=audit_id,
             status='rejected',
-            auditor_id=auditor_admin_id,
+            auditor_id=current_user.user_id,
             audit_time=current_time
         ))
     except AuthHTTPException:

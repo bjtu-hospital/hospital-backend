@@ -37,6 +37,7 @@ class DayScheduleItem(BaseModel):
 
 
 class AttachmentItem(BaseModel):
+    """旧格式保留（不再使用）。附件改为字符串路径。"""
     url: str = Field(..., description="附件URL")
     name: Optional[str] = Field(None, description="原始文件名")
 
@@ -46,7 +47,7 @@ class LeaveApplyRequest(BaseModel):
     date: str = Field(..., description="请假日期 YYYY-MM-DD")
     shift: ShiftEnum = Field(..., description="请假时段")
     reason: str = Field(..., min_length=1, max_length=500, description="请假原因，最大500字")
-    attachments: Optional[List[AttachmentItem]] = Field(default=[], description="图片附件列表，每项包含url和name字段")
+    attachments: Optional[List[str]] = Field(default=[], description="附件路径字符串列表")
 
 
 class LeaveHistoryItem(BaseModel):
@@ -59,6 +60,6 @@ class LeaveHistoryItem(BaseModel):
     createTime: str = Field(..., description="申请提交时间")
     approver: Optional[str] = Field(None, description="审批人姓名")
     rejectReason: Optional[str] = Field(None, description="驳回原因")
-    attachments: List[AttachmentItem] = Field(default_factory=list, description="附件列表(包含url与可选文件名)")
+    attachments: List[str] = Field(default_factory=list, description="附件路径字符串列表")
 
 

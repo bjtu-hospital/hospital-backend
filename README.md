@@ -1266,10 +1266,15 @@ Authorization: Bearer <token>
 Authorization: Bearer <token>
 ```
 
+重要更新（2025-11）：
+- 路径前缀统一为 `/admin/audit/*`（例如：`/admin/audit/leave`、`/admin/audit/schedule`、`/admin/audit/add-slot`）。
+- 审核人字段迁移为 `auditor_user_id`（替代旧字段 `auditor_admin_id`）。响应体中的 `auditor_id` 表示审核人的 `user_id`。
+- 请假审核的附件字段 `attachments` 统一为字符串路径数组，例如：`["/static/audit/leave_20251101_123456.jpg"]`。
+
 ### A. 排班审核（Schedule Audit）
 
 #### 5.1 获取排班审核列表
-- GET `/audit/schedule`
+- GET `/admin/audit/schedule`
 - 说明：获取所有排班审核申请列表（无分页），按提交时间倒序排列
 
 响应示例：
@@ -1302,13 +1307,13 @@ Authorization: Bearer <token>
 ```
 
 #### 5.2 获取排班审核详情
-- GET `/audit/schedule/{audit_id}`
+- GET `/admin/audit/schedule/{audit_id}`
 - 说明：获取指定排班审核申请的详细信息
 
 响应格式同上列表项，包含完整排班 JSON 数据。
 
 #### 5.3 通过排班审核
-- POST `/audit/schedule/{audit_id}/approve`
+- POST `/admin/audit/schedule/{audit_id}/approve`
 - 说明：管理员审核通过排班申请，系统会将排班数据写入 `Schedule` 表，生成实际排班记录
 
 请求体：
@@ -1338,7 +1343,7 @@ Authorization: Bearer <token>
 4. 事务提交，确保数据一致性
 
 #### 5.4 拒绝排班审核
-- POST `/audit/schedule/{audit_id}/reject`
+- POST `/admin/audit/schedule/{audit_id}/reject`
 - 说明：管理员拒绝排班申请
 
 请求体：
@@ -1355,7 +1360,7 @@ Authorization: Bearer <token>
 ### B. 请假审核（Leave Audit）
 
 #### 5.5 获取请假审核列表
-- GET `/audit/leave`
+- GET `/admin/audit/leave`
 - 说明：获取所有请假审核申请列表（无分页），按提交时间倒序排列
 
 响应示例：
@@ -1395,13 +1400,13 @@ Authorization: Bearer <token>
 - `attachments`：附件文件路径列表（可用于后续获取附件内容）
 
 #### 5.6 获取请假审核详情
-- GET `/audit/leave/{audit_id}`
+- GET `/admin/audit/leave/{audit_id}`
 - 说明：获取指定请假审核申请的详细信息
 
 响应格式同上列表项，包含完整请假原因和附件列表。
 
 #### 5.7 通过请假审核
-- POST `/audit/leave/{audit_id}/approve`
+- POST `/admin/audit/leave/{audit_id}/approve`
 - 说明：管理员审核通过请假申请，系统会**自动将医生在请假期间的所有排班记录调为停诊状态**
 
 请求体：
@@ -1432,7 +1437,7 @@ Authorization: Bearer <token>
 
 
 #### 5.8 拒绝请假审核
-- POST `/audit/leave/{audit_id}/reject`
+- POST `/admin/audit/leave/{audit_id}/reject`
 - 说明：管理员拒绝请假申请，不会影响现有排班
 
 请求体：
@@ -1522,7 +1527,7 @@ Authorization: Bearer <token>
 }
 ```
 
-#### 5.11 管理员查看所有加号申请 GET: `/audit/add-slot`
+#### 5.11 管理员查看所有加号申请 GET: `/admin/audit/add-slot`
 - 权限：仅管理员。
 - 说明：返回所有 `AddSlotAudit` 记录（当前实现无分页）。建议在记录量大时加入分页与筛选参数（如 status/doctor_id/patient_id/date range）。
 - 响应示例：
@@ -1551,8 +1556,8 @@ Authorization: Bearer <token>
 ```
 
 #### 5.12 管理员审批（已有接口）
-- 通过：POST `/audit/add-slot/{audit_id}/approve`（管理员）
-- 拒绝：POST `/audit/add-slot/{audit_id}/reject`（管理员）
+- 通过：POST `/admin/audit/add-slot/{audit_id}/approve`（管理员）
+- 拒绝：POST `/admin/audit/add-slot/{audit_id}/reject`（管理员）
 - 说明：审批通过时，系统会在事务内调用加号服务创建 `RegistrationOrder` 并更新对应 `Schedule`；审批结果会写回 `add_slot_audit` 表（status、auditor_admin_id、audit_time、audit_remark）。
 
 ---
@@ -3535,14 +3540,8 @@ Authorization: Bearer <token>
     "shift": "full",
     "reason": "因个人原因需要请假",
     "attachments": [
-        {
-            "url": "static/images/audit/2025/11/26/20251126184713_582f3d12_诊断证明.jpg",
-            "name": "诊断证明.jpg"
-        },
-        {
-            "url": "static/images/audit/2025/11/26/20251126184716_93de0889_病历单.jpg",
-            "name": "病历单.jpg"
-        }
+        "static/images/audit/2025/11/26/20251126184713_诊断证明.jpg",
+        "static/images/audit/2025/11/26/20251126184716_病历单.jpg"
     ]
 }
 ```
@@ -3555,9 +3554,7 @@ Authorization: Bearer <token>
   - `"night"`: 晚班
   - `"full"`: 全天
 - `reason` (必填): 请假原因，1-500字符
-- `attachments` (可选): 附件数组
-  - `url`: 附件URL（通过 `/common/upload` 接口上传后获得）
-  - `name`: 附件名称
+- `attachments` (可选): 附件路径字符串数组（通过 `/common/upload` 获取到的路径）
 
 #### 请假时限规则:
 1. **全天请假**：需要至少提前一天提交（leave_date > 今天）
@@ -3579,14 +3576,8 @@ Authorization: Bearer <token>
         "status": "pending",
         "submit_time": "2025-11-26T18:47:20",
         "attachments": [
-            {
-                "url": "static/images/audit/2025/11/26/20251126184713_582f3d12_诊断证明.jpg",
-                "name": "诊断证明.jpg"
-            },
-            {
-                "url": "static/images/audit/2025/11/26/20251126184716_93de0889_病历单.jpg",
-                "name": "病历单.jpg"
-            }
+            "static/images/audit/2025/11/26/20251126184713_诊断证明.jpg",
+            "static/images/audit/2025/11/26/20251126184716_病历单.jpg"
         ]
     }
 }
@@ -3665,14 +3656,8 @@ GET /doctor/leave/history?status=pending
                 "audit_time": null,
                 "audit_remark": null,
                 "attachments": [
-                    {
-                        "url": "static/images/audit/2025/11/26/20251126184713_582f3d12_诊断证明.jpg",
-                        "name": "诊断证明.jpg"
-                    },
-                    {
-                        "url": "static/images/audit/2025/11/26/20251126184716_93de0889_病历单.jpg",
-                        "name": "病历单.jpg"
-                    }
+                    "static/images/audit/2025/11/26/20251126184713_诊断证明.jpg",
+                    "static/images/audit/2025/11/26/20251126184716_病历单.jpg"
                 ]
             }
         ]
@@ -3686,14 +3671,89 @@ GET /doctor/leave/history?status=pending
 - `auditor_id`: 审核人ID（审核后填写）
 - `audit_time`: 审核时间（审核后填写）
 - `audit_remark`: 审核备注（审核后填写）
-- `attachments`: 附件数组，可能为空数组
+- `attachments`: 附件路径字符串数组，可能为空数组
 
 ---
 
 
-## 4、医生查看患者详情 API (`/doctor`)
+## 4、科室长请假审核接口（Doctor - Department Head）
 
-### 4.1 GET `/doctor/patient/{patient_id}`
+科室长（部门负责人）可对本科室医生的请假申请进行审核。接口均需医生身份且当前用户具备科室长权限（系统以 `Doctor` 档案与科室绑定判定）。
+
+通用要求：
+- Header：`Authorization: Bearer <token>`
+- 仅能操作/查看同科室医生的申请
+- 仅 `pending` 状态的申请可执行批准/驳回
+
+### 4.1 获取请假审核列表 Get: `/doctor/leave/audit`
+查询参数：
+- `status`（可选）：`pending | approved | rejected | all`，默认 `pending`
+- `page`（可选）：页码，默认 1
+- `page_size`（可选）：每页数量，默认 20
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audits": [
+            {
+                "id": 24,
+                "doctor_id": 118,
+                "doctor_name": "王医生",
+                "doctor_title": "副主任医师",
+                "department_name": "心内科",
+                "leave_start_date": "2025-11-27",
+                "leave_end_date": "2025-11-27",
+                "leave_days": 1,
+                "reason": "诊断后休整一天",
+                "attachments": [ "static/images/audit/2025/11/26/xxx.jpg" ],
+                "submit_time": "2025-11-26T18:47:20",
+                "status": "pending",
+                "auditor_id": null,
+                "audit_time": null
+            }
+        ],
+        "total": 21,
+        "page": 1,
+        "page_size": 20
+    }
+}
+```
+
+### 4.2 获取请假审核详情 Get: `/doctor/leave/audit/{audit_id}`
+返回指定申请的完整信息，字段同列表项并包含完整 `reason` 与 `attachments`。
+
+### 4.3 批准请假申请 Post: `/doctor/leave/audit/{audit_id}/approve`
+请求体：
+```json
+{ "comment": "同意请假" }
+```
+成功响应：
+```json
+{ "code": 0, "message": { "audit_id": 24, "status": "approved", "auditor_id": 119, "audit_time": "2025-11-27T10:21:21" } }
+```
+
+### 4.4 驳回请假申请 Post: `/doctor/leave/audit/{audit_id}/reject`
+请求体：
+```json
+{ "comment": "资料不充分，请补充附件" }
+```
+成功响应：
+```json
+{ "code": 0, "message": { "audit_id": 24, "status": "rejected", "auditor_id": 119, "audit_time": "2025-11-27T10:25:05" } }
+```
+
+字段与说明：
+- `auditor_id`：当前审核人的 `user_id`（与管理员审核保持一致）
+- `attachments`：对象数组 `{url, name}`（与医生提交时保持一致）
+- 强校验：仅同科室记录可见/可操作；非科室长将返回权限不足错误
+
+---
+
+## 5、医生查看患者详情 API (`/doctor`)
+
+### 5.1 GET `/doctor/patient/{patient_id}`
 
 **描述**: 医生查看患者完整详情，包括基本信息、病史信息、就诊记录。
 

@@ -38,10 +38,16 @@ from app.schemas.leave import (
 	DayScheduleItem,
 	LeaveApplyRequest,
 	LeaveHistoryItem,
-	AttachmentItem,
 	ShiftEnum
 )
 from app.models.leave_audit import LeaveAudit
+from app.schemas.audit import (
+	LeaveAuditItem,
+	LeaveAuditListResponse,
+	AuditAction,
+	AuditActionResponse,
+)
+from app.services.admin_helpers import calculate_leave_days
 from app.models.administrator import Administrator
 from app.models.patient import Patient
 from app.models.visit_history import VisitHistory
@@ -353,13 +359,221 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 			except Exception:
 				pass
 
-	return ResponseModel(code=0, message=WorkbenchDashboardResponse(
-		doctor=doctor_info,
-		shiftStatus=shift_status,
-		todayData=today_data,
-		reminders=reminders,
-		recentRecords=recent_records
-	))
+		return ResponseModel(code=0, message=WorkbenchDashboardResponse(
+			doctor=doctor_info,
+			shiftStatus=shift_status,
+			todayData=today_data,
+			reminders=reminders,
+			recentRecords=recent_records
+		))
+
+
+# ===================== 科室长请假审核接口 =====================
+
+@router.get("/leave/audit", response_model=ResponseModel[LeaveAuditListResponse])
+async def department_head_leave_audits(
+    status: str = "pending",
+    page: int = 1,
+    page_size: int = 20,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+	"""科室长查看本科室医生请假申请列表 (pending/approved/rejected/all)。"""
+	try:
+		if page <= 0 or page_size <= 0:
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="分页参数必须为正整数", status_code=400)
+
+		head_doctor = await _get_doctor(db, current_user)
+		if getattr(head_doctor, "is_department_head", 0) != 1:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问", status_code=403)
+
+		valid_status = {"pending", "approved", "rejected", "all"}
+		if status not in valid_status:
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="status 参数无效", status_code=400)
+
+		offset = (page - 1) * page_size
+		stmt = (
+			select(LeaveAudit, Doctor, MinorDepartment)
+			.join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+			.join(MinorDepartment, Doctor.dept_id == MinorDepartment.minor_dept_id)
+			.where(Doctor.dept_id == head_doctor.dept_id)
+			.order_by(LeaveAudit.submit_time.desc())
+			.offset(offset)
+			.limit(page_size)
+		)
+		if status != "all":
+			stmt = stmt.where(LeaveAudit.status == status)
+		res = await db.execute(stmt)
+		rows = res.fetchall()
+
+		items: list[LeaveAuditItem] = []
+		for leave, d_obj, dept_obj in rows:
+			attachments = []
+			if leave.attachment_data_json:
+				for att in leave.attachment_data_json:
+					if isinstance(att, str):
+						attachments.append(att)
+					elif isinstance(att, dict) and att.get("url"):
+						attachments.append(att.get("url"))
+			reason_preview = leave.reason[:30] + ("..." if len(leave.reason) > 30 else "")
+			items.append(
+				LeaveAuditItem(
+					id=leave.audit_id,
+					doctor_id=leave.doctor_id,
+					doctor_name=d_obj.name,
+					doctor_title=d_obj.title,
+					department_name=dept_obj.name if dept_obj else None,
+					leave_start_date=leave.leave_start_date,
+					leave_end_date=leave.leave_end_date,
+					leave_days=calculate_leave_days(leave.leave_start_date, leave.leave_end_date),
+					reason=leave.reason,
+					reason_preview=reason_preview,
+					attachments=attachments,
+					submit_time=leave.submit_time,
+					status=leave.status,
+					auditor_id=leave.auditor_user_id,
+					audit_time=leave.audit_time,
+					audit_remark=leave.audit_remark
+				)
+			)
+		return ResponseModel(code=0, message=LeaveAuditListResponse(audits=items))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg=f"获取请假审核列表失败: {e}", status_code=500)
+
+
+@router.get("/leave/audit/{audit_id}", response_model=ResponseModel[LeaveAuditItem])
+async def department_head_leave_audit_detail(
+	audit_id: int,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""科室长查看单个请假申请详情。"""
+	try:
+		head_doctor = await _get_doctor(db, current_user)
+		if getattr(head_doctor, "is_department_head", 0) != 1:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问", status_code=403)
+
+		res = await db.execute(select(LeaveAudit).where(LeaveAudit.audit_id == audit_id))
+		leave = res.scalar_one_or_none()
+		if not leave:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="申请不存在", status_code=404)
+		d_res = await db.execute(select(Doctor, MinorDepartment).join(MinorDepartment, Doctor.dept_id == MinorDepartment.minor_dept_id).where(Doctor.doctor_id == leave.doctor_id))
+		d_row = d_res.fetchone()
+		if not d_row:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="医生或科室信息缺失", status_code=404)
+		d_obj, dept_obj = d_row
+		if d_obj.dept_id != head_doctor.dept_id:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不可查看其他科室申请", status_code=403)
+
+		attachments = []
+		if leave.attachment_data_json:
+			for att in leave.attachment_data_json:
+				if isinstance(att, str):
+					attachments.append(att)
+				elif isinstance(att, dict) and att.get("url"):
+					attachments.append(att.get("url"))
+
+		item = LeaveAuditItem(
+			id=leave.audit_id,
+			doctor_id=leave.doctor_id,
+			doctor_name=d_obj.name,
+			doctor_title=d_obj.title,
+			department_name=dept_obj.name if dept_obj else None,
+			leave_start_date=leave.leave_start_date,
+			leave_end_date=leave.leave_end_date,
+			leave_days=calculate_leave_days(leave.leave_start_date, leave.leave_end_date),
+			reason=leave.reason,
+			reason_preview=leave.reason[:30] + ("..." if len(leave.reason) > 30 else ""),
+			attachments=attachments,
+			submit_time=leave.submit_time,
+			status=leave.status,
+			auditor_id=leave.auditor_user_id,
+			audit_time=leave.audit_time,
+			audit_remark=leave.audit_remark
+		)
+		return ResponseModel(code=0, message=item)
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg=f"获取请假审核详情失败: {e}", status_code=500)
+
+
+@router.post("/leave/audit/{audit_id}/approve", response_model=ResponseModel[AuditActionResponse])
+async def department_head_leave_approve(
+	audit_id: int,
+	action: AuditAction,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""科室长批准请假申请 (仅 pending)。"""
+	try:
+		head_doctor = await _get_doctor(db, current_user)
+		if getattr(head_doctor, "is_department_head", 0) != 1:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可操作", status_code=403)
+		res = await db.execute(select(LeaveAudit).where(LeaveAudit.audit_id == audit_id))
+		leave = res.scalar_one_or_none()
+		if not leave:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="申请不存在", status_code=404)
+		d_res = await db.execute(select(Doctor).where(Doctor.doctor_id == leave.doctor_id))
+		doc = d_res.scalar_one_or_none()
+		if not doc:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="医生不存在", status_code=404)
+		if doc.dept_id != head_doctor.dept_id:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不可审批其他科室", status_code=403)
+		if leave.status != "pending":
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="仅可审批待审核申请", status_code=400)
+		leave.status = "approved"
+		leave.auditor_user_id = current_user.user_id
+		leave.audit_time = datetime.now()
+		leave.audit_remark = action.comment
+		await db.commit()
+		return ResponseModel(code=0, message=AuditActionResponse(audit_id=leave.audit_id, status=leave.status, auditor_id=current_user.user_id, audit_time=leave.audit_time))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		await db.rollback()
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"批准失败: {e}", status_code=500)
+
+
+@router.post("/leave/audit/{audit_id}/reject", response_model=ResponseModel[AuditActionResponse])
+async def department_head_leave_reject(
+	audit_id: int,
+	action: AuditAction,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""科室长驳回请假申请 (需提供 comment)。"""
+	try:
+		head_doctor = await _get_doctor(db, current_user)
+		if getattr(head_doctor, "is_department_head", 0) != 1:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可操作", status_code=403)
+		if not action.comment or not action.comment.strip():
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="驳回必须提供 comment", status_code=400)
+		res = await db.execute(select(LeaveAudit).where(LeaveAudit.audit_id == audit_id))
+		leave = res.scalar_one_or_none()
+		if not leave:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="申请不存在", status_code=404)
+		d_res = await db.execute(select(Doctor).where(Doctor.doctor_id == leave.doctor_id))
+		doc = d_res.scalar_one_or_none()
+		if not doc:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="医生不存在", status_code=404)
+		if doc.dept_id != head_doctor.dept_id:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不可审批其他科室", status_code=403)
+		if leave.status != "pending":
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="仅可驳回待审核申请", status_code=400)
+		leave.status = "rejected"
+		leave.auditor_user_id = current_user.user_id
+		leave.audit_time = datetime.now()
+		leave.audit_remark = action.comment
+		await db.commit()
+		return ResponseModel(code=0, message=AuditActionResponse(audit_id=leave.audit_id, status=leave.status, auditor_id=current_user.user_id, audit_time=leave.audit_time))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		await db.rollback()
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"驳回失败: {e}", status_code=500)
 
 
 @router.post("/workbench/checkin", response_model=ResponseModel[CheckinResponse])
@@ -1553,12 +1767,12 @@ async def apply_leave(
 					status_code=400
 				)
 
-		# 构建附件数据
+		# 构建附件数据（统一为字符串路径列表）
 		attachments_data = []
 		if data.attachments:
 			for att in data.attachments:
-				# 将 AttachmentItem 对象转换为字典
-				attachments_data.append({"url": att.url, "name": att.name})
+				if isinstance(att, str):
+					attachments_data.append(att)
 
 		# 创建请假申请
 		new_leave = LeaveAudit(
@@ -1624,18 +1838,20 @@ async def get_leave_history(
 		)
 		total = count_result.scalar()
 
-		# 分页查询
+		# 分页查询 - join User 或 Doctor 获取审核人姓名(可能是管理员或科室长)
 		offset = (page - 1) * pageSize
+		# 先尝试从 User 获取姓名,如果审核人是管理员则从Administrator表,如果是医生则从Doctor表
 		result = await db.execute(
-			select(LeaveAudit, Administrator.name)
-			.outerjoin(Administrator, Administrator.admin_id == LeaveAudit.auditor_admin_id)
+			select(LeaveAudit, Administrator.name, Doctor.name)
+			.outerjoin(Administrator, Administrator.user_id == LeaveAudit.auditor_user_id)
+			.outerjoin(Doctor, Doctor.user_id == LeaveAudit.auditor_user_id)
 			.where(LeaveAudit.doctor_id == db_doctor.doctor_id)
 			.order_by(LeaveAudit.submit_time.desc())
 			.offset(offset)
 			.limit(pageSize)
 		)
 		rows = result.all()
-
+		
 		# 时段映射
 		shift_map = {
 			"morning": "上午",
@@ -1645,22 +1861,23 @@ async def get_leave_history(
 		}
 
 		history_list = []
-		for leave, approver_name in rows:
+		for leave, admin_name, doctor_name in rows:
+			# 审核人姓名:优先用admin_name,否则用doctor_name
+			approver_name = admin_name or doctor_name
 			# 从数据库读取实际 shift 值
 			shift = leave.shift or "full"
 			date_str = leave.leave_start_date.strftime("%Y-%m-%d")
-	
-			# 获取附件列表
-			attachments: list[AttachmentItem] = []
+		
+			# 获取附件列表（统一为字符串路径列表）
+			attachments: list[str] = []
 			if leave.attachment_data_json and isinstance(leave.attachment_data_json, list):
 				for item in leave.attachment_data_json:
 					if isinstance(item, dict):
 						url = item.get("url") or item.get("path") or ""
-						name = item.get("name")
 						if url:
-							attachments.append(AttachmentItem(url=url, name=name))
+							attachments.append(url)
 					elif isinstance(item, str):
-						attachments.append(AttachmentItem(url=item, name=None))
+						attachments.append(item)
 
 			history_list.append(
 				LeaveHistoryItem(

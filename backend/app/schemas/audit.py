@@ -52,11 +52,6 @@ class ScheduleAuditListResponse(BaseModel):
 
 # ================================== 请假审核模型 ==================================
 
-class LeaveAttachment(BaseModel):
-    """请假附件信息"""
-    url: str
-    name: str
-
 class LeaveAuditItem(BaseModel):
     """请假审核列表或详情中的单个项目"""
     id: int = Field(..., description="请假申请ID")
@@ -69,7 +64,7 @@ class LeaveAuditItem(BaseModel):
     leave_days: int = Field(..., description="请假总天数") # 需要在后端计算
     reason: str = Field(..., description="请假详细原因")
     reason_preview: str = Field(..., description="请假原因预览 (截取)")
-    attachments: List[LeaveAttachment] = Field(..., description="附件信息列表")
+    attachments: List[str] = Field(default_factory=list, description="附件路径列表（字符串）")
     submit_time: datetime = Field(..., description="提交申请时间")
     status: str = Field(..., description="审核状态: pending, approved, rejected")
     auditor_id: Optional[int] = Field(None, description="审核人管理员ID")
