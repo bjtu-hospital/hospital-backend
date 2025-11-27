@@ -4908,7 +4908,7 @@ PUT /appointments/1001/cancel
 ---
 
 
-# 七、通用图片上传 API (`/common`)
+# 七、通用相关 API (`/common`)
 
 该模块为通用文件（主要是医生请假凭证图片）上传接口，前端在提交请假前应先调用上传接口获取文件 `url` 与 `name`，再把这些对象放入请假申请的 `attachments` 字段。
 
@@ -4979,6 +4979,151 @@ $uploadResponse
     }
 }
 ```
+
+---
+
+### 2) GET `/common/visit-record/{visit_id}`
+
+**描述**: 获取指定就诊记录的详细信息（用于前端渲染病历页面）。
+
+**权限控制**:
+- **管理员**：可查看所有病历
+- **医生**：仅可查看自己接诊的病历
+- **患者**：仅可查看自己的病历
+
+**请求示例**:
+```
+GET /common/visit-record/194
+Authorization: Bearer <token>
+```
+
+**成功响应示例**:
+```json
+{
+    "code": 0,
+    "message": {
+        "basicInfo": {
+            "name": "张三",
+            "gender": "男",
+            "age": 35
+        },
+        "recordData": {
+            "id": "194",
+            "outpatientNo": "000194",
+            "visitDate": "2025-11-12 13:45",
+            "department": "心内科",
+            "doctorName": "李医生",
+            "chiefComplaint": "胸闷气短3天",
+            "presentIllness": "患者3天前无明显诱因出现胸闷...",
+            "auxiliaryExam": "心电图示窦性心律",
+            "diagnosis": "冠心病",
+            "prescription": "阿司匹林 100mg qd\n硝酸甘油 0.5mg prn"
+        }
+    }
+}
+```
+
+**错误响应示例**:
+```json
+{
+    "code": 403,
+    "message": {
+        "error": "资源操作失败",
+        "msg": "无权查看该病历"
+    }
+}
+```
+
+---
+
+### 3) POST `/common/medical-record/{visit_id}/pdf`
+
+**描述**: 为指定就诊记录生成病历单PDF文件。
+
+**权限控制**: 同病历详情接口（管理员/接诊医生/患者本人）
+
+**请求示例**:
+```
+POST /common/medical-record/194/pdf
+Authorization: Bearer <token>
+```
+
+**成功响应示例**:
+```json
+{
+    "code": 0,
+    "message": {
+        "url": "/static/pdf/medical_records/medical_record_194_20251127183300.pdf",
+        "fileName": "病历单_张三_2025-11-12.pdf",
+        "expireTime": "2025-12-04T18:33:00.000000Z"
+    }
+}
+```
+
+**字段说明**:
+- `url`: PDF文件的静态访问路径（可直接在浏览器中打开或下载）
+- `fileName`: 建议的文件名（前端下载时使用）
+- `expireTime`: 文件过期时间（7天后，需配合定时清理任务）
+
+**PDF样式特性**:
+- 双logo显示（北京交通大学 + 校医院logo）
+- 颜色系统：深蓝色主色调 (#1e3a8a)，红色强调色 (#c41e3a)
+- 诊断内容特殊样式：浅蓝背景 + 深蓝左边框
+- 医院印章：圆形红色边框 + 半透明文字
+- 支持中文字体（Microsoft YaHei / SimHei）
+
+**前端调用示例**:
+```javascript
+// 生成并下载PDF
+async function downloadMedicalRecord(visitId) {
+    // 1. 生成PDF
+    const response = await fetch(`/common/medical-record/${visitId}/pdf`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    });
+    
+    const result = await response.json();
+    
+    if (result.code === 0) {
+        // 2. 直接打开或下载PDF
+        const pdfUrl = result.message.url;
+        window.open(pdfUrl, '_blank');  // 新窗口打开
+        
+        // 或者下载
+        const link = document.createElement('a');
+        link.href = pdfUrl;
+        link.download = result.message.fileName;
+        link.click();
+    }
+}
+```
+
+**注意事项**:
+1. **PDF文件清理**: PDF文件存储在 `backend/app/static/pdf/medical_records/`，设置7天过期时间，需配合定时任务清理过期文件
+2. **静态文件访问**: 所有 `/static/` 路径的文件可直接通过HTTP访问，PDF下载无需额外认证（生成时已验证权限）
+3. **性能优化**: PDF生成为同步操作，大量请求时考虑使用任务队列。Logo图片已嵌入PDF，单个文件约462KB
+
+---
+
+### 4) GET `/common/medical-record/{visit_id}/download`
+
+**描述**: 下载病历单PDF（带权限验证的文件流式下载）。
+
+**说明**: 推荐直接使用接口3返回的静态URL访问PDF。此接口保留用于需要服务端验证权限的场景。
+
+**权限控制**: 同病历详情接口
+
+**请求示例**:
+```
+GET /common/medical-record/194/download
+Authorization: Bearer <token>
+```
+
+**响应**:
+- 成功：返回PDF文件二进制流（`Content-Type: application/pdf`）
+- 失败：返回JSON错误信息
 
 ---
 
