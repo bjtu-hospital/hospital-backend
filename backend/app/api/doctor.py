@@ -80,33 +80,44 @@ async def schedule_clinics(
 	"""获取当前登录用户（科室长）管理的门诊/科室列表。
 	返回结构遵循设计文档：Array<{id,name,totalSlots,filledSlots}>。
 	"""
-	# 当前用户绑定医生，且必须为科室长
-	doctor = await _get_doctor(db, current_user)
-	if not getattr(doctor, "is_department_head", False):
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
+	try:
+		# 当前用户绑定医生，且必须为科室长
+		doctor = await _get_doctor(db, current_user)
+		if not getattr(doctor, "is_department_head", False):
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
 
-	# 取本科室的门诊列表（以 Clinic 关联 MinorDepartment 或通过科室ID过滤）
-	# 由于模型未给出科室-门诊的直接映射，这里返回该科室下所有排班涉及的门诊聚合
-	sched_res = await db.execute(
-		select(Schedule.clinic_id, Clinic.name)
-		.join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
-		.where(Schedule.doctor_id == doctor.doctor_id)
-		.group_by(Schedule.clinic_id, Clinic.name)
-	)
-	rows = sched_res.all()
+		# 取本科室的门诊列表（以 Clinic 关联 MinorDepartment 或通过科室ID过滤）
+		# 由于模型未给出科室-门诊的直接映射，这里返回该科室下所有排班涉及的门诊聚合
+		sched_res = await db.execute(
+			select(Schedule.clinic_id, Clinic.name)
+			.join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+			.where(Schedule.doctor_id == doctor.doctor_id)
+			.group_by(Schedule.clinic_id, Clinic.name)
+		)
+		rows = sched_res.all()
 
-	data = []
-	for cid, cname in rows:
-		# 统计本周（以今天所在周）总名额与已排名额（简化：用当周已有记录计数）
-		# 可根据业务需要扩展统计逻辑
-		data.append({
-			"id": str(cid),
-			"name": cname,
-			"totalSlots": None,
-			"filledSlots": None,
-		})
+		data = []
+		for cid, cname in rows:
+			# 统计本周（以今天所在周）总名额与已排名额（简化：用当周已有记录计数）
+			# 可根据业务需要扩展统计逻辑
+			data.append({
+				"id": str(cid),
+				"name": cname,
+				"totalSlots": None,
+				"filledSlots": None,
+			})
 
-	return ResponseModel(code=0, message=data)
+		return ResponseModel(code=0, message=data)
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取门诊列表失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取门诊列表失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/schedule/list", response_model=ResponseModel)
@@ -119,51 +130,63 @@ async def schedule_list(
 	"""获取指定门诊在特定周的排班详情。
 	返回 Array<ScheduleSlot>，含 filled/empty/unavailable。
 	"""
-	doctor = await _get_doctor(db, current_user)
-	if not getattr(doctor, "is_department_head", False):
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
-
 	try:
-		week_start = datetime.strptime(startDate, "%Y-%m-%d").date()
-	except ValueError:
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="startDate 格式错误", status_code=400)
+		doctor = await _get_doctor(db, current_user)
+		if not getattr(doctor, "is_department_head", False):
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
 
-	# 查询一周内该门诊所有排班
-	week_dates = [week_start + timedelta(days=i) for i in range(7)]
-	res = await db.execute(
-		select(Schedule)
-		.options(selectinload(Schedule.doctor))
-		.where(and_(Schedule.clinic_id == clinicId, Schedule.date.in_(week_dates)))
-	)
-	schedules = res.scalars().all()
+		try:
+			week_start = datetime.strptime(startDate, "%Y-%m-%d").date()
+		except ValueError:
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="startDate 格式错误", status_code=400)
 
-	# 构造日历：每天三班（上午/下午/晚上），默认 empty
-	slots: List[Dict[str, Any]] = []
-	for d in week_dates:
-		for idx, shift in enumerate(["morning", "afternoon", "night"]):
-			# 找到对应时间段的记录
-			found = next((s for s in schedules if s.date == d and s.time_section in ["上午", "早", "morning"] and idx == 0), None)
-			if idx == 1:
-				found = next((s for s in schedules if s.date == d and s.time_section in ["下午", "after", "afternoon"]), None)
-			if idx == 2:
-				found = next((s for s in schedules if s.date == d and s.time_section not in ["上午", "早", "morning", "下午", "after", "afternoon"]), None)
+		# 查询一周内该门诊所有排班
+		week_dates = [week_start + timedelta(days=i) for i in range(7)]
+		res = await db.execute(
+			select(Schedule)
+			.options(selectinload(Schedule.doctor))
+			.where(and_(Schedule.clinic_id == clinicId, Schedule.date.in_(week_dates)))
+		)
+		schedules = res.scalars().all()
 
-			item: Dict[str, Any] = {
-				"date": d.strftime("%Y-%m-%d"),
-				"dayOfWeek": d.isoweekday(),
-				"shift": shift,
-				"status": "empty",
-			}
-			if found:
-				item.update({
-					"status": "filled",
-					"doctorId": str(found.doctor_id),
-					"doctorName": getattr(found, "doctor_name", None) or None,
-					"doctorTitle": None,
-				})
-			slots.append(item)
+		# 构造日历：每天三班（上午/下午/晚上），默认 empty
+		slots: List[Dict[str, Any]] = []
+		for d in week_dates:
+			for idx, shift in enumerate(["morning", "afternoon", "night"]):
+				# 找到对应时间段的记录
+				found = next((s for s in schedules if s.date == d and s.time_section in ["上午", "早", "morning"] and idx == 0), None)
+				if idx == 1:
+					found = next((s for s in schedules if s.date == d and s.time_section in ["下午", "after", "afternoon"]), None)
+				if idx == 2:
+					found = next((s for s in schedules if s.date == d and s.time_section not in ["上午", "早", "morning", "下午", "after", "afternoon"]), None)
 
-	return ResponseModel(code=0, message=slots)
+				item: Dict[str, Any] = {
+					"date": d.strftime("%Y-%m-%d"),
+					"dayOfWeek": d.isoweekday(),
+					"shift": shift,
+					"status": "empty",
+				}
+				if found:
+					item.update({
+						"status": "filled",
+						"doctorId": str(found.doctor_id),
+						# 优先使用关联的 Doctor 记录名称
+						"doctorName": (found.doctor.name if getattr(found, "doctor", None) else None),
+						"doctorTitle": (found.doctor.title if getattr(found, "doctor", None) else None),
+					})
+				slots.append(item)
+
+		return ResponseModel(code=0, message=slots)
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取排班列表失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取排班列表失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/schedule/available-doctors", response_model=ResponseModel)
@@ -175,50 +198,63 @@ async def schedule_available_doctors(
 	current_user: UserSchema = Depends(get_current_user)
 ):
 	"""为某一日期与班次返回科室医生的可用状态（available/conflict/leave）。"""
-	doctor = await _get_doctor(db, current_user)
-	if not getattr(doctor, "is_department_head", False):
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
-
 	try:
-		target_date = datetime.strptime(date, "%Y-%m-%d").date()
-	except ValueError:
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="date 格式错误", status_code=400)
+		doctor = await _get_doctor(db, current_user)
+		if not getattr(doctor, "is_department_head", False):
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
 
-	# 科室下所有医生
-	dres = await db.execute(select(Doctor).where(Doctor.dept_id == doctor.dept_id))
-	doctors = dres.scalars().all()
+		try:
+			target_date = datetime.strptime(date, "%Y-%m-%d").date()
+		except ValueError:
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="date 格式错误", status_code=400)
 
-	# 查询该日期该门诊的已排班
-	sres = await db.execute(select(Schedule).where(and_(Schedule.clinic_id == clinicId, Schedule.date == target_date)))
-	day_scheds = sres.scalars().all()
+		# 科室下所有医生
+		dres = await db.execute(select(Doctor).where(Doctor.dept_id == doctor.dept_id))
+		doctors = dres.scalars().all()
 
-	# 查询该日期的请假申请（已批准或待审核都视为不可用）
-	lres = await db.execute(select(LeaveAudit).where(and_(LeaveAudit.leave_start_date <= target_date, LeaveAudit.leave_end_date >= target_date)))
-	leaves = lres.scalars().all()
-	leave_doctor_ids = {lv.doctor_id for lv in leaves}
+		# 查询该日期该门诊的已排班
+		sres = await db.execute(select(Schedule).where(and_(Schedule.clinic_id == clinicId, Schedule.date == target_date)))
+		day_scheds = sres.scalars().all()
 
-	data: List[Dict[str, Any]] = []
-	for d in doctors:
-		status = "available"
-		conflict_reason = None
-		# 冲突：该医生在该日该门诊已有任一班次排班
-		if any(s.doctor_id == d.doctor_id for s in day_scheds):
-			status = "conflict"
-			conflict_reason = "当天已有排班"
-		# 请假：当日跨越该医生请假
-		if d.doctor_id in leave_doctor_ids:
-			status = "leave"
-		data.append({
-			"id": str(d.doctor_id),
-			"name": d.name,
-			"title": d.title,
-			"dept": doctor.dept_id,
-			"status": status,
-			"conflictReason": conflict_reason,
-			"assignedCount": None,
-		})
+		# 查询该日期的请假申请（已批准或待审核都视为不可用）
+		lres = await db.execute(select(LeaveAudit).where(and_(LeaveAudit.leave_start_date <= target_date, LeaveAudit.leave_end_date >= target_date)))
+		leaves = lres.scalars().all()
+		leave_doctor_ids = {lv.doctor_id for lv in leaves}
 
-	return ResponseModel(code=0, message=data)
+		data: List[Dict[str, Any]] = []
+		for d in doctors:
+			status = "available"
+			conflict_reason = None
+			# 冲突：该医生在该日该门诊已有任一班次排班
+			if any(s.doctor_id == d.doctor_id for s in day_scheds):
+				status = "conflict"
+				conflict_reason = "当天已有排班"
+			# 请假：当日跨越该医生请假
+			if d.doctor_id in leave_doctor_ids:
+				status = "leave"
+			# 为了前端字段一致性，提供 doctorId/doctorName，同时保留 id/name 兼容
+			data.append({
+				"id": str(d.doctor_id),
+				"name": d.name,
+				"doctorName": d.name,
+				"title": d.title,
+				"dept": doctor.dept_id,
+				"status": status,
+				"conflictReason": conflict_reason,
+				"assignedCount": None,
+			})
+
+		return ResponseModel(code=0, message=data)
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取可用医生失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取可用医生失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.post("/schedule/submit-change", response_model=ResponseModel)
@@ -228,61 +264,73 @@ async def schedule_submit_change(
 	current_user: UserSchema = Depends(get_current_user)
 ):
 	"""提交排班调整申请，生成 ScheduleAudit 记录，状态 pending，待管理员审核。"""
-	doctor = await _get_doctor(db, current_user)
-	if not getattr(doctor, "is_department_head", False):
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
-
-	clinic_id = body.get("clinicId")
-	changes = body.get("changes") or []
-	if not clinic_id or not isinstance(changes, list):
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="请求参数错误", status_code=400)
-
-	# 将变更转换为 7x3 的周排班矩阵（简化：按提交的 date+shift 生成矩阵）
-	# 确定周一
 	try:
-		# 找到最小日期作为周起始（或由前端传 startDate 更好），为简化仅聚合到周维度
-		dates = [datetime.strptime(c.get("date"), "%Y-%m-%d").date() for c in changes if c.get("date")]
-		if not dates:
-			raise ValueError
-		week_start = min(dates)
-		week_start = week_start - timedelta(days=week_start.isoweekday() - 1)  # 调整到周一
-	except Exception:
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="changes 中日期格式错误", status_code=400)
+		doctor = await _get_doctor(db, current_user)
+		if not getattr(doctor, "is_department_head", False):
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
 
-	matrix: List[List[Any]] = [[None, None, None] for _ in range(7)]
-	for c in changes:
-		cdate = datetime.strptime(c["date"], "%Y-%m-%d").date()
-		day_idx = (cdate - week_start).days
-		if day_idx < 0 or day_idx > 6:
-			continue
-		shift = c.get("shift")
-		slot_idx = {"morning": 0, "afternoon": 1, "night": 2}.get(shift, None)
-		if slot_idx is None:
-			continue
-		doctor_id = c.get("doctorId")
-		if doctor_id in (None, "", "null"):
-			matrix[day_idx][slot_idx] = None
-		else:
-			matrix[day_idx][slot_idx] = {"doctor_id": int(doctor_id)}
+		clinic_id = body.get("clinicId")
+		changes = body.get("changes") or []
+		if not clinic_id or not isinstance(changes, list):
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="请求参数错误", status_code=400)
 
-	# 写入 ScheduleAudit
-	from app.models.schedule_audit import ScheduleAudit
-	audit = ScheduleAudit(
-		minor_dept_id=doctor.dept_id,
-		clinic_id=clinic_id,
-		submitter_doctor_id=doctor.doctor_id,
-		submit_time=datetime.now(),
-		week_start_date=week_start,
-		week_end_date=week_start + timedelta(days=6),
-		remark="科室长提交排班调整",
-		status="pending",
-		schedule_data_json=matrix,
-	)
-	db.add(audit)
-	await db.commit()
-	await db.refresh(audit)
+		# 将变更转换为 7x3 的周排班矩阵（简化：按提交的 date+shift 生成矩阵）
+		# 确定周一
+		try:
+			# 找到最小日期作为周起始（或由前端传 startDate 更好），为简化仅聚合到周维度
+			dates = [datetime.strptime(c.get("date"), "%Y-%m-%d").date() for c in changes if c.get("date")]
+			if not dates:
+				raise ValueError
+			week_start = min(dates)
+			week_start = week_start - timedelta(days=week_start.isoweekday() - 1)  # 调整到周一
+		except Exception:
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="changes 中日期格式错误", status_code=400)
 
-	return ResponseModel(code=0, message={"msg": "申请已提交，等待审核", "auditId": audit.audit_id})
+		matrix: List[List[Any]] = [[None, None, None] for _ in range(7)]
+		for c in changes:
+			cdate = datetime.strptime(c["date"], "%Y-%m-%d").date()
+			day_idx = (cdate - week_start).days
+			if day_idx < 0 or day_idx > 6:
+				continue
+			shift = c.get("shift")
+			slot_idx = {"morning": 0, "afternoon": 1, "night": 2}.get(shift, None)
+			if slot_idx is None:
+				continue
+			doctor_id = c.get("doctorId")
+			if doctor_id in (None, "", "null"):
+				matrix[day_idx][slot_idx] = None
+			else:
+				matrix[day_idx][slot_idx] = {"doctor_id": int(doctor_id)}
+
+		# 写入 ScheduleAudit
+		from app.models.schedule_audit import ScheduleAudit
+		audit = ScheduleAudit(
+			minor_dept_id=doctor.dept_id,
+			clinic_id=clinic_id,
+			submitter_doctor_id=doctor.doctor_id,
+			submit_time=datetime.now(),
+			week_start_date=week_start,
+			week_end_date=week_start + timedelta(days=6),
+			remark="科室长提交排班调整",
+			status="pending",
+			schedule_data_json=matrix,
+		)
+		db.add(audit)
+		await db.commit()
+		await db.refresh(audit)
+
+		return ResponseModel(code=0, message={"msg": "申请已提交，等待审核", "auditId": audit.audit_id})
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		await db.rollback()
+		import logging
+		logging.getLogger(__name__).error(f"提交排班调整失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.REQ_ERROR_CODE,
+			msg=f"提交排班调整失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.post("/schedules/add-slot", response_model=ResponseModel)
@@ -445,144 +493,155 @@ async def _save_shift_state(schedule_id: int, state: dict, ttl_hours: int = 24):
 
 @router.get("/workbench/dashboard", response_model=ResponseModel[WorkbenchDashboardResponse])
 async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
-	doctor = await _get_doctor(db, current_user)
-	# 部门
-	dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
-	dept = dept_res.scalar_one_or_none()
+	try:
+		doctor = await _get_doctor(db, current_user)
+		# 部门
+		dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
+		dept = dept_res.scalar_one_or_none()
 
-	# 获取医生今天的排班信息
-	today = datetime.now(timezone.utc).date()
-	stmt = (
-		select(Schedule)
-		.options(selectinload(Schedule.clinic))
-		.where(Schedule.doctor_id == current_user.user_id, Schedule.date == today)
-	)
-	result = await db.execute(stmt)
-	schedules = result.scalars().all()
-
-	schedule_details = []
-	now = datetime.now()  # 使用本地时间而非UTC
-	current_shift_obj = None
-	shift_status_value = "checked_out"
-	checkin_time = None
-	checkout_time = None
-	work_duration = None
-	time_to_checkout = None
-	countdown = None
-
-	# 选择当前或下一个排班
-	sorted_scheds = []
-	for s in schedules:
-		start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
-		start_dt = datetime.combine(s.date, datetime.strptime(start_str, "%H:%M").time())
-		end_dt = datetime.combine(s.date, datetime.strptime(end_str, "%H:%M").time())
-		sorted_scheds.append((s, start_dt, end_dt))
-	sorted_scheds.sort(key=lambda x: x[1])
-
-	for s, start_dt, end_dt in sorted_scheds:
-		state = await _load_shift_state(s.schedule_id)
-		if start_dt <= now <= end_dt:
-			# 活跃排班
-			current_shift_obj = (s, start_dt, end_dt, state)
-			break
-		if now < start_dt and not current_shift_obj:
-			# 下一个未来排班
-			current_shift_obj = (s, start_dt, end_dt, state)
-			break
-
-	if current_shift_obj:
-		s, start_dt, end_dt, state = current_shift_obj
-		start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
-		earliest_checkin = start_dt - timedelta(minutes=30)
-		latest_checkout = end_dt + timedelta(hours=2)
-		
-		# 优化后的状态判断
-		if state.get("checkout_time"):
-			shift_status_value = "checked_out"
-			checkout_time = state.get("checkout_time")
-			if state.get("checkin_time"):
-				ct_parsed = datetime.strptime(state["checkin_time"], "%H:%M")
-				work_duration = _human_duration(datetime.combine(date.today(), ct_parsed.time()), datetime.combine(date.today(), datetime.strptime(checkout_time, "%H:%M").time()))
-		elif state.get("checkin_time"):
-			checkin_time = state.get("checkin_time")
-			shift_status_value = "checked_in"
-			work_duration = _human_duration(datetime.combine(date.today(), datetime.strptime(checkin_time, "%H:%M").time()), now)
-			time_to_checkout = _human_duration(now, end_dt) if now <= end_dt else "已超时"
-		elif now < earliest_checkin:
-			shift_status_value = "not_started"
-			countdown = _human_duration(now, start_dt)
-		elif earliest_checkin <= now <= end_dt:
-			shift_status_value = "ready"
-			countdown = f"可签到（班次 {start_str} 开始）"
-		elif end_dt < now <= latest_checkout:
-			shift_status_value = "expired"
-		else:
-			shift_status_value = "expired"
-
-		clinic_addr = s.clinic.address if s.clinic and getattr(s.clinic, "address", None) else None
-		current_shift = WorkbenchCurrentShift(
-			id=s.schedule_id,
-			name=f"{s.time_section}门诊",
-			startTime=start_str,
-			endTime=end_str,
-			location=clinic_addr,
-			countdown=countdown
+		# 获取医生今天的排班信息
+		today = datetime.now(timezone.utc).date()
+		stmt = (
+			select(Schedule)
+			.options(selectinload(Schedule.clinic))
+			.where(Schedule.doctor_id == current_user.user_id, Schedule.date == today)
 		)
-	else:
-		current_shift = None
+		result = await db.execute(stmt)
+		schedules = result.scalars().all()
+
+		schedule_details = []
+		now = datetime.now()  # 使用本地时间而非UTC
+		current_shift_obj = None
 		shift_status_value = "checked_out"
+		checkin_time = None
+		checkout_time = None
+		work_duration = None
+		time_to_checkout = None
+		countdown = None
 
-	# 接诊统计（今日）
-	stats_res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == date.today())))
-	orders = stats_res.scalars().all()
-	pending_cnt = sum(1 for o in orders if o.status in (OrderStatus.PENDING, OrderStatus.WAITLIST))
-	ongoing_cnt = sum(1 for o in orders if o.status in (OrderStatus.CONFIRMED,))
-	completed_cnt = sum(1 for o in orders if o.status in (OrderStatus.COMPLETED,))
-	total_cnt = len(orders)
+		# 选择当前或下一个排班
+		sorted_scheds = []
+		for s in schedules:
+			start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
+			start_dt = datetime.combine(s.date, datetime.strptime(start_str, "%H:%M").time())
+			end_dt = datetime.combine(s.date, datetime.strptime(end_str, "%H:%M").time())
+			sorted_scheds.append((s, start_dt, end_dt))
+		sorted_scheds.sort(key=lambda x: x[1])
 
-	doctor_info = WorkbenchDoctorInfo(
-		id=doctor.doctor_id,
-		name=doctor.name,
-		title=doctor.title,
-		department=dept.name if dept else None,
-		photo_path=doctor.photo_path
-	)
-	shift_status = WorkbenchShiftStatus(
-		status=shift_status_value,
-		currentShift=current_shift,
-		checkinTime=checkin_time,
-		checkoutTime=checkout_time,
-		workDuration=work_duration,
-		timeToCheckout=time_to_checkout
-	)
-	today_data = WorkbenchTodayData(
-		pendingConsultation=pending_cnt,
-		ongoingConsultation=ongoing_cnt,
-		completedConsultation=completed_cnt,
-		totalConsultation=total_cnt
-	)
-	# 简单占位提醒与近期记录（真实实现需业务支撑）
-	reminders = [WorkbenchReminder(id=1, type="system", title="请按时签到", icon="bell", time="08:00")]
-	recent_records = []
-	# 只显示已就诊的记录（有就诊时间）
-	for o in orders:
-		if o.visit_times and o.status in (OrderStatus.COMPLETED, OrderStatus.CONFIRMED):
-			try:
-				visit_dt = datetime.strptime(o.visit_times, "%Y-%m-%d %H:%M:%S")
-				consultation_time = visit_dt.strftime("%H:%M")
-				recent_records.append(WorkbenchRecentRecord(id=o.order_id, patientName=str(o.patient_id), consultationTime=consultation_time, diagnosis=None))
-				if len(recent_records) >= 3:
-					break
-			except Exception:
-				pass
+		for s, start_dt, end_dt in sorted_scheds:
+			state = await _load_shift_state(s.schedule_id)
+			if start_dt <= now <= end_dt:
+				# 活跃排班
+				current_shift_obj = (s, start_dt, end_dt, state)
+				break
+			if now < start_dt and not current_shift_obj:
+				# 下一个未来排班
+				current_shift_obj = (s, start_dt, end_dt, state)
+				break
 
-		return ResponseModel(code=0, message=WorkbenchDashboardResponse(
-			doctor=doctor_info,
-			shiftStatus=shift_status,
-			todayData=today_data,
-			reminders=reminders,
-			recentRecords=recent_records
-		))
+		if current_shift_obj:
+			s, start_dt, end_dt, state = current_shift_obj
+			start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
+			earliest_checkin = start_dt - timedelta(minutes=30)
+			latest_checkout = end_dt + timedelta(hours=2)
+			
+			# 优化后的状态判断
+			if state.get("checkout_time"):
+				shift_status_value = "checked_out"
+				checkout_time = state.get("checkout_time")
+				if state.get("checkin_time"):
+					ct_parsed = datetime.strptime(state["checkin_time"], "%H:%M")
+					work_duration = _human_duration(datetime.combine(date.today(), ct_parsed.time()), datetime.combine(date.today(), datetime.strptime(checkout_time, "%H:%M").time()))
+			elif state.get("checkin_time"):
+				checkin_time = state.get("checkin_time")
+				shift_status_value = "checked_in"
+				work_duration = _human_duration(datetime.combine(date.today(), datetime.strptime(checkin_time, "%H:%M").time()), now)
+				time_to_checkout = _human_duration(now, end_dt) if now <= end_dt else "已超时"
+			elif now < earliest_checkin:
+				shift_status_value = "not_started"
+				countdown = _human_duration(now, start_dt)
+			elif earliest_checkin <= now <= end_dt:
+				shift_status_value = "ready"
+				countdown = f"可签到（班次 {start_str} 开始）"
+			elif end_dt < now <= latest_checkout:
+				shift_status_value = "expired"
+			else:
+				shift_status_value = "expired"
+
+			clinic_addr = s.clinic.address if s.clinic and getattr(s.clinic, "address", None) else None
+			current_shift = WorkbenchCurrentShift(
+				id=s.schedule_id,
+				name=f"{s.time_section}门诊",
+				startTime=start_str,
+				endTime=end_str,
+				location=clinic_addr,
+				countdown=countdown
+			)
+		else:
+			current_shift = None
+			shift_status_value = "checked_out"
+
+		# 接诊统计（今日）
+		stats_res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == date.today())))
+		orders = stats_res.scalars().all()
+		pending_cnt = sum(1 for o in orders if o.status in (OrderStatus.PENDING, OrderStatus.WAITLIST))
+		ongoing_cnt = sum(1 for o in orders if o.status in (OrderStatus.CONFIRMED,))
+		completed_cnt = sum(1 for o in orders if o.status in (OrderStatus.COMPLETED,))
+		total_cnt = len(orders)
+
+		doctor_info = WorkbenchDoctorInfo(
+			id=doctor.doctor_id,
+			name=doctor.name,
+			title=doctor.title,
+			department=dept.name if dept else None,
+			photo_path=doctor.photo_path
+		)
+		shift_status = WorkbenchShiftStatus(
+			status=shift_status_value,
+			currentShift=current_shift,
+			checkinTime=checkin_time,
+			checkoutTime=checkout_time,
+			workDuration=work_duration,
+			timeToCheckout=time_to_checkout
+		)
+		today_data = WorkbenchTodayData(
+			pendingConsultation=pending_cnt,
+			ongoingConsultation=ongoing_cnt,
+			completedConsultation=completed_cnt,
+			totalConsultation=total_cnt
+		)
+		# 简单占位提醒与近期记录（真实实现需业务支撑）
+		reminders = [WorkbenchReminder(id=1, type="system", title="请按时签到", icon="bell", time="08:00")]
+		recent_records = []
+		# 只显示已就诊的记录（有就诊时间）
+		for o in orders:
+			if o.visit_times and o.status in (OrderStatus.COMPLETED, OrderStatus.CONFIRMED):
+				try:
+					visit_dt = datetime.strptime(o.visit_times, "%Y-%m-%d %H:%M:%S")
+					consultation_time = visit_dt.strftime("%H:%M")
+					recent_records.append(WorkbenchRecentRecord(id=o.order_id, patientName=str(o.patient_id), consultationTime=consultation_time, diagnosis=None))
+					if len(recent_records) >= 3:
+						break
+				except Exception:
+					pass
+
+			return ResponseModel(code=0, message=WorkbenchDashboardResponse(
+				doctor=doctor_info,
+				shiftStatus=shift_status,
+				todayData=today_data,
+				reminders=reminders,
+				recentRecords=recent_records
+			))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取工作台数据失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取工作台数据失败: {str(e)}",
+			status_code=500
+		)
 
 
 # ===================== 科室长请假审核接口 =====================
@@ -599,7 +658,7 @@ async def _get_original_schedule_info(db: AsyncSession, doctor_id: int, start_da
 		shift: 请假时段 (morning/afternoon/night/full)
 	
 	Returns:
-		原排班信息列表，格式如 ["上午: 专家门诊(08:00-12:00)", "下午: 普通门诊(14:00-18:00)"]
+		原排班信息列表，格式如 ["2025-11-28 上午: 专家门诊(内科门诊)", "2025-11-29 下午: 普通门诊(外科门诊)"]
 	"""
 	try:
 		# 查询该医生在请假期间的所有排班
@@ -609,35 +668,65 @@ async def _get_original_schedule_info(db: AsyncSession, doctor_id: int, start_da
 			.where(
 				and_(
 					Schedule.doctor_id == doctor_id,
-					Schedule.schedule_date >= start_date,
-					Schedule.schedule_date <= end_date
+					Schedule.date >= start_date,
+					Schedule.date <= end_date
 				)
 			)
-			.order_by(Schedule.schedule_date, Schedule.time_section)
+			.order_by(Schedule.date, Schedule.time_section)
 		)
 		schedules = schedule_res.all()
 		
 		original_schedule = []
-		time_section_map = {
-			"上午": "morning",
-			"下午": "afternoon", 
-			"晚上": "night"
+		
+		# 统一的时段标准化映射（支持数据库中可能存在的各种表示方式）
+		def normalize_time_section(ts: str) -> str:
+			"""将数据库中的时段字段标准化为英文 morning/afternoon/night"""
+			ts_lower = str(ts).lower().strip()
+			if ts_lower in ("上午", "早", "morning", "am"):
+				return "morning"
+			elif ts_lower in ("下午", "after", "afternoon", "pm"):
+				return "afternoon"
+			elif ts_lower in ("晚上", "夜", "night", "evening", "晚"):
+				return "night"
+			else:
+				# 默认按原值返回（可能需要后续扩展）
+				return ts_lower
+		
+		# 中文时段显示名称映射
+		time_section_display = {
+			"morning": "上午",
+			"afternoon": "下午",
+			"night": "晚上"
 		}
 		
 		for sched, clinic in schedules:
-			# 如果shift不是full，需要过滤时段
+			# 标准化数据库中的时段
+			normalized_shift = normalize_time_section(sched.time_section)
+			
+			# 如果请假时段不是 full，需要过滤匹配的时段
 			if shift != "full":
-				time_section_en = time_section_map.get(sched.time_section, "")
-				if time_section_en != shift:
+				if normalized_shift != shift:
 					continue
 			
-			# 构造排班信息字符串
-			schedule_info = f"{sched.time_section}: {sched.slot_type}({clinic.name if clinic else '未知门诊'})"
+			# 构造排班信息字符串（包含日期、时段、类型、门诊）
+			date_str = sched.date.strftime("%Y-%m-%d") if sched.date else "未知日期"
+			time_display = time_section_display.get(normalized_shift, sched.time_section)
+			clinic_name = clinic.name if clinic else "未知门诊"
+			
+			# 处理 slot_type：如果是枚举，取其 value（中文值），否则直接使用
+			if hasattr(sched.slot_type, 'value'):
+				slot_type = sched.slot_type.value
+			else:
+				slot_type = str(sched.slot_type) if sched.slot_type else "排班"
+			
+			schedule_info = f"{date_str} {time_display}: {slot_type}({clinic_name})"
 			original_schedule.append(schedule_info)
 		
 		return original_schedule
 		
 	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取原排班信息失败: {e}")
 		# 如果查询失败，返回空列表，不影响主流程
 		return []
 
@@ -982,66 +1071,78 @@ async def workbench_checkin(
 	current_user: UserSchema = Depends(get_current_user)
 ):
 	"""签到接口 - 仅限当天排班，提前30分钟可签到"""
-	doctor = await _get_doctor(db, current_user)
-	res = await db.execute(select(Schedule).where(Schedule.schedule_id == shiftId))
-	schedule = res.scalar_one_or_none()
-	if not schedule or schedule.doctor_id != doctor.doctor_id:
-		raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在或不属于当前医生", status_code=404)
-	
-	# 仅允许当天排班签到
-	today = date.today()
-	if schedule.date != today:
-		raise BusinessHTTPException(
-			code=settings.REQ_ERROR_CODE,
-			msg=f"仅可对当天排班签到，该排班日期为 {schedule.date}",
-			status_code=400
+	try:
+		doctor = await _get_doctor(db, current_user)
+		res = await db.execute(select(Schedule).where(Schedule.schedule_id == shiftId))
+		schedule = res.scalar_one_or_none()
+		if not schedule or schedule.doctor_id != doctor.doctor_id:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在或不属于当前医生", status_code=404)
+		
+		# 仅允许当天排班签到
+		today = date.today()
+		if schedule.date != today:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"仅可对当天排班签到，该排班日期为 {schedule.date}",
+				status_code=400
+			)
+		
+		# 检查是否已签到
+		state = await _load_shift_state(schedule.schedule_id)
+		if state.get("checkin_time"):
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="已签到，请勿重复操作", status_code=400)
+		
+		# 时间窗口检查:提前30分钟可签到，班次结束前必须签到
+		start_str, end_str = await _get_time_section_config(db, schedule.time_section, schedule.clinic_id)
+		now = datetime.now()  # 使用本地时间而非UTC
+		start_dt = datetime.combine(today, datetime.strptime(start_str, "%H:%M").time())
+		end_dt = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
+		
+		# 提前30分钟开放签到
+		earliest_checkin = start_dt - timedelta(minutes=30)
+		
+		# 严格时间窗口验证
+		if now < earliest_checkin:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"签到时间过早，最早可于 {earliest_checkin.strftime('%H:%M')} 签到（班次 {start_str}-{end_str}）",
+				status_code=400
+			)
+		if now > end_dt:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"班次已结束（{end_str}），无法签到",
+				status_code=400
+			)
+		
+		checkin_time_str = now.strftime("%H:%M")
+		state["checkin_time"] = checkin_time_str
+		await _save_shift_state(schedule.schedule_id, state)
+		
+		# 持久化到数据库
+		attendance = AttendanceRecord(
+			schedule_id=schedule.schedule_id,
+			doctor_id=doctor.doctor_id,
+			checkin_time=now,
+			checkin_lat=latitude,
+			checkin_lng=longitude,
+			status=AttendanceStatus.CHECKED_IN
 		)
-	
-	# 检查是否已签到
-	state = await _load_shift_state(schedule.schedule_id)
-	if state.get("checkin_time"):
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="已签到，请勿重复操作", status_code=400)
-	
-	# 时间窗口检查:提前30分钟可签到，班次结束前必须签到
-	start_str, end_str = await _get_time_section_config(db, schedule.time_section, schedule.clinic_id)
-	now = datetime.now()  # 使用本地时间而非UTC
-	start_dt = datetime.combine(today, datetime.strptime(start_str, "%H:%M").time())
-	end_dt = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
-	
-	# 提前30分钟开放签到
-	earliest_checkin = start_dt - timedelta(minutes=30)
-	
-	# 严格时间窗口验证
-	if now < earliest_checkin:
+		db.add(attendance)
+		await db.commit()
+		
+		return ResponseModel(code=0, message=CheckinResponse(checkinTime=checkin_time_str, status="checked_in", message="签到成功", workDuration="0分钟"))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		await db.rollback()
+		import logging
+		logging.getLogger(__name__).error(f"签到失败: {e}")
 		raise BusinessHTTPException(
-			code=settings.REQ_ERROR_CODE,
-			msg=f"签到时间过早，最早可于 {earliest_checkin.strftime('%H:%M')} 签到（班次 {start_str}-{end_str}）",
-			status_code=400
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"签到失败: {str(e)}",
+			status_code=500
 		)
-	if now > end_dt:
-		raise BusinessHTTPException(
-			code=settings.REQ_ERROR_CODE,
-			msg=f"班次已结束（{end_str}），无法签到",
-			status_code=400
-		)
-	
-	checkin_time_str = now.strftime("%H:%M")
-	state["checkin_time"] = checkin_time_str
-	await _save_shift_state(schedule.schedule_id, state)
-	
-	# 持久化到数据库
-	attendance = AttendanceRecord(
-		schedule_id=schedule.schedule_id,
-		doctor_id=doctor.doctor_id,
-		checkin_time=now,
-		checkin_lat=latitude,
-		checkin_lng=longitude,
-		status=AttendanceStatus.CHECKED_IN
-	)
-	db.add(attendance)
-	await db.commit()
-	
-	return ResponseModel(code=0, message=CheckinResponse(checkinTime=checkin_time_str, status="checked_in", message="签到成功", workDuration="0分钟"))
 
 
 @router.post("/workbench/checkout", response_model=ResponseModel[CheckoutResponse])
@@ -1053,170 +1154,215 @@ async def workbench_checkout(
 	current_user: UserSchema = Depends(get_current_user)
 ):
 	"""签退接口 - 仅限当天排班，必须先签到，班次结束后2小时内可签退"""
-	doctor = await _get_doctor(db, current_user)
-	res = await db.execute(select(Schedule).where(Schedule.schedule_id == shiftId))
-	schedule = res.scalar_one_or_none()
-	if not schedule or schedule.doctor_id != doctor.doctor_id:
-		raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在或不属于当前医生", status_code=404)
-	
-	# 仅允许当天排班签退
-	today = date.today()
-	if schedule.date != today:
-		raise BusinessHTTPException(
-			code=settings.REQ_ERROR_CODE,
-			msg=f"仅可对当天排班签退，该排班日期为 {schedule.date}",
-			status_code=400
-		)
-	
-	# 必须先签到
-	state = await _load_shift_state(schedule.schedule_id)
-	if not state.get("checkin_time"):
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="尚未签到，无法签退", status_code=400)
-	if state.get("checkout_time"):
-		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="已签退，请勿重复操作", status_code=400)
-	
-	# 时间窗口检查：班次结束后2小时内可签退
-	start_str, end_str = await _get_time_section_config(db, schedule.time_section, schedule.clinic_id)
-	now = datetime.now()  # 使用本地时间而非UTC
-	end_dt = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
-	latest_checkout = end_dt + timedelta(hours=2)
-	
-	if now > latest_checkout:
-		raise BusinessHTTPException(
-			code=settings.REQ_ERROR_CODE,
-			msg=f"签退超时，最晚可于 {latest_checkout.strftime('%H:%M')} 签退",
-			status_code=400
-		)
-	
-	checkout_time_str = now.strftime("%H:%M")
-	state["checkout_time"] = checkout_time_str
-	# 计算工时
 	try:
-		start_dt = datetime.strptime(state["checkin_time"], "%H:%M")
-		work_duration = _human_duration(datetime.combine(today, start_dt.time()), now)
-	except Exception:
-		work_duration = "--"
-	await _save_shift_state(schedule.schedule_id, state)
-	
-	# 更新数据库考勤记录
-	att_res = await db.execute(
-		select(AttendanceRecord).where(
-			and_(
-				AttendanceRecord.schedule_id == schedule.schedule_id,
-				AttendanceRecord.doctor_id == doctor.doctor_id,
-				AttendanceRecord.status == AttendanceStatus.CHECKED_IN
+		doctor = await _get_doctor(db, current_user)
+		res = await db.execute(select(Schedule).where(Schedule.schedule_id == shiftId))
+		schedule = res.scalar_one_or_none()
+		if not schedule or schedule.doctor_id != doctor.doctor_id:
+			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在或不属于当前医生", status_code=404)
+		
+		# 仅允许当天排班签退
+		today = date.today()
+		if schedule.date != today:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"仅可对当天排班签退，该排班日期为 {schedule.date}",
+				status_code=400
 			)
-		).order_by(AttendanceRecord.created_at.desc())
-	)
-	attendance = att_res.scalars().first()
-	if attendance:
-		attendance.checkout_time = now
-		attendance.checkout_lat = latitude
-		attendance.checkout_lng = longitude
-		attendance.status = AttendanceStatus.CHECKED_OUT
-		if attendance.checkin_time:
-			delta = now - attendance.checkin_time
-			attendance.work_duration_minutes = int(delta.total_seconds() / 60)
-		await db.commit()
-	
-	return ResponseModel(code=0, message=CheckoutResponse(checkoutTime=checkout_time_str, workDuration=work_duration, status="checked_out", message="签退成功"))
+		
+		# 必须先签到
+		state = await _load_shift_state(schedule.schedule_id)
+		if not state.get("checkin_time"):
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="尚未签到，无法签退", status_code=400)
+		if state.get("checkout_time"):
+			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="已签退，请勿重复操作", status_code=400)
+		
+		# 时间窗口检查：班次结束后2小时内可签退
+		start_str, end_str = await _get_time_section_config(db, schedule.time_section, schedule.clinic_id)
+		now = datetime.now()  # 使用本地时间而非UTC
+		end_dt = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
+		latest_checkout = end_dt + timedelta(hours=2)
+		
+		if now > latest_checkout:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"签退超时，最晚可于 {latest_checkout.strftime('%H:%M')} 签退",
+				status_code=400
+			)
+		
+		checkout_time_str = now.strftime("%H:%M")
+		state["checkout_time"] = checkout_time_str
+		# 计算工时
+		try:
+			start_dt = datetime.strptime(state["checkin_time"], "%H:%M")
+			work_duration = _human_duration(datetime.combine(today, start_dt.time()), now)
+		except Exception:
+			work_duration = "--"
+		await _save_shift_state(schedule.schedule_id, state)
+		
+		# 更新数据库考勤记录
+		att_res = await db.execute(
+			select(AttendanceRecord).where(
+				and_(
+					AttendanceRecord.schedule_id == schedule.schedule_id,
+					AttendanceRecord.doctor_id == doctor.doctor_id,
+					AttendanceRecord.status == AttendanceStatus.CHECKED_IN
+				)
+			).order_by(AttendanceRecord.created_at.desc())
+		)
+		attendance = att_res.scalars().first()
+		if attendance:
+			attendance.checkout_time = now
+			attendance.checkout_lat = latitude
+			attendance.checkout_lng = longitude
+			attendance.status = AttendanceStatus.CHECKED_OUT
+			if attendance.checkin_time:
+				delta = now - attendance.checkin_time
+				attendance.work_duration_minutes = int(delta.total_seconds() / 60)
+			await db.commit()
+		
+		return ResponseModel(code=0, message=CheckoutResponse(checkoutTime=checkout_time_str, workDuration=work_duration, status="checked_out", message="签退成功"))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		await db.rollback()
+		import logging
+		logging.getLogger(__name__).error(f"签退失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"签退失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/workbench/shifts", response_model=ResponseModel[ShiftsResponse])
 async def workbench_shifts(doctorId: Optional[int] = None, date_str: Optional[str] = None, db: AsyncSession = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
-	doctor = await _get_doctor(db, current_user)
-	if doctorId and doctorId != doctor.doctor_id:
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的排班", status_code=403)
-	target_date = date.today()
-	if date_str:
-		try:
-			target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-		except Exception:
-			pass
-	res = await db.execute(
-		select(Schedule)
-		.options(selectinload(Schedule.clinic))
-		.where(and_(Schedule.doctor_id == doctor.doctor_id, Schedule.date == target_date))
-	)
-	schedules = res.scalars().all()
-	now = datetime.now()  # 使用本地时间而非UTC
-	items = []
-	for s in schedules:
-		start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
-		start_dt = datetime.combine(s.date, datetime.strptime(start_str, "%H:%M").time())
-		end_dt = datetime.combine(s.date, datetime.strptime(end_str, "%H:%M").time())
-		earliest_checkin = start_dt - timedelta(minutes=30)
-		latest_checkout = end_dt + timedelta(hours=2)
-		
-		state = await _load_shift_state(s.schedule_id)
-		
-		# 新的状态机逻辑
-		if state.get("checkout_time"):
-			status = "checked_out"  # 已签退
-		elif state.get("checkin_time"):
-			status = "checked_in"  # 已签到未签退
-		elif now < earliest_checkin:
-			status = "not_started"  # 排班未开始（签到窗口未开放）
-		elif earliest_checkin <= now <= end_dt:
-			status = "ready"  # 可签到（签到窗口已开放）
-		elif end_dt < now <= latest_checkout:
-			status = "expired"  # 已过期但仍在签退窗口内
-		else:
-			status = "expired"  # 完全过期
-		
-		clinic_addr = s.clinic.address if s.clinic and getattr(s.clinic, "address", None) else None
-		items.append(ShiftItem(id=s.schedule_id, name=f"{s.time_section}门诊", startTime=start_str, endTime=end_str, location=clinic_addr, status=status))
-	return ResponseModel(code=0, message=ShiftsResponse(shifts=items))
+	try:
+		doctor = await _get_doctor(db, current_user)
+		if doctorId and doctorId != doctor.doctor_id:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的排班", status_code=403)
+		target_date = date.today()
+		if date_str:
+			try:
+				target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+			except Exception:
+				pass
+		res = await db.execute(
+			select(Schedule)
+			.options(selectinload(Schedule.clinic))
+			.where(and_(Schedule.doctor_id == doctor.doctor_id, Schedule.date == target_date))
+		)
+		schedules = res.scalars().all()
+		now = datetime.now()  # 使用本地时间而非UTC
+		items = []
+		for s in schedules:
+			start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
+			start_dt = datetime.combine(s.date, datetime.strptime(start_str, "%H:%M").time())
+			end_dt = datetime.combine(s.date, datetime.strptime(end_str, "%H:%M").time())
+			earliest_checkin = start_dt - timedelta(minutes=30)
+			latest_checkout = end_dt + timedelta(hours=2)
+			
+			state = await _load_shift_state(s.schedule_id)
+			
+			# 新的状态机逻辑
+			if state.get("checkout_time"):
+				status = "checked_out"  # 已签退
+			elif state.get("checkin_time"):
+				status = "checked_in"  # 已签到未签退
+			elif now < earliest_checkin:
+				status = "not_started"  # 排班未开始（签到窗口未开放）
+			elif earliest_checkin <= now <= end_dt:
+				status = "ready"  # 可签到（签到窗口已开放）
+			elif end_dt < now <= latest_checkout:
+				status = "expired"  # 已过期但仍在签退窗口内
+			else:
+				status = "expired"  # 完全过期
+			
+			clinic_addr = s.clinic.address if s.clinic and getattr(s.clinic, "address", None) else None
+			items.append(ShiftItem(id=s.schedule_id, name=f"{s.time_section}门诊", startTime=start_str, endTime=end_str, location=clinic_addr, status=status))
+		return ResponseModel(code=0, message=ShiftsResponse(shifts=items))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取工作台排班失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取工作台排班失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/workbench/consultation-stats", response_model=ResponseModel[ConsultationStatsResponse])
 async def workbench_consultation_stats(doctorId: int, db: AsyncSession = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
-	doctor = await _get_doctor(db, current_user)
-	if doctorId != doctor.doctor_id:
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的数据", status_code=403)
-	res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == date.today())))
-	orders = res.scalars().all()
-	pending_cnt = sum(1 for o in orders if o.status in (OrderStatus.PENDING, OrderStatus.WAITLIST))
-	ongoing_cnt = sum(1 for o in orders if o.status in (OrderStatus.CONFIRMED,))
-	completed_cnt = sum(1 for o in orders if o.status in (OrderStatus.COMPLETED,))
-	total_cnt = len(orders)
-	return ResponseModel(code=0, message=ConsultationStatsResponse(pending=pending_cnt, ongoing=ongoing_cnt, completed=completed_cnt, total=total_cnt))
+	try:
+		doctor = await _get_doctor(db, current_user)
+		if doctorId != doctor.doctor_id:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的数据", status_code=403)
+		res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == date.today())))
+		orders = res.scalars().all()
+		pending_cnt = sum(1 for o in orders if o.status in (OrderStatus.PENDING, OrderStatus.WAITLIST))
+		ongoing_cnt = sum(1 for o in orders if o.status in (OrderStatus.CONFIRMED,))
+		completed_cnt = sum(1 for o in orders if o.status in (OrderStatus.COMPLETED,))
+		total_cnt = len(orders)
+		return ResponseModel(code=0, message=ConsultationStatsResponse(pending=pending_cnt, ongoing=ongoing_cnt, completed=completed_cnt, total=total_cnt))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取接诊统计失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取接诊统计失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/workbench/recent-consultations", response_model=ResponseModel[RecentConsultationsResponse])
 async def workbench_recent_consultations(doctorId: int, limit: int = 3, db: AsyncSession = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
-	doctor = await _get_doctor(db, current_user)
-	if doctorId != doctor.doctor_id:
-		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的数据", status_code=403)
-	
-	# 只查询已就诊的订单（已完成或进行中且有就诊时间）
-	res = await db.execute(
-		select(RegistrationOrder)
-		.where(
-			and_(
-				RegistrationOrder.doctor_id == doctor.doctor_id,
-				RegistrationOrder.slot_date == date.today(),
-				RegistrationOrder.status.in_([OrderStatus.COMPLETED, OrderStatus.CONFIRMED]),
-				RegistrationOrder.visit_times.isnot(None)  # 必须有就诊时间
+	try:
+		doctor = await _get_doctor(db, current_user)
+		if doctorId != doctor.doctor_id:
+			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的数据", status_code=403)
+		
+		# 只查询已就诊的订单（已完成或进行中且有就诊时间）
+		res = await db.execute(
+			select(RegistrationOrder)
+			.where(
+				and_(
+					RegistrationOrder.doctor_id == doctor.doctor_id,
+					RegistrationOrder.slot_date == date.today(),
+					RegistrationOrder.status.in_([OrderStatus.COMPLETED, OrderStatus.CONFIRMED]),
+					RegistrationOrder.visit_times.isnot(None)  # 必须有就诊时间
+				)
 			)
+			.order_by(RegistrationOrder.create_time.desc())
+			.limit(limit)
 		)
-		.order_by(RegistrationOrder.create_time.desc())
-		.limit(limit)
-	)
-	orders = res.scalars().all()
-	
-	records = []
-	for o in orders:
-		try:
-			# visit_times 存储格式: "2025-11-20 10:23:00"
-			visit_dt = datetime.strptime(o.visit_times, "%Y-%m-%d %H:%M:%S")
-			consultation_time = visit_dt.strftime("%H:%M")
-			records.append(RecentConsultationItem(id=o.order_id, patientName=str(o.patient_id), consultationTime=consultation_time, diagnosis=None))
-		except Exception:
-			# 如果时间解析失败，跳过该记录
-			pass
-	
-	return ResponseModel(code=0, message=RecentConsultationsResponse(records=records))
+		orders = res.scalars().all()
+		
+		records = []
+		for o in orders:
+			try:
+				# visit_times 存储格式: "2025-11-20 10:23:00"
+				visit_dt = datetime.strptime(o.visit_times, "%Y-%m-%d %H:%M:%S")
+				consultation_time = visit_dt.strftime("%H:%M")
+				records.append(RecentConsultationItem(id=o.order_id, patientName=str(o.patient_id), consultationTime=consultation_time, diagnosis=None))
+			except Exception:
+				# 如果时间解析失败，跳过该记录
+				pass
+		
+		return ResponseModel(code=0, message=RecentConsultationsResponse(records=records))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取近期就诊失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取近期就诊失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/workbench/attendance-records", response_model=ResponseModel[AttendanceRecordsResponse])
@@ -1230,62 +1376,73 @@ async def workbench_attendance_records(
 	current_user: UserSchema = Depends(get_current_user)
 ):
 	"""查询医生考勤历史记录"""
-	doctor = await _get_doctor(db, current_user)
-	if doctorId and doctorId != doctor.doctor_id:
-		if not current_user.is_admin:
-			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="只能查询本人考勤记录", status_code=403)
-	
-	target_doctor_id = doctorId if doctorId else doctor.doctor_id
-	
-	# 构建查询条件
-	conditions = [AttendanceRecord.doctor_id == target_doctor_id]
-	if start_date:
-		try:
-			from datetime import datetime as dt
-			start_dt = dt.strptime(start_date, "%Y-%m-%d")
-			conditions.append(AttendanceRecord.created_at >= start_dt)
-		except Exception:
-			pass
-	if end_date:
-		try:
-			from datetime import datetime as dt
-			end_dt = dt.strptime(end_date, "%Y-%m-%d")
-			end_dt = end_dt.replace(hour=23, minute=59, second=59)
-			conditions.append(AttendanceRecord.created_at <= end_dt)
-		except Exception:
-			pass
-	
-	# 查询总数
-	count_res = await db.execute(
-		select(AttendanceRecord).where(and_(*conditions))
-	)
-	total = len(count_res.scalars().all())
-	
-	# 分页查询
-	offset = (page - 1) * page_size
-	res = await db.execute(
-		select(AttendanceRecord)
-		.where(and_(*conditions))
-		.order_by(AttendanceRecord.created_at.desc())
-		.limit(page_size)
-		.offset(offset)
-	)
-	records_db = res.scalars().all()
-	
-	records = [
-		AttendanceRecordItem(
-			record_id=r.record_id,
-			schedule_id=r.schedule_id,
-			checkin_time=r.checkin_time,
-			checkout_time=r.checkout_time,
-			work_duration_minutes=r.work_duration_minutes,
-			status=r.status.value,
-			created_at=r.created_at
+	try:
+		doctor = await _get_doctor(db, current_user)
+		if doctorId and doctorId != doctor.doctor_id:
+			if not current_user.is_admin:
+				raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="只能查询本人考勤记录", status_code=403)
+		
+		target_doctor_id = doctorId if doctorId else doctor.doctor_id
+		
+		# 构建查询条件
+		conditions = [AttendanceRecord.doctor_id == target_doctor_id]
+		if start_date:
+			try:
+				from datetime import datetime as dt
+				start_dt = dt.strptime(start_date, "%Y-%m-%d")
+				conditions.append(AttendanceRecord.created_at >= start_dt)
+			except Exception:
+				pass
+		if end_date:
+			try:
+				from datetime import datetime as dt
+				end_dt = dt.strptime(end_date, "%Y-%m-%d")
+				end_dt = end_dt.replace(hour=23, minute=59, second=59)
+				conditions.append(AttendanceRecord.created_at <= end_dt)
+			except Exception:
+				pass
+		
+		# 查询总数
+		count_res = await db.execute(
+			select(AttendanceRecord).where(and_(*conditions))
 		)
-		for r in records_db
-	]
-	
-	return ResponseModel(code=0, message=AttendanceRecordsResponse(records=records, total=total))
+		total = len(count_res.scalars().all())
+		
+		# 分页查询
+		offset = (page - 1) * page_size
+		res = await db.execute(
+			select(AttendanceRecord)
+			.where(and_(*conditions))
+			.order_by(AttendanceRecord.created_at.desc())
+			.limit(page_size)
+			.offset(offset)
+		)
+		records_db = res.scalars().all()
+		
+		records = [
+			AttendanceRecordItem(
+				record_id=r.record_id,
+				schedule_id=r.schedule_id,
+				checkin_time=r.checkin_time,
+				checkout_time=r.checkout_time,
+				work_duration_minutes=r.work_duration_minutes,
+				status=r.status.value,
+				created_at=r.created_at
+			)
+			for r in records_db
+		]
+		
+		return ResponseModel(code=0, message=AttendanceRecordsResponse(records=records, total=total))
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		import logging
+		logging.getLogger(__name__).error(f"获取考勤记录失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取考勤记录失败: {str(e)}",
+			status_code=500
+		)
 
 
 @router.get("/schedules", response_model=ResponseModel)
