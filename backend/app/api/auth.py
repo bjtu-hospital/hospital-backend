@@ -422,8 +422,11 @@ async def get_user_info(current_user: UserSchema = Depends(get_current_user), db
                 "id": doctor.doctor_id,
                 "name": doctor.name,
                 "department": dept.name if dept else None,
+                "department_id": doctor.dept_id,
                 "hospital": "主院区",
                 "title": doctor.title,
+                # 标记该医生是否为科室长，便于前端权限/展示判断
+                "is_department_head": bool(getattr(doctor, "is_department_head", False)),
                 "photo_mime": photo_mime,
                 "photo_base64": photo_base64
             }

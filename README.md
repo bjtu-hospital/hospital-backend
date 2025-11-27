@@ -1098,7 +1098,7 @@ GET /doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
 
 ### 3.6 医生调科室
 - PUT `/doctors/{doctor_id}/transfer`
-- 说明：将医生调到新的科室
+- 说明：将医生调到新的科室。**若医生当前为科室长，转科时会自动取消其科室长身份**
 
 请求体：
 ```json
@@ -1106,6 +1106,11 @@ GET /doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
     "new_dept_id": 2  // 新科室ID
 }
 ```
+
+业务规则：
+1. 医生必须存在
+2. 目标科室必须存在
+3. **自动取消科室长**：若医生的 `is_department_head` 为 1（是科室长），转科后自动设为 0
 
 响应示例：
 ```json
@@ -1186,6 +1191,104 @@ Authorization: Bearer <token>
 注意：
 - 服务端会将 `Doctor.photo_path`（如 `/static/image/xxx.jpg` 或 `app/static/image/xxx.jpg`）规范化为相对 `app/` 的文件路径读取，避免暴露绝对路径。
 - 若需要在浏览器直接预览，可在请求中不设置 `Accept` 限制，或将响应保存为本地文件。
+
+---
+
+### 3.10 选择科室长
+- POST `/admin/departments/{dept_id}/heads/select`
+- 说明：管理员将某个医生设置为科室长
+
+参数：
+- `dept_id`：小科室ID（路径参数）
+
+请求体：
+```json
+{
+    "doctor_id": 123
+}
+```
+
+权限与请求头：
+```
+Authorization: Bearer <token>
+```
+
+业务规则：
+1. **职称限制**：仅主任或副主任（title 字段包含"主任"）可被设为科室长
+2. **数量限制**：科室长数量受分级配置控制
+   - 配置键：`departmentHeadMaxCount`
+   - 查询顺序：MINOR_DEPT（小科室）→ GLOBAL（全局）
+   - 默认值：2（若未配置）
+3. **归属验证**：医生必须属于该科室
+4. **重复设置**：若医生已是科室长，不会报错，但计入数量限制时不重复计算
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "dept_id": 1,
+        "doctor_id": 123,
+        "is_department_head": true,
+        "max_heads": 2
+    }
+}
+```
+
+错误示例：
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "仅主任/副主任可设为科室长"
+    }
+}
+```
+
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "科室长数量已达上限(2)"
+    }
+}
+```
+
+### 3.11 取消科室长
+- DELETE `/admin/departments/{dept_id}/heads/{doctor_id}`
+- 说明：管理员取消某个医生的科室长身份
+
+参数：
+- `dept_id`：小科室ID（路径参数）
+- `doctor_id`：医生ID（路径参数）
+
+权限与请求头：
+```
+Authorization: Bearer <token>
+```
+
+业务规则：
+1. 医生必须属于该科室
+2. 若医生本就不是科室长，不会报错，返回 `was_department_head: false`
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "dept_id": 1,
+        "doctor_id": 123,
+        "was_department_head": true,
+        "is_department_head": false
+    }
+}
+```
+
+字段说明：
+- `was_department_head`：操作前是否为科室长
+- `is_department_head`：操作后状态（固定为 false）
 
 ---
 
@@ -3034,8 +3137,10 @@ Authorization: Bearer <token>
             "id": 12,
             "name": "张三",
             "department": "心内科",
+            "department_id": "1",
             "hospital": "主院区",
             "title": "主治医师",
+            "is_department_head": "True",
             "photo_mime": "image/jpeg",
             "photo_base64": "iVBORw0KGgoAAA..."
         }
@@ -3748,6 +3853,350 @@ GET /doctor/leave/history?status=pending
 - `auditor_id`：当前审核人的 `user_id`（与管理员审核保持一致）
 - `attachments`：对象数组 `{url, name}`（与医生提交时保持一致）
 - 强校验：仅同科室记录可见/可操作；非科室长将返回权限不足错误
+
+### 4.5 科室长排班管理
+
+科室长可以管理本科室的排班，提交排班调整申请。以下接口均需科室长权限（`is_department_head = 1`）。
+
+#### 4.5.1 获取管理门诊列表 Get: `/doctor/schedule/clinics`
+
+获取科室长管理的门诊/科室列表。
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**业务规则**：
+- 当前用户必须是医生且 `is_department_head = 1`
+- 返回该科室长排班涉及的所有门诊
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": [
+        {
+            "id": "1",
+            "name": "心血管内科普通门诊",
+            "totalSlots": null,
+            "filledSlots": null
+        }
+    ]
+}
+```
+
+#### 4.5.2 获取排班详情 Get: `/doctor/schedule/list`
+
+获取指定门诊在特定周的排班详情。
+
+**Query 参数**：
+- `clinicId` (int, 必填)：门诊ID
+- `startDate` (string, 必填)：周起始日期，格式 `YYYY-MM-DD`
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**业务规则**：
+- 当前用户必须是科室长
+- 返回一周（7天 × 3班次）的排班状态
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": [
+        {
+            "date": "2025-11-25",
+            "dayOfWeek": 1,
+            "shift": "morning",
+            "status": "filled",
+            "doctorId": "10",
+            "doctorName": "张三",
+            "doctorTitle": null
+        },
+        {
+            "date": "2025-11-25",
+            "dayOfWeek": 1,
+            "shift": "afternoon",
+            "status": "empty"
+        }
+    ]
+}
+```
+
+**字段说明**：
+- `shift`：班次，`morning`/`afternoon`/`night`
+- `status`：排班状态，`empty`（空）/`filled`（已排）/`unavailable`（不可用）
+
+#### 4.5.3 获取可用医生列表 Get: `/doctor/schedule/available-doctors`
+
+获取科室医生在指定日期和班次的可用状态。
+
+**Query 参数**：
+- `clinicId` (int, 必填)：门诊ID
+- `date` (string, 必填)：日期，格式 `YYYY-MM-DD`
+- `shift` (string, 必填)：班次，`morning`/`afternoon`/`night`
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**业务规则**：
+- 当前用户必须是科室长
+- 检查医生的排班冲突和请假状态
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": [
+        {
+            "id": "10",
+            "name": "张三",
+            "title": "主任医师",
+            "dept": 1,
+            "status": "available",
+            "conflictReason": null,
+            "assignedCount": null
+        },
+        {
+            "id": "11",
+            "name": "李四",
+            "title": "副主任医师",
+            "dept": 1,
+            "status": "conflict",
+            "conflictReason": "当天已有排班",
+            "assignedCount": null
+        },
+        {
+            "id": "12",
+            "name": "王五",
+            "title": "主治医师",
+            "dept": 1,
+            "status": "leave",
+            "conflictReason": null,
+            "assignedCount": null
+        }
+    ]
+}
+```
+
+**字段说明**：
+- `status`：可用状态
+  - `available`：可用
+  - `conflict`：冲突（当天已有排班）
+  - `leave`：请假中
+- `conflictReason`：冲突原因说明
+
+#### 4.5.4 提交排班调整申请 Post: `/doctor/schedule/submit-change`
+
+科室长提交排班调整申请，生成审核记录。
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**请求体**：
+```json
+{
+    "clinicId": 1,
+    "changes": [
+        {
+            "date": "2025-11-25",
+            "shift": "morning",
+            "doctorId": "10"
+        },
+        {
+            "date": "2025-11-25",
+            "shift": "afternoon",
+            "doctorId": null
+        }
+    ]
+}
+```
+
+**字段说明**：
+- `clinicId`：门诊ID（必填）
+- `changes`：排班变更数组（必填）
+  - `date`：日期，格式 `YYYY-MM-DD`
+  - `shift`：班次，`morning`/`afternoon`/`night`
+  - `doctorId`：医生ID，`null` 表示清空该时段排班
+
+**业务规则**：
+1. 当前用户必须是科室长
+2. 系统自动将变更转换为周排班矩阵（7天 × 3班次）
+3. 生成 `ScheduleAudit` 记录，状态为 `pending`
+4. 等待管理员审核通过后生效
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": {
+        "msg": "申请已提交，等待审核",
+        "auditId": 123
+    }
+}
+```
+
+---
+
+### 4.6 科室长请假审核
+
+科室长可以审核本科室医生的请假申请。以下接口均需科室长权限（`is_department_head = 1`）。
+
+#### 4.6.1 获取请假审核列表 Get: `/doctor/leave/audit`
+
+获取本科室医生的请假申请列表。
+
+**Query 参数**：
+- `status` (string, 可选)：审核状态，默认 `pending`
+  - `pending`：待审核
+  - `approved`：已通过
+  - `rejected`：已拒绝
+  - `all`：全部
+- `page` (int, 可选)：页码，从 1 开始，默认 1
+- `page_size` (int, 可选)：每页数量，默认 20
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**业务规则**：
+- 当前用户必须是科室长（`is_department_head = 1`）
+- 仅显示本科室医生的请假申请
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": {
+        "audits": [
+            {
+                "id": 1,
+                "doctor_id": 10,
+                "doctor_name": "张三",
+                "doctor_title": "主任医师",
+                "department_name": "心内科",
+                "leave_start_date": "2025-12-01",
+                "leave_end_date": "2025-12-03",
+                "leave_days": 3,
+                "reason": "因个人原因需要请假",
+                "reason_preview": "因个人原因需要请假",
+                "attachments": [
+                    "/static/audit/leave_20251127_123456.jpg"
+                ],
+                "submit_time": "2025-11-27T10:00:00",
+                "status": "pending",
+                "auditor_id": null,
+                "audit_time": null,
+                "audit_remark": null
+            }
+        ]
+    }
+}
+```
+
+#### 4.6.2 获取请假审核详情 Get: `/doctor/leave/audit/{audit_id}`
+
+查看单个请假申请的详细信息。
+
+**路径参数**：
+- `audit_id` (int)：审核ID
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**业务规则**：
+- 当前用户必须是科室长
+- 不可查看其他科室的请假申请
+
+**响应格式**：同 4.6.1 列表项，包含完整请假原因和附件
+
+#### 4.6.3 批准请假申请 Post: `/doctor/leave/audit/{audit_id}/approve`
+
+科室长批准请假申请。
+
+**路径参数**：
+- `audit_id` (int)：审核ID
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**请求体**：
+```json
+{
+    "comment": "同意请假"
+}
+```
+
+**业务规则**：
+1. 当前用户必须是科室长
+2. 仅可审批本科室的请假申请
+3. 仅可审批 `status = pending` 的申请
+4. 批准后状态改为 `approved`
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": {
+        "audit_id": 1,
+        "status": "approved",
+        "auditor_id": 5,
+        "audit_time": "2025-11-27T14:30:00"
+    }
+}
+```
+
+#### 4.6.4 驳回请假申请 Post: `/doctor/leave/audit/{audit_id}/reject`
+
+科室长驳回请假申请。
+
+**路径参数**：
+- `audit_id` (int)：审核ID
+
+**Header**:
+```
+Authorization: Bearer <token>
+```
+
+**请求体**：
+```json
+{
+    "comment": "请假理由不充分，建议协调时间"
+}
+```
+
+**业务规则**：
+1. 当前用户必须是科室长
+2. 仅可审批本科室的请假申请
+3. 仅可审批 `status = pending` 的申请
+4. **驳回必须提供 `comment`**（必填）
+5. 驳回后状态改为 `rejected`
+
+**响应示例**：
+```json
+{
+    "code": 0,
+    "message": {
+        "audit_id": 1,
+        "status": "rejected",
+        "auditor_id": 5,
+        "audit_time": "2025-11-27T14:35:00"
+    }
+}
+```
 
 ---
 

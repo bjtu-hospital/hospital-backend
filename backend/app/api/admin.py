@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends,UploadFile, File
+from fastapi import APIRouter, Depends,UploadFile, File, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
@@ -49,7 +49,9 @@ from app.services.admin_helpers import (
 )
 from app.services.config_service import (
     get_registration_config,
-    get_schedule_config
+    get_schedule_config,
+    get_config_value,
+    get_department_head_config
 )
 from app.services.absence_detection_service import (
     mark_absent_for_date,
@@ -1569,6 +1571,9 @@ async def transfer_doctor_department(
 
         # 更新医生科室
         db_doctor.dept_id = transfer_data.new_dept_id
+        # 若该医生当前为科室长，调科室时自动取消其科室长身份（is_department_head 为 Integer: 1=是）
+        if getattr(db_doctor, "is_department_head", None) == 1:
+            db_doctor.is_department_head = 0
         db.add(db_doctor)
         await db.commit()
         await db.refresh(db_doctor)
@@ -1600,6 +1605,131 @@ async def transfer_doctor_department(
 
 
 
+
+@router.post("/departments/{dept_id}/heads/select", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def select_department_head(
+    dept_id: int,
+    doctor_id: int = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """选择某医生为该科室的科室长（仅管理员）。
+
+    规则：
+    - 医生必须属于该科室。
+    - 医生职称必须为主任/副主任（title 字段包含“主任”）。
+    - 科室长数量不得超过分级配置的最大值（config_key: departmentHeadMaxCount，MINOR_DEPT 优先，回退 GLOBAL）。
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="无权限，仅管理员可操作", status_code=403)
+
+        # 校验科室存在
+        dept = await db.get(MinorDepartment, dept_id)
+        if not dept:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="科室不存在", status_code=404)
+
+        # 校验医生存在与归属
+        doctor = await db.get(Doctor, doctor_id)
+        if not doctor:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="医生不存在", status_code=404)
+        if doctor.dept_id != dept_id:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="医生不属于该科室", status_code=400)
+
+        # 职称校验（主任/副主任）
+        title = (doctor.title or "").strip()
+        if "主任" not in title:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="仅主任/副主任可设为科室长", status_code=400)
+
+        # 读取最大科室长数量配置（分级：MINOR_DEPT -> GLOBAL）
+        dept_head_config = await get_department_head_config(
+            db,
+            scope_type="MINOR_DEPT",
+            scope_id=dept_id
+        )
+        max_count = dept_head_config["maxCount"]
+
+        # 当前科室长数量
+        res = await db.execute(select(Doctor).where(and_(Doctor.dept_id == dept_id, Doctor.is_department_head == 1)))
+        current_heads = res.scalars().all()
+        logger.info(f"[科室长选择] 科室={dept_id}, 当前数量={len(current_heads)}, 最大值={max_count}, 医生={doctor_id}, is_head={getattr(doctor, 'is_department_head', None)}")
+        # 检查该医生是否已是科室长（is_department_head 为 Integer: 1=是, 0/None=否）
+        is_already_head = getattr(doctor, "is_department_head", None) == 1
+        if len(current_heads) >= max_count and not is_already_head:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"科室长数量已达上限({max_count})", status_code=400)
+
+        # 更新医生为科室长
+        doctor.is_department_head = 1
+        db.add(doctor)
+        await db.commit()
+        await db.refresh(doctor)
+
+        return ResponseModel(code=0, message={
+            "dept_id": dept_id,
+            "doctor_id": doctor_id,
+            "is_department_head": True,
+            "max_heads": max_count
+        })
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"设置科室长时发生异常: {e}")
+        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="内部服务异常", status_code=500)
+
+
+@router.delete("/departments/{dept_id}/heads/{doctor_id}", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def remove_department_head(
+    dept_id: int,
+    doctor_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """取消某医生的科室长身份（仅管理员）。
+
+    要求：医生属于该科室；若本就不是科室长则返回提示但不报错。
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="无权限，仅管理员可操作", status_code=403)
+
+        # 校验科室存在
+        dept = await db.get(MinorDepartment, dept_id)
+        if not dept:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="科室不存在", status_code=404)
+
+        # 校验医生存在与归属
+        doctor = await db.get(Doctor, doctor_id)
+        if not doctor:
+            raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="医生不存在", status_code=404)
+        if doctor.dept_id != dept_id:
+            raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="医生不属于该科室", status_code=400)
+
+        # is_department_head 为 Integer: 1=是, 0/None=否
+        already = getattr(doctor, "is_department_head", None) == 1
+        doctor.is_department_head = 0
+        db.add(doctor)
+        await db.commit()
+        await db.refresh(doctor)
+
+        return ResponseModel(code=0, message={
+            "dept_id": dept_id,
+            "doctor_id": doctor_id,
+            "was_department_head": already,
+            "is_department_head": False
+        })
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"取消科室长时发生异常: {e}")
+        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="内部服务异常", status_code=500)
 
 
 @router.post("/doctors/{doctor_id}/photo", response_model=ResponseModel[Union[dict, AuthErrorResponse]])

@@ -145,6 +145,37 @@ async def get_schedule_config(
     return default_config
 
 
+async def get_department_head_config(
+    db: AsyncSession,
+    scope_type: str = "GLOBAL",
+    scope_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    获取科室长配置
+    
+    返回默认值或数据库配置
+    """
+    config = await get_config_value(
+        db,
+        config_key="departmentHeadMaxCount",
+        scope_type=scope_type,
+        scope_id=scope_id,
+        fallback_to_global=True
+    )
+    
+    # 默认配置
+    default_max_count = 2
+    
+    if config is not None:
+        try:
+            return {"maxCount": int(config)}
+        except (ValueError, TypeError):
+            logger.warning(f"科室长配置值无效: {config}, 使用默认值")
+            return {"maxCount": default_max_count}
+    
+    return {"maxCount": default_max_count}
+
+
 def parse_time_to_hour_minute(time_str: str) -> tuple:
     """
     解析时间字符串为小时和分钟

@@ -66,6 +66,223 @@ from datetime import datetime, date, timezone, timedelta
 import json
 
 router = APIRouter()
+# ===================== 科室长排班模块 =====================
+
+from typing import List, Dict, Any
+import json as _json
+
+
+@router.get("/schedule/clinics", response_model=ResponseModel)
+async def schedule_clinics(
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""获取当前登录用户（科室长）管理的门诊/科室列表。
+	返回结构遵循设计文档：Array<{id,name,totalSlots,filledSlots}>。
+	"""
+	# 当前用户绑定医生，且必须为科室长
+	doctor = await _get_doctor(db, current_user)
+	if not getattr(doctor, "is_department_head", False):
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
+
+	# 取本科室的门诊列表（以 Clinic 关联 MinorDepartment 或通过科室ID过滤）
+	# 由于模型未给出科室-门诊的直接映射，这里返回该科室下所有排班涉及的门诊聚合
+	sched_res = await db.execute(
+		select(Schedule.clinic_id, Clinic.name)
+		.join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+		.where(Schedule.doctor_id == doctor.doctor_id)
+		.group_by(Schedule.clinic_id, Clinic.name)
+	)
+	rows = sched_res.all()
+
+	data = []
+	for cid, cname in rows:
+		# 统计本周（以今天所在周）总名额与已排名额（简化：用当周已有记录计数）
+		# 可根据业务需要扩展统计逻辑
+		data.append({
+			"id": str(cid),
+			"name": cname,
+			"totalSlots": None,
+			"filledSlots": None,
+		})
+
+	return ResponseModel(code=0, message=data)
+
+
+@router.get("/schedule/list", response_model=ResponseModel)
+async def schedule_list(
+	clinicId: int,
+	startDate: str,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""获取指定门诊在特定周的排班详情。
+	返回 Array<ScheduleSlot>，含 filled/empty/unavailable。
+	"""
+	doctor = await _get_doctor(db, current_user)
+	if not getattr(doctor, "is_department_head", False):
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
+
+	try:
+		week_start = datetime.strptime(startDate, "%Y-%m-%d").date()
+	except ValueError:
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="startDate 格式错误", status_code=400)
+
+	# 查询一周内该门诊所有排班
+	week_dates = [week_start + timedelta(days=i) for i in range(7)]
+	res = await db.execute(
+		select(Schedule)
+		.options(selectinload(Schedule.doctor))
+		.where(and_(Schedule.clinic_id == clinicId, Schedule.date.in_(week_dates)))
+	)
+	schedules = res.scalars().all()
+
+	# 构造日历：每天三班（上午/下午/晚上），默认 empty
+	slots: List[Dict[str, Any]] = []
+	for d in week_dates:
+		for idx, shift in enumerate(["morning", "afternoon", "night"]):
+			# 找到对应时间段的记录
+			found = next((s for s in schedules if s.date == d and s.time_section in ["上午", "早", "morning"] and idx == 0), None)
+			if idx == 1:
+				found = next((s for s in schedules if s.date == d and s.time_section in ["下午", "after", "afternoon"]), None)
+			if idx == 2:
+				found = next((s for s in schedules if s.date == d and s.time_section not in ["上午", "早", "morning", "下午", "after", "afternoon"]), None)
+
+			item: Dict[str, Any] = {
+				"date": d.strftime("%Y-%m-%d"),
+				"dayOfWeek": d.isoweekday(),
+				"shift": shift,
+				"status": "empty",
+			}
+			if found:
+				item.update({
+					"status": "filled",
+					"doctorId": str(found.doctor_id),
+					"doctorName": getattr(found, "doctor_name", None) or None,
+					"doctorTitle": None,
+				})
+			slots.append(item)
+
+	return ResponseModel(code=0, message=slots)
+
+
+@router.get("/schedule/available-doctors", response_model=ResponseModel)
+async def schedule_available_doctors(
+	clinicId: int,
+	date: str,
+	shift: str,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""为某一日期与班次返回科室医生的可用状态（available/conflict/leave）。"""
+	doctor = await _get_doctor(db, current_user)
+	if not getattr(doctor, "is_department_head", False):
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
+
+	try:
+		target_date = datetime.strptime(date, "%Y-%m-%d").date()
+	except ValueError:
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="date 格式错误", status_code=400)
+
+	# 科室下所有医生
+	dres = await db.execute(select(Doctor).where(Doctor.dept_id == doctor.dept_id))
+	doctors = dres.scalars().all()
+
+	# 查询该日期该门诊的已排班
+	sres = await db.execute(select(Schedule).where(and_(Schedule.clinic_id == clinicId, Schedule.date == target_date)))
+	day_scheds = sres.scalars().all()
+
+	# 查询该日期的请假申请（已批准或待审核都视为不可用）
+	lres = await db.execute(select(LeaveAudit).where(and_(LeaveAudit.leave_start_date <= target_date, LeaveAudit.leave_end_date >= target_date)))
+	leaves = lres.scalars().all()
+	leave_doctor_ids = {lv.doctor_id for lv in leaves}
+
+	data: List[Dict[str, Any]] = []
+	for d in doctors:
+		status = "available"
+		conflict_reason = None
+		# 冲突：该医生在该日该门诊已有任一班次排班
+		if any(s.doctor_id == d.doctor_id for s in day_scheds):
+			status = "conflict"
+			conflict_reason = "当天已有排班"
+		# 请假：当日跨越该医生请假
+		if d.doctor_id in leave_doctor_ids:
+			status = "leave"
+		data.append({
+			"id": str(d.doctor_id),
+			"name": d.name,
+			"title": d.title,
+			"dept": doctor.dept_id,
+			"status": status,
+			"conflictReason": conflict_reason,
+			"assignedCount": None,
+		})
+
+	return ResponseModel(code=0, message=data)
+
+
+@router.post("/schedule/submit-change", response_model=ResponseModel)
+async def schedule_submit_change(
+	body: Dict[str, Any],
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""提交排班调整申请，生成 ScheduleAudit 记录，状态 pending，待管理员审核。"""
+	doctor = await _get_doctor(db, current_user)
+	if not getattr(doctor, "is_department_head", False):
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅科室长可访问该接口", status_code=403)
+
+	clinic_id = body.get("clinicId")
+	changes = body.get("changes") or []
+	if not clinic_id or not isinstance(changes, list):
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="请求参数错误", status_code=400)
+
+	# 将变更转换为 7x3 的周排班矩阵（简化：按提交的 date+shift 生成矩阵）
+	# 确定周一
+	try:
+		# 找到最小日期作为周起始（或由前端传 startDate 更好），为简化仅聚合到周维度
+		dates = [datetime.strptime(c.get("date"), "%Y-%m-%d").date() for c in changes if c.get("date")]
+		if not dates:
+			raise ValueError
+		week_start = min(dates)
+		week_start = week_start - timedelta(days=week_start.isoweekday() - 1)  # 调整到周一
+	except Exception:
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="changes 中日期格式错误", status_code=400)
+
+	matrix: List[List[Any]] = [[None, None, None] for _ in range(7)]
+	for c in changes:
+		cdate = datetime.strptime(c["date"], "%Y-%m-%d").date()
+		day_idx = (cdate - week_start).days
+		if day_idx < 0 or day_idx > 6:
+			continue
+		shift = c.get("shift")
+		slot_idx = {"morning": 0, "afternoon": 1, "night": 2}.get(shift, None)
+		if slot_idx is None:
+			continue
+		doctor_id = c.get("doctorId")
+		if doctor_id in (None, "", "null"):
+			matrix[day_idx][slot_idx] = None
+		else:
+			matrix[day_idx][slot_idx] = {"doctor_id": int(doctor_id)}
+
+	# 写入 ScheduleAudit
+	from app.models.schedule_audit import ScheduleAudit
+	audit = ScheduleAudit(
+		minor_dept_id=doctor.dept_id,
+		clinic_id=clinic_id,
+		submitter_doctor_id=doctor.doctor_id,
+		submit_time=datetime.now(),
+		week_start_date=week_start,
+		week_end_date=week_start + timedelta(days=6),
+		remark="科室长提交排班调整",
+		status="pending",
+		schedule_data_json=matrix,
+	)
+	db.add(audit)
+	await db.commit()
+	await db.refresh(audit)
+
+	return ResponseModel(code=0, message={"msg": "申请已提交，等待审核", "auditId": audit.audit_id})
 
 
 @router.post("/schedules/add-slot", response_model=ResponseModel)
