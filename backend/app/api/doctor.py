@@ -587,6 +587,163 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 
 # ===================== 科室长请假审核接口 =====================
 
+async def _get_original_schedule_info(db: AsyncSession, doctor_id: int, start_date: date, end_date: date, shift: str) -> list[str]:
+	"""
+	获取医生在请假期间的原排班信息
+	
+	Args:
+		db: 数据库会话
+		doctor_id: 医生ID
+		start_date: 请假开始日期
+		end_date: 请假结束日期  
+		shift: 请假时段 (morning/afternoon/night/full)
+	
+	Returns:
+		原排班信息列表，格式如 ["上午: 专家门诊(08:00-12:00)", "下午: 普通门诊(14:00-18:00)"]
+	"""
+	try:
+		# 查询该医生在请假期间的所有排班
+		schedule_res = await db.execute(
+			select(Schedule, Clinic)
+			.join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+			.where(
+				and_(
+					Schedule.doctor_id == doctor_id,
+					Schedule.schedule_date >= start_date,
+					Schedule.schedule_date <= end_date
+				)
+			)
+			.order_by(Schedule.schedule_date, Schedule.time_section)
+		)
+		schedules = schedule_res.all()
+		
+		original_schedule = []
+		time_section_map = {
+			"上午": "morning",
+			"下午": "afternoon", 
+			"晚上": "night"
+		}
+		
+		for sched, clinic in schedules:
+			# 如果shift不是full，需要过滤时段
+			if shift != "full":
+				time_section_en = time_section_map.get(sched.time_section, "")
+				if time_section_en != shift:
+					continue
+			
+			# 构造排班信息字符串
+			schedule_info = f"{sched.time_section}: {sched.slot_type}({clinic.name if clinic else '未知门诊'})"
+			original_schedule.append(schedule_info)
+		
+		return original_schedule
+		
+	except Exception as e:
+		# 如果查询失败，返回空列表，不影响主流程
+		return []
+
+
+@router.get("/approval/stats", response_model=ResponseModel)
+async def get_approval_stats(
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	获取审批统计数据
+	
+	用于在页面顶部展示待审批、本月已通过、本月已拒绝的数量统计。
+	
+	返回格式：
+	{
+		"code": 0,
+		"message": {
+			"pending": 5,          // 当前待审批总数
+			"approvedMonth": 12,   // 本月已审批通过数量
+			"rejectedMonth": 2     // 本月已拒绝数量
+		}
+	}
+	"""
+	try:
+		# 验证当前用户是科室长
+		head_doctor = await _get_doctor(db, current_user)
+		if getattr(head_doctor, "is_department_head", 0) != 1:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE, 
+				msg="仅科室长可访问", 
+				status_code=403
+			)
+		
+		# 计算本月的起始和结束日期
+		now = datetime.now()
+		month_start = datetime(now.year, now.month, 1)
+		if now.month == 12:
+			month_end = datetime(now.year + 1, 1, 1)
+		else:
+			month_end = datetime(now.year, now.month + 1, 1)
+		
+		# 查询本科室所有医生的请假申请
+		# 1. 待审批数量（status='pending'）
+		pending_res = await db.execute(
+			select(LeaveAudit)
+			.join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+			.where(
+				and_(
+					Doctor.dept_id == head_doctor.dept_id,
+					LeaveAudit.status == 'pending'
+				)
+			)
+		)
+		pending_count = len(pending_res.all())
+		
+		# 2. 本月已通过数量（status='approved' AND audit_time在本月）
+		approved_res = await db.execute(
+			select(LeaveAudit)
+			.join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+			.where(
+				and_(
+					Doctor.dept_id == head_doctor.dept_id,
+					LeaveAudit.status == 'approved',
+					LeaveAudit.audit_time >= month_start,
+					LeaveAudit.audit_time < month_end
+				)
+			)
+		)
+		approved_count = len(approved_res.all())
+		
+		# 3. 本月已拒绝数量（status='rejected' AND audit_time在本月）
+		rejected_res = await db.execute(
+			select(LeaveAudit)
+			.join(Doctor, Doctor.doctor_id == LeaveAudit.doctor_id)
+			.where(
+				and_(
+					Doctor.dept_id == head_doctor.dept_id,
+					LeaveAudit.status == 'rejected',
+					LeaveAudit.audit_time >= month_start,
+					LeaveAudit.audit_time < month_end
+				)
+			)
+		)
+		rejected_count = len(rejected_res.all())
+		
+		# 返回统计数据
+		return ResponseModel(
+			code=0,
+			message={
+				"pending": pending_count,
+				"approvedMonth": approved_count,
+				"rejectedMonth": rejected_count
+			}
+		)
+		
+	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+		raise
+	except Exception as e:
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE, 
+			msg=f"获取审批统计数据失败: {e}", 
+			status_code=500
+		)
+
+
 @router.get("/leave/audit", response_model=ResponseModel[LeaveAuditListResponse])
 async def department_head_leave_audits(
     status: str = "pending",
@@ -633,6 +790,16 @@ async def department_head_leave_audits(
 					elif isinstance(att, dict) and att.get("url"):
 						attachments.append(att.get("url"))
 			reason_preview = leave.reason[:30] + ("..." if len(leave.reason) > 30 else "")
+			
+			# 获取原排班信息
+			original_schedule = await _get_original_schedule_info(
+				db, 
+				leave.doctor_id, 
+				leave.leave_start_date, 
+				leave.leave_end_date,
+				leave.shift or "full"
+			)
+			
 			items.append(
 				LeaveAuditItem(
 					id=leave.audit_id,
@@ -643,9 +810,11 @@ async def department_head_leave_audits(
 					leave_start_date=leave.leave_start_date,
 					leave_end_date=leave.leave_end_date,
 					leave_days=calculate_leave_days(leave.leave_start_date, leave.leave_end_date),
+					shift=leave.shift or "full",
 					reason=leave.reason,
 					reason_preview=reason_preview,
 					attachments=attachments,
+					original_schedule=original_schedule,
 					submit_time=leave.submit_time,
 					status=leave.status,
 					auditor_id=leave.auditor_user_id,
@@ -692,6 +861,15 @@ async def department_head_leave_audit_detail(
 				elif isinstance(att, dict) and att.get("url"):
 					attachments.append(att.get("url"))
 
+		# 获取原排班信息
+		original_schedule = await _get_original_schedule_info(
+			db, 
+			leave.doctor_id, 
+			leave.leave_start_date, 
+			leave.leave_end_date,
+			leave.shift or "full"
+		)
+
 		item = LeaveAuditItem(
 			id=leave.audit_id,
 			doctor_id=leave.doctor_id,
@@ -701,9 +879,11 @@ async def department_head_leave_audit_detail(
 			leave_start_date=leave.leave_start_date,
 			leave_end_date=leave.leave_end_date,
 			leave_days=calculate_leave_days(leave.leave_start_date, leave.leave_end_date),
+			shift=leave.shift or "full",
 			reason=leave.reason,
 			reason_preview=leave.reason[:30] + ("..." if len(leave.reason) > 30 else ""),
 			attachments=attachments,
+			original_schedule=original_schedule,
 			submit_time=leave.submit_time,
 			status=leave.status,
 			auditor_id=leave.auditor_user_id,

@@ -3816,7 +3816,9 @@ GET /doctor/leave/history?status=pending
                 "submit_time": "2025-11-26T18:47:20",
                 "status": "pending",
                 "auditor_id": null,
-                "audit_time": null
+                "audit_time": null,
+                "shift": "full",
+                "original_schedule": [ "上午: 专家门诊(08:00-12:00)"]
             }
         ],
         "total": 21,
@@ -4197,6 +4199,27 @@ Authorization: Bearer <token>
     }
 }
 ```
+## 4.7 获取审批统计数据 Get: `/approval/stats`
+
+**功能描述:**
+获取当前科室请假申请的审批统计数据，用于在管理页面顶部展示关键指标。统计项包括**待审批总数**、**本月已通过数量**和**本月已拒绝数量**。
+
+**权限要求:**
+仅**科室长**可访问。
+
+**查询参数:**
+无。
+
+**响应示例:**
+```json
+{
+    "code": 0,
+    "message": {
+        "pending": 5,        // 当前待审批总数
+        "approvedMonth": 12, // 本月（当月）已审批通过数量
+        "rejectedMonth": 2   // 本月（当月）已拒绝数量
+    }
+}
 
 ---
 

@@ -62,9 +62,11 @@ class LeaveAuditItem(BaseModel):
     leave_start_date: date = Field(..., description="请假起始日期")
     leave_end_date: date = Field(..., description="请假结束日期")
     leave_days: int = Field(..., description="请假总天数") # 需要在后端计算
+    shift: str = Field(default="full", description="请假时段: morning/afternoon/night/full")
     reason: str = Field(..., description="请假详细原因")
     reason_preview: str = Field(..., description="请假原因预览 (截取)")
     attachments: List[str] = Field(default_factory=list, description="附件路径列表（字符串）")
+    original_schedule: List[str] = Field(default_factory=list, description="原排班信息，用于辅助决策")
     submit_time: datetime = Field(..., description="提交申请时间")
     status: str = Field(..., description="审核状态: pending, approved, rejected")
     auditor_id: Optional[int] = Field(None, description="审核人管理员ID")
