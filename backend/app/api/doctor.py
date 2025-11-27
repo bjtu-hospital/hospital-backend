@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from app.db.base import get_db
+import logging
 from app.api.auth import get_current_user
 from app.schemas.user import user as UserSchema
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
@@ -1604,8 +1605,9 @@ async def get_doctor_schedules_today(
 				msg=f"医生ID {target_doctor_id} 不存在"
 			)
 
-		# 获取当天日期
-		today = datetime.utcnow().date()
+		# 获取当天日期（使用本地时间）
+		from datetime import date as date_type
+		today = date_type.today()
 
 		# 查询当天排班
 		stmt = select(Schedule, Clinic, MinorDepartment).join(
@@ -2070,6 +2072,109 @@ async def pass_current_patient(
 			msg=f"过号操作失败: {str(e)}"
 		)
 
+
+
+# ==================== 患者查询辅助接口 ====================
+
+@router.get("/patients/exact-search", response_model=ResponseModel)
+async def exact_search_patient(
+	keyword: str = Query(..., description="查询关键字（手机号或姓名），必须精确匹配"),
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""
+	患者精确查询 - 根据手机号或姓名精确匹配查询患者信息
+	
+	用于医生加号时查找患者。支持：
+	- 手机号精确查询（唯一）
+	- 姓名精确查询（可能多人重名）
+	
+	返回：
+	- patients: 匹配的患者列表（包含患者ID、姓名、性别、年龄、手机号）
+	"""
+	try:
+		# 权限检查：必须是医生
+		res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+		current_doctor = res.scalar_one_or_none()
+		if not current_doctor and not current_user.is_admin:
+			raise AuthHTTPException(
+				code=settings.INSUFFICIENT_AUTHORITY_CODE,
+				msg="仅医生可访问",
+				status_code=403
+			)
+		
+		from app.models.patient import Patient
+		from app.models.user import User
+		from datetime import date
+		
+		# 尝试手机号查询（精确匹配）
+		phone_result = await db.execute(
+			select(Patient, User)
+			.join(User, User.user_id == Patient.user_id)
+			.where(User.phonenumber == keyword)
+		)
+		phone_row = phone_result.first()
+		
+		if phone_row:
+			# 手机号匹配成功（唯一）
+			patient, user = phone_row
+			age = 0
+			if patient.birth_date:
+				today = date.today()
+				age = today.year - patient.birth_date.year
+				if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+					age -= 1
+			
+			result_patients = [{
+				"patient_id": f"P{patient.patient_id}",
+				"name": patient.name,
+				"gender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
+				"age": age,
+				"phone": user.phonenumber
+			}]
+			return ResponseModel(code=0, message={"patients": result_patients})
+		
+		# 尝试姓名查询（精确匹配，可能多人）
+		name_result = await db.execute(
+			select(Patient, User)
+			.join(User, User.user_id == Patient.user_id)
+			.where(Patient.name == keyword)
+		)
+		name_rows = name_result.all()
+		
+		if name_rows:
+			# 姓名匹配成功（可能多人重名）
+			result_patients = []
+			for patient, user in name_rows:
+				age = 0
+				if patient.birth_date:
+					today = date.today()
+					age = today.year - patient.birth_date.year
+					if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+						age -= 1
+				
+				result_patients.append({
+					"patient_id": f"P{patient.patient_id}",
+					"name": patient.name,
+					"gender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
+					"age": age,
+					"phone": user.phonenumber
+				})
+			return ResponseModel(code=0, message={"patients": result_patients})
+		
+		# 未找到匹配
+		return ResponseModel(code=0, message={"patients": []})
+		
+	except AuthHTTPException:
+		raise
+	except Exception as e:
+		import traceback
+		traceback.print_exc()
+		logging.getLogger(__name__).error(f"患者精确查询失败: {e}")
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"患者精确查询失败: {str(e)}"
+		)
 
 
 # ==================== 医生请假 API ====================		

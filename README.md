@@ -3153,7 +3153,100 @@ Authorization: Bearer <token>
 ```
 照片字段：前端可构造：`data:{photo_mime};base64,{photo_base64}` 用于直接展示。
 
-### 1.8. 查询医生排班（按日期范围）Get: `/doctors/schedules`
+### 1.8. 患者精确查询 Get: `/doctor/patients/exact-search`
+说明：医生根据手机号或姓名精确查询患者信息，用于加号时查找患者。
+
+权限：
+- 仅医生或管理员可访问
+
+请求参数：
+- `keyword`（必填）：查询关键字，支持手机号或姓名的精确匹配
+
+查询逻辑：
+1. 先尝试按手机号精确查询（唯一匹配）
+2. 若手机号未找到，再按姓名精确查询（可能多人重名）
+3. 若都未找到，返回空数组
+
+请求头：
+```
+Authorization: Bearer <token>
+```
+
+请求示例：
+```
+GET /doctor/patients/exact-search?keyword=13800000001
+GET /doctor/patients/exact-search?keyword=测试患者0001
+```
+
+响应示例（找到单个患者）：
+```json
+{
+    "code": 0,
+    "message": {
+        "patients": [
+            {
+                "patient_id": "P104",
+                "name": "测试患者0001",
+                "gender": "女",
+                "age": 34,
+                "phone": "13800000001"
+            }
+        ]
+    }
+}
+```
+
+响应示例（找到多个重名患者）：
+```json
+{
+    "code": 0,
+    "message": {
+        "patients": [
+            {
+                "patient_id": "P999",
+                "name": "重名李",
+                "gender": "女",
+                "age": 22,
+                "phone": "13999999991"
+            },
+            {
+                "patient_id": "P998",
+                "name": "重名李",
+                "gender": "男",
+                "age": 45,
+                "phone": "13999999992"
+            }
+        ]
+    }
+}
+```
+
+响应示例（未找到）：
+```json
+{
+    "code": 0,
+    "message": {
+        "patients": []
+    }
+}
+```
+
+字段说明：
+- `patient_id`：患者ID，格式为 `P{数字}`
+- `name`：患者姓名
+- `gender`：性别（"男"/"女"/"未知"）
+- `age`：年龄（根据出生日期自动计算）
+- `phone`：手机号
+
+注意事项：
+- 查询是**精确匹配**，不支持模糊查询
+- 手机号查询返回唯一结果（手机号唯一）
+- 姓名查询可能返回多个结果（重名情况）
+- 空关键字查询返回空数组（不报错）
+
+---
+
+### 1.9. 查询医生排班（按日期范围）Get: `/doctors/schedules`
 说明：查询医生在指定日期范围内的排班记录。医生只能查询自己的排班，管理员可查询任意医生的排班。
 
 权限：
@@ -3199,7 +3292,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 1.9. 查询医生当日排班 Get: `/doctors/schedules/today`
+### 1.10. 查询医生当日排班 Get: `/doctors/schedules/today`
 说明：查询指定医生今天的所有排班记录。医生只能查询自己的，管理员可查询任意医生的。
 
 权限：
@@ -3260,7 +3353,7 @@ Authorization: Bearer <token>
   - 专家门诊 → `["普通", "专家"]`
   - 特需门诊 → `["普通", "专家", "特需"]`
 
-### 1.10. 获取排班详情 Get: `/doctors/schedules/{schedule_id}`
+### 1.11. 获取排班详情 Get: `/doctors/schedules/{schedule_id}`
 说明：根据排班ID获取排班详细信息。医生只能查询自己的排班详情，管理员可以查询任意排班。
 
 权限：

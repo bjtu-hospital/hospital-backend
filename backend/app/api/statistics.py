@@ -18,9 +18,10 @@ from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.exception_handler import StatisticsHTTPException
 from pydantic import BaseModel
+from datetime import date as date_type
 
 # 默认日期字符串（用于 OpenAPI 默认值），在模块导入时计算一次
-_today_str = datetime.utcnow().date().strftime("%Y-%m-%d")
+_today_str = date_type.today().strftime("%Y-%m-%d")
 
     
 router = APIRouter()
@@ -37,7 +38,8 @@ def _parse_date_range(date: str | None, date_range: str | None):
     4. 未提供 date_range 或传入 today 时返回单日范围。
     5. 传入未知的 date_range 值抛异常，避免静默回退。
     """
-    today = datetime.utcnow().date()
+    from datetime import date as date_type
+    today = date_type.today()
 
     # 解析锚点日期
     if date is None:

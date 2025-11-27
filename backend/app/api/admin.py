@@ -2167,7 +2167,8 @@ async def get_patients(
             # 计算年龄（如果有出生日期）
             age = None
             if patient.birth_date:
-                today = datetime.utcnow().date()
+                from datetime import date as date_type
+                today = date_type.today()
                 age = today.year - patient.birth_date.year
                 if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
                     age -= 1
