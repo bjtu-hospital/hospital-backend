@@ -2780,8 +2780,7 @@ async def get_patient_detail(
 				selectinload(VisitHistory.doctor).selectinload(Doctor.minor_department)
 			)
 			.where(
-				VisitHistory.patient_id == patient_id,
-				VisitHistory.doctor_id == doctor.doctor_id
+				VisitHistory.patient_id == patient_id
 			)
 			.order_by(VisitHistory.visit_date.desc())
 		)
