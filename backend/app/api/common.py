@@ -182,34 +182,32 @@ async def get_visit_record_detail(
 			)
 		
 		# ========== 权限验证 ==========
+		# 新策略：仅限制患者本人查看自己的病历，管理员和医生可查看任意病历
 		has_permission = False
-		
-		# 1. 检查是否是管理员
-		admin_res = await db.execute(
-			select(Administrator).where(Administrator.user_id == current_user.user_id)
-		)
-		admin = admin_res.scalar_one_or_none()
-		if admin:
+
+		# 1. 如果是患者本人，则允许
+		if visit.patient and visit.patient.user_id == current_user.user_id:
 			has_permission = True
-			logger.info(f"管理员 {current_user.user_id} 访问病历 {visit_id}")
-		
-		# 2. 检查是否是接诊医生
+			logger.info(f"患者 {visit.patient.name if visit.patient else current_user.user_id} 访问自己的病历 {visit_id}")
+
+		# 2. 否则，放宽：管理员或医生均可查看任意病历
+		if not has_permission:
+			admin_res = await db.execute(
+				select(Administrator).where(Administrator.user_id == current_user.user_id)
+			)
+			if admin_res.scalar_one_or_none():
+				has_permission = True
+				logger.info(f"管理员 {current_user.user_id} 访问病历 {visit_id}")
+
 		if not has_permission:
 			doctor_res = await db.execute(
 				select(Doctor).where(Doctor.user_id == current_user.user_id)
 			)
-			doctor = doctor_res.scalar_one_or_none()
-			if doctor and visit.doctor_id == doctor.doctor_id:
+			if doctor_res.scalar_one_or_none():
 				has_permission = True
-				logger.info(f"医生 {doctor.name} 访问自己的病历 {visit_id}")
-		
-		# 3. 检查是否是患者本人
-		if not has_permission:
-			if visit.patient and visit.patient.user_id == current_user.user_id:
-				has_permission = True
-				logger.info(f"患者 {visit.patient.name} 访问自己的病历 {visit_id}")
-		
-		# 4. 无权限则拒绝访问
+				logger.info(f"医生 {current_user.user_id} 访问病历 {visit_id}")
+
+		# 3. 无权限则拒绝访问（仅当既非患者本人也不是管理员/医生）
 		if not has_permission:
 			raise ResourceHTTPException(
 				code=403,
@@ -301,29 +299,28 @@ async def generate_medical_record_pdf(
 			)
 		
 		# ========== 权限验证 ==========
+		# 新策略：仅限制患者本人生成/查看自己的病历PDF，管理员与医生可操作任意病历
 		has_permission = False
-		
-		# 1. 检查是否是管理员
-		admin_res = await db.execute(
-			select(Administrator).where(Administrator.user_id == current_user.user_id)
-		)
-		if admin_res.scalar_one_or_none():
+
+		# 患者本人允许
+		if visit.patient and visit.patient.user_id == current_user.user_id:
 			has_permission = True
-		
-		# 2. 检查是否是接诊医生
+
+		# 管理员或医生均允许（放宽，不再校验是否为接诊医生）
+		if not has_permission:
+			admin_res = await db.execute(
+				select(Administrator).where(Administrator.user_id == current_user.user_id)
+			)
+			if admin_res.scalar_one_or_none():
+				has_permission = True
+
 		if not has_permission:
 			doctor_res = await db.execute(
 				select(Doctor).where(Doctor.user_id == current_user.user_id)
 			)
-			doctor = doctor_res.scalar_one_or_none()
-			if doctor and visit.doctor_id == doctor.doctor_id:
+			if doctor_res.scalar_one_or_none():
 				has_permission = True
-		
-		# 3. 检查是否是患者本人
-		if not has_permission:
-			if visit.patient and visit.patient.user_id == current_user.user_id:
-				has_permission = True
-		
+
 		if not has_permission:
 			raise ResourceHTTPException(
 				code=403,
@@ -440,29 +437,28 @@ async def download_medical_record_pdf(
 			)
 		
 		# ========== 权限验证 ==========
+		# 新策略：仅限制患者本人下载自己的病历PDF，管理员与医生可下载任意病历
 		has_permission = False
-		
-		# 1. 检查是否是管理员
-		admin_res = await db.execute(
-			select(Administrator).where(Administrator.user_id == current_user.user_id)
-		)
-		if admin_res.scalar_one_or_none():
+
+		# 患者本人允许
+		if visit.patient and visit.patient.user_id == current_user.user_id:
 			has_permission = True
-		
-		# 2. 检查是否是接诊医生
+
+		# 管理员或医生均允许（放宽）
+		if not has_permission:
+			admin_res = await db.execute(
+				select(Administrator).where(Administrator.user_id == current_user.user_id)
+			)
+			if admin_res.scalar_one_or_none():
+				has_permission = True
+
 		if not has_permission:
 			doctor_res = await db.execute(
 				select(Doctor).where(Doctor.user_id == current_user.user_id)
 			)
-			doctor = doctor_res.scalar_one_or_none()
-			if doctor and visit.doctor_id == doctor.doctor_id:
+			if doctor_res.scalar_one_or_none():
 				has_permission = True
-		
-		# 3. 检查是否是患者本人
-		if not has_permission:
-			if visit.patient and visit.patient.user_id == current_user.user_id:
-				has_permission = True
-		
+
 		if not has_permission:
 			raise ResourceHTTPException(
 				code=403,
