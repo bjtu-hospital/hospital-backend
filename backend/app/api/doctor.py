@@ -349,8 +349,7 @@ async def add_slot_request(
 				schedule_id=data.schedule_id,
 				patient_id=data.patient_id,
 				slot_type=data.slot_type,
-				applicant_user_id=current_user.user_id,
-				position=data.position or "end"
+				applicant_user_id=current_user.user_id
 			)
 			return ResponseModel(code=0, message={"detail": "加号记录已创建", "order_id": order_id})
 
@@ -368,6 +367,39 @@ async def add_slot_request(
 			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在", status_code=404)
 		if schedule.doctor_id != db_doctor.doctor_id:
 			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="医生只能为自己负责的排班申请加号", status_code=403)
+		
+		# 验证患者是否存在
+		patient_res = await db.execute(select(Patient).where(Patient.patient_id == data.patient_id))
+		patient = patient_res.scalar_one_or_none()
+		if not patient:
+			raise BusinessHTTPException(
+				code=settings.REQ_ERROR_CODE,
+				msg=f"患者 {data.patient_id} 不存在",
+				status_code=404
+			)
+
+		# 去重改为覆盖：同一排班+患者若存在未被拒绝的申请（pending/approved），则覆盖为新的内容并重置为待审核
+		exist_res = await db.execute(
+			select(AddSlotAudit)
+			.where(
+				AddSlotAudit.schedule_id == data.schedule_id,
+				AddSlotAudit.patient_id == data.patient_id,
+				AddSlotAudit.status != 'rejected'
+			)
+			.order_by(AddSlotAudit.submit_time.desc())
+			.limit(1)
+		)
+		exist_audit = exist_res.scalar_one_or_none()
+		if exist_audit:
+			exist_audit.slot_type = data.slot_type
+			exist_audit.reason = data.reason
+			exist_audit.status = "pending"
+			exist_audit.auditor_user_id = None
+			exist_audit.audit_time = None
+			exist_audit.audit_remark = None
+			await db.commit()
+			await db.refresh(exist_audit)
+			return ResponseModel(code=0, message={"detail": "加号申请已更新，等待审核", "audit_id": exist_audit.audit_id})
 
 		# 创建加号申请记录
 		new_audit = AddSlotAudit(
@@ -394,6 +426,75 @@ async def add_slot_request(
 	except Exception as e:
 		await db.rollback()
 		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"加号申请失败: {e}", status_code=500)
+
+
+@router.get("/schedules/add-slot", response_model=ResponseModel)
+async def list_add_slot_requests(
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""医生查看自己的加号申请列表（按提交时间倒序）。管理员查看全部请走 admin 接口。"""
+	# 获取当前医生
+	res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+	db_doctor = res.scalar_one_or_none()
+	if not db_doctor:
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅医生可查看该列表", status_code=403)
+
+	# 查询该医生的加号申请
+	audits_res = await db.execute(
+		select(AddSlotAudit)
+		.where(AddSlotAudit.doctor_id == db_doctor.doctor_id)
+		.order_by(AddSlotAudit.submit_time.desc())
+	)
+	audits = audits_res.scalars().all()
+
+	items = []
+	for a in audits:
+		items.append({
+			"audit_id": a.audit_id,
+			"schedule_id": a.schedule_id,
+			"doctor_id": a.doctor_id,
+			"patient_id": a.patient_id,
+			"slot_type": a.slot_type,
+			"reason": a.reason,
+			"applicant_id": a.applicant_id,
+			"submit_time": a.submit_time,
+			"status": a.status,
+			"auditor_user_id": a.auditor_user_id,
+			"audit_time": a.audit_time,
+			"audit_remark": a.audit_remark,
+		})
+
+	return ResponseModel(code=0, message={"audits": items})
+
+
+@router.post("/schedules/add-slot/{audit_id}/cancel", response_model=ResponseModel)
+async def cancel_add_slot_request(
+	audit_id: int,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	"""医生取消自己的加号申请，仅允许取消 pending 状态。"""
+	# 获取当前医生
+	res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+	db_doctor = res.scalar_one_or_none()
+	if not db_doctor:
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅医生可取消加号申请", status_code=403)
+
+	# 查询申请
+	audit_res = await db.execute(select(AddSlotAudit).where(AddSlotAudit.audit_id == audit_id))
+	audit = audit_res.scalar_one_or_none()
+	if not audit:
+		raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="加号申请不存在", status_code=404)
+	if audit.doctor_id != db_doctor.doctor_id:
+		raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="无权取消他人的加号申请", status_code=403)
+	if audit.status != "pending":
+		raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="仅可取消待审核的加号申请", status_code=400)
+
+	# 直接删除记录
+	await db.delete(audit)
+	await db.commit()
+	return ResponseModel(code=0, message={"detail": "已取消加号申请"})
 
 
 # ===== 医生工作台相关辅助函数 =====
@@ -2606,16 +2707,17 @@ async def get_patient_detail(
 				status_code=404
 			)
 
-		# 授权校验：仅允许查看自己接诊过的患者
-		visit_check_res = await db.execute(
-			select(VisitHistory.visit_id)
+		# 授权校验：仅允许查看与本医生存在订单关系的患者（CONFIRMED 或 COMPLETED）
+		order_check_res = await db.execute(
+			select(RegistrationOrder.order_id)
 			.where(
-				VisitHistory.patient_id == patient_id,
-				VisitHistory.doctor_id == doctor.doctor_id
+				RegistrationOrder.patient_id == patient_id,
+				RegistrationOrder.doctor_id == doctor.doctor_id,
+				RegistrationOrder.status.in_([OrderStatus.CONFIRMED, OrderStatus.COMPLETED])
 			)
 			.limit(1)
 		)
-		if visit_check_res.scalar_one_or_none() is None:
+		if order_check_res.scalar_one_or_none() is None:
 			raise ResourceHTTPException(
 				code=403,
 				msg="无权查看该患者信息",

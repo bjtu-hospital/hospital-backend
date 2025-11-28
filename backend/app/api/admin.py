@@ -3769,8 +3769,7 @@ async def approve_add_slot_audit(
             schedule_id=audit.schedule_id,
             patient_id=audit.patient_id,
             slot_type=audit.slot_type,
-            applicant_user_id=audit.applicant_id,
-            position="end"  # 审批通过的加号默认加到队尾
+            applicant_user_id=audit.applicant_id
         )
 
         # 更新审核记录

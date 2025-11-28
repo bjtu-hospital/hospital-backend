@@ -1606,7 +1606,14 @@ Authorization: Bearer <token>
 
 - 行为：
     - 管理员调用：系统直接在事务内为患者创建 `RegistrationOrder`（同时更新 `Schedule` 的 `total_slots` 与 `remaining_slots`），响应包含新订单 `order_id`。
-    - 医生调用：系统在 `add_slot_audit` 表中创建申请记录，等待管理员审批，响应包含 `audit_id`。
+    - 医生调用：系统在 `add_slot_audit` 表中创建或覆盖申请记录，等待管理员审批，响应包含 `audit_id`。
+
+- 约定与限制：
+    - `patient_id` 仅接受整数（不再支持 `P123` 之类前缀）。
+    - 医生端重复提交“同一 `schedule_id` + `patient_id`”且原申请状态为非 `rejected`（即 `pending/approved`）时，不再报重复错误，而是“覆盖更新原申请”：
+      - 覆盖字段：`slot_type`、`reason`
+      - 将状态重置为 `pending`，清空 `auditor_user_id`、`audit_time`、`audit_remark`
+    - 管理员直接执行加号不受上述覆盖逻辑影响。
 
 - 成功响应示例（管理员直接创建挂号）：
 ```json
@@ -1662,6 +1669,47 @@ Authorization: Bearer <token>
 - 通过：POST `/admin/audit/add-slot/{audit_id}/approve`（管理员）
 - 拒绝：POST `/admin/audit/add-slot/{audit_id}/reject`（管理员）
 - 说明：审批通过时，系统会在事务内调用加号服务创建 `RegistrationOrder` 并更新对应 `Schedule`；审批结果会写回 `add_slot_audit` 表（status、auditor_admin_id、audit_time、audit_remark）。
+
+#### 5.13 医生查看自己的加号申请列表 GET: `/doctor/schedules/add-slot`
+- 权限：仅医生。
+- 说明：返回当前登录医生提交的所有加号申请，按 `submit_time` 倒序。
+- 响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "audits": [
+            {
+                "audit_id": 2001,
+                "schedule_id": 12345,
+                "doctor_id": 10,
+                "patient_id": 67890,
+                "slot_type": "普通",
+                "reason": "病人有特殊情况",
+                "applicant_id": 10,
+                "submit_time": "2025-11-13T10:00:00",
+                "status": "pending",
+                "auditor_user_id": null,
+                "audit_time": null,
+                "audit_remark": null
+            }
+        ]
+    }
+}
+```
+
+#### 5.14 医生取消自己的加号申请 POST: `/doctor/schedules/add-slot/{audit_id}/cancel`
+- 权限：仅医生且必须为申请的发起医生。
+- 规则：仅允许取消 `pending`（待审核）状态的申请；取消操作会直接删除该条申请记录。
+- 成功响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "已取消加号申请"
+    }
+}
+```
 
 ---
 
@@ -3654,6 +3702,10 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+**授权说明**：
+- 医生访问时将校验与该患者是否存在订单关系：`RegistrationOrder` 中满足同一医生的 `CONFIRMED` 或 `COMPLETED` 任一状态即可查看患者详情；否则返回 403。
+- 管理员不受此限制。
 
 **错误示例（权限不足）**：
 ```json

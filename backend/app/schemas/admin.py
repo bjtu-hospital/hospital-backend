@@ -218,10 +218,9 @@ class ScheduleListResponse(BaseModel):
 # ====== 加号申请（AddSlotAudit）schema ======
 class AddSlotAuditCreate(BaseModel):
     schedule_id: int = Field(..., description="目标排班ID")
-    patient_id: int = Field(..., description="患者的 patient_id")
+    patient_id: int = Field(..., description="患者ID（仅整数）")
     slot_type: str = Field(..., description="号源类型: 普通/专家/特需")
     reason: Optional[str] = Field(None, description="申请理由（医生填写）")
-    position: Optional[str] = Field("end", description="加号位置: next-下一个（插队）, end-队尾（默认）")
 
 
 
