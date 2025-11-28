@@ -9,7 +9,7 @@ class VisitHistory(Base):
     患者就诊历史表：记录患者在医院的每次就诊，以及医生给出的诊断意见/处置建议/处方等。
     - patient_id: 关联 Patient.patient_id
     - doctor_id: 关联 Doctor.doctor_id
-    - schedule_id: 可选，关联当次就诊的排班
+    - order_id: 可选，关联当次就诊的订单 registration_order.order_id
     - visit_date: 就诊日期
     - diagnosis: 医生的诊断结论（文本）
     - advice: 医生的处理建议或处置（文本）
@@ -24,7 +24,7 @@ class VisitHistory(Base):
     visit_id = Column(BigInteger, primary_key=True, autoincrement=True, comment="就诊记录ID")
     patient_id = Column(BigInteger, ForeignKey("patient.patient_id"), nullable=False, comment="关联 patient.patient_id")
     doctor_id = Column(Integer, ForeignKey("doctor.doctor_id"), nullable=True, comment="关联 doctor.doctor_id")
-    schedule_id = Column(BigInteger, ForeignKey("schedule.schedule_id"), nullable=True, comment="可选：关联排班")
+    order_id = Column(BigInteger, ForeignKey("registration_order.order_id"), nullable=True, comment="可选：关联订单")
 
     visit_date = Column(Date, nullable=False, comment="就诊日期")
     diagnosis = Column(Text, nullable=True, comment="医生诊断结论")
@@ -41,4 +41,4 @@ class VisitHistory(Base):
     # 关系
     patient = relationship("Patient")
     doctor = relationship("Doctor")
-    schedule = relationship("Schedule")
+    order = relationship("RegistrationOrder")
