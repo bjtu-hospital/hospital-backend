@@ -26,26 +26,88 @@ class MedicalRecordPDFGenerator:
     COLOR_BG_DIAGNOSIS = HexColor('#f0f4ff') # 诊断背景色
     
     def __init__(self):
-        """初始化PDF生成器，注册中文字体"""
+        """初始化PDF生成器，注册中文字体（跨平台支持）"""
+        import platform
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        self.chinese_font = None
+        self.chinese_font_bold = None
+        
         try:
-            # 尝试注册微软雅黑（更接近前端字体）
-            font_path = "C:/Windows/Fonts/msyh.ttc"
-            if os.path.exists(font_path):
-                pdfmetrics.registerFont(TTFont('MSYH', font_path))
-                self.chinese_font = 'MSYH'
-                self.chinese_font_bold = 'MSYH'
-            else:
-                # 回退到黑体
-                font_path = "C:/Windows/Fonts/simhei.ttf"
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('SimHei', font_path))
-                    self.chinese_font = 'SimHei'
-                    self.chinese_font_bold = 'SimHei'
-                else:
-                    self.chinese_font = 'Helvetica'
-                    self.chinese_font_bold = 'Helvetica-Bold'
+            system = platform.system()
+            font_registered = False
+            
+            if system == "Darwin":  # macOS
+                # macOS 字体路径优先级
+                mac_fonts = [
+                    ("/System/Library/Fonts/PingFang.ttc", "PingFang"),  # 苹方（推荐）
+                    ("/System/Library/Fonts/STHeiti Light.ttc", "STHeiti"),  # 华文黑体
+                    ("/Library/Fonts/Arial Unicode.ttf", "ArialUnicode"),  # Arial Unicode
+                ]
+                
+                for font_path, font_name in mac_fonts:
+                    if os.path.exists(font_path):
+                        try:
+                            pdfmetrics.registerFont(TTFont(font_name, font_path))
+                            self.chinese_font = font_name
+                            self.chinese_font_bold = font_name
+                            font_registered = True
+                            logger.info(f"成功注册 macOS 字体: {font_name} ({font_path})")
+                            break
+                        except Exception as e:
+                            logger.warning(f"注册字体 {font_name} 失败: {e}")
+                            continue
+                            
+            elif system == "Windows":  # Windows
+                # Windows 字体路径
+                win_fonts = [
+                    ("C:/Windows/Fonts/msyh.ttc", "MSYH"),  # 微软雅黑
+                    ("C:/Windows/Fonts/simhei.ttf", "SimHei"),  # 黑体
+                    ("C:/Windows/Fonts/simsun.ttc", "SimSun"),  # 宋体
+                ]
+                
+                for font_path, font_name in win_fonts:
+                    if os.path.exists(font_path):
+                        try:
+                            pdfmetrics.registerFont(TTFont(font_name, font_path))
+                            self.chinese_font = font_name
+                            self.chinese_font_bold = font_name
+                            font_registered = True
+                            logger.info(f"成功注册 Windows 字体: {font_name} ({font_path})")
+                            break
+                        except Exception as e:
+                            logger.warning(f"注册字体 {font_name} 失败: {e}")
+                            continue
+                            
+            elif system == "Linux":  # Linux
+                # Linux 字体路径（常见位置）
+                linux_fonts = [
+                    ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "WQY"),
+                    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "NotoSans"),
+                ]
+                
+                for font_path, font_name in linux_fonts:
+                    if os.path.exists(font_path):
+                        try:
+                            pdfmetrics.registerFont(TTFont(font_name, font_path))
+                            self.chinese_font = font_name
+                            self.chinese_font_bold = font_name
+                            font_registered = True
+                            logger.info(f"成功注册 Linux 字体: {font_name} ({font_path})")
+                            break
+                        except Exception as e:
+                            logger.warning(f"注册字体 {font_name} 失败: {e}")
+                            continue
+            
+            # 如果所有字体都注册失败，使用 Helvetica（不支持中文，会显示方块）
+            if not font_registered:
+                logger.error(f"未能在 {system} 系统上找到中文字体，PDF将无法正确显示中文")
+                self.chinese_font = 'Helvetica'
+                self.chinese_font_bold = 'Helvetica-Bold'
+                
         except Exception as e:
-            print(f"字体注册失败: {e}")
+            logger.error(f"字体注册异常: {e}", exc_info=True)
             self.chinese_font = 'Helvetica'
             self.chinese_font_bold = 'Helvetica-Bold'
     
