@@ -3447,7 +3447,22 @@ Authorization: Bearer <token>
     },
     "nextPatient": null,
     "queue": [],
-    "waitlist": []
+    "waitlist": [],
+    "completedQueue": [
+      {
+        "orderId": 115,
+        "patientId": 3,
+        "patientName": "测试用户001",
+        "gender": "男",
+        "age": 28,
+        "queueNumber": "C001",
+        "status": "completed",
+        "callTime": "2025-11-21 00:30:00",
+        "visitTime": "2025-11-20 10:15:00",
+        "completedTime": "2025-11-20 10:15:00",
+        "passCount": 0
+      }
+    ]
   }
 }
 ```
@@ -3456,6 +3471,8 @@ Authorization: Bearer <token>
 
 **接口地址**：`POST /doctor/consultation/next`
 
+**说明**：呼叫下一位患者。系统会自动检查当前是否有患者正在就诊，如果有则返回 409 错误，必须先完成当前患者。
+
 **请求参数**：
 ```json
 {
@@ -3463,27 +3480,30 @@ Authorization: Bearer <token>
 }
 ```
 
-**响应示例**：
+**成功响应示例**：
 ```json
 {
   "code": 0,
   "message": {
-    "calledPatient": {
+    "detail": "已呼叫下一位",
+    "nextPatient": {
       "orderId": 117,
       "patientId": 5,
       "patientName": "测试用户003",
-      "gender": "女",
-      "age": null,
       "queueNumber": "A001",
       "status": "confirmed",
-      "isCall": true,
-      "callTime": "2025-11-21 00:32:45",
-      "visitTime": "2025-11-20 10:23:00",
-      "passCount": 0,
-      "priority": 0
+      "passCount": 0
     },
     "scheduleId": 5669
   }
+}
+```
+
+**错误响应示例（当前有患者在就诊）**：
+```json
+{
+  "code": 301,
+  "msg": "当前还有患者正在就诊（订单 116），请先完成当前患者再呼叫下一位"
 }
 ```
 
@@ -3491,10 +3511,13 @@ Authorization: Bearer <token>
 
 **接口地址**：`POST /doctor/consultation/pass`
 
+**说明**：对当前正在叫号的患者进行过号操作（患者未到场时使用）。过号后自动呼叫下一位患者。
+
 **请求参数**：
 ```json
 {
-  "patient_order_id": 117
+  "order_id": 117,
+  "max_pass_count": 3  // 可选，过号次数上限，不传则从配置读取
 }
 ```
 
@@ -3503,35 +3526,43 @@ Authorization: Bearer <token>
 {
   "code": 0,
   "message": {
+    "detail": "过号成功",
     "passedPatient": {
       "orderId": 117,
-      "patientId": 5,
       "patientName": "测试用户003",
-      "gender": "女",
-      "age": null,
-      "queueNumber": "A001",
-      "status": "confirmed",
-      "isCall": false,
-      "callTime": "2025-11-21 00:32:45",
-      "visitTime": "2025-11-20 10:23:00",
       "passCount": 1,
-      "priority": 0
+      "isNoShow": false,
+      "status": "confirmed"
     },
-    "nextPatient": null,
+    "nextPatient": {
+      "orderId": 118,
+      "patientId": 6,
+      "patientName": "测试用户004",
+      "queueNumber": "A002",
+      "status": "confirmed",
+      "passCount": 0
+    },
     "scheduleId": 5669
   }
 }
+```
+
+**注意事项**：
+- 只能对正在叫号（`is_calling=True`）的患者进行过号
+- 过号次数达到上限后，患者将被标记为爽约（`NO_SHOW`）
+- 过号次数上限优先级：传入参数 > 医生配置 > 全局配置 > 默认值（3次）
 ```
 
 ### 2.4 完成患者就诊
 
 **接口地址**：`POST /doctor/consultation/complete`
 
+**说明**：完成当前患者的就诊（患者正常就诊完毕）。
+
 **请求参数**：
 ```json
 {
-  "patient_id": 5,
-  "schedule_id": 5669
+  "order_id": 117
 }
 ```
 
@@ -3551,13 +3582,18 @@ Authorization: Bearer <token>
       "status": "completed",
       "isCall": false,
       "callTime": "2025-11-21 00:32:45",
-      "visitTime": "2025-11-20 10:23:00",
+      "visitTime": "2025-11-20 10:35:00",
       "passCount": 0,
       "priority": 0
     },
     "scheduleId": 5669
   }
 }
+```
+
+**注意事项**：
+- 只能完成正在就诊（`is_calling=True`）的订单
+- 完成后会自动记录就诊时间（`visit_times`）
 ```
 
 **字段说明**：
@@ -3573,8 +3609,15 @@ Authorization: Bearer <token>
 - `nextPatient`: 下一位待叫号的患者
 - `queue`: 正在等待的患者队列（不包含正在就诊的患者）
 - `waitlist`: 候补队列
+- `completedQueue`: 已完成队列（按叫号时间倒序，最近完成的在前）
 - `passCount`: 患者过号次数
 - `priority`: 优先级（数字越小优先级越高）
+
+**业务流程说明**：
+1. **呼叫下一位**：使用 `/consultation/next` 接口，系统会检查当前是否有患者在就诊，如有则报错
+2. **患者到场就诊**：使用 `/consultation/complete` 接口完成就诊
+3. **患者未到场**：使用 `/consultation/pass` 接口过号，自动呼叫下一位
+4. **安全保护**：所有操作都会检查数据一致性，防止多个患者同时处于就诊状态
 
 
 

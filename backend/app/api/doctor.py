@@ -1778,6 +1778,7 @@ async def get_queue(
 	- nextPatient: 下一位候诊患者（如果有）
 	- queue: 正式队列列表（CONFIRMED状态，按优先级、过号次数、挂号时间排序）
 	- waitlist: 候补队列列表（WAITLIST状态）
+	- completedQueue: 已完成队列列表（COMPLETED状态，按叫号时间倒序，最近完成的在前）
 	"""
 	try:
 		# 验证排班是否存在
@@ -1832,19 +1833,17 @@ async def get_queue(
 
 @router.post("/consultation/complete", response_model=ResponseModel)
 async def complete_consultation(
-	patient_id: int = Body(..., embed=True),
-	schedule_id: int = Body(..., embed=True),
+	order_id: int = Body(..., embed=True),
 	db: AsyncSession = Depends(get_db),
 	current_user: UserSchema = Depends(get_current_user)
 ):
 	"""
 	完成当前患者就诊（患者正常就诊完毕）
 	
-	- **patient_id**: 患者ID
-	- **schedule_id**: 排班ID
+	- **order_id**: 挂号订单ID（必须是正在就诊的订单）
 	
 	流程：
-	1. 验证患者是否正在就诊（is_calling=True）
+	1. 验证订单是否正在就诊（is_calling=True）
 	2. 标记为已完成（status=COMPLETED）
 	3. 记录就诊时间（visit_times）
 	
@@ -1864,13 +1863,19 @@ async def complete_consultation(
 		
 		doctor_id = current_doctor.doctor_id if current_doctor else None
 		
-		# 验证排班是否属于当前医生
+		# 验证订单是否属于当前医生
 		if doctor_id:
 			res = await db.execute(
-				select(Schedule).where(Schedule.schedule_id == schedule_id)
+				select(RegistrationOrder).where(RegistrationOrder.order_id == order_id)
 			)
-			schedule = res.scalar_one_or_none()
-			if not schedule or schedule.doctor_id != doctor_id:
+			order = res.scalar_one_or_none()
+			if not order:
+				raise BusinessHTTPException(
+					code=settings.REQ_ERROR_CODE,
+					msg=f"订单 {order_id} 不存在",
+					status_code=404
+				)
+			if order.doctor_id != doctor_id:
 				raise AuthHTTPException(
 					code=settings.INSUFFICIENT_AUTHORITY_CODE,
 					msg="只能完成本人排班下的患者就诊",
@@ -1878,7 +1883,7 @@ async def complete_consultation(
 				)
 		
 		# 调用服务层
-		result = await complete_current_patient(db=db, patient_id=patient_id, schedule_id=schedule_id, doctor_id=doctor_id)
+		result = await complete_current_patient(db=db, order_id=order_id)
 		
 		await db.commit()
 		
@@ -1916,13 +1921,17 @@ async def call_next(
 	- **schedule_id**: 排班ID（必填）
 	
 	流程：
-	1. 从队列中选取下一位（CONFIRMED 且未叫号）
-	2. 标记为正在就诊（is_calling=True）
-	3. 记录叫号时间（call_time）
+	1. **安全检查：确保当前没有患者正在就诊**（防止数据覆盖）
+	2. 从队列中选取下一位（CONFIRMED 且未叫号）
+	3. 标记为正在就诊（is_calling=True）
+	4. 记录叫号时间（call_time）
 	
 	返回：
 	- nextPatient: 新呼叫的患者信息
 	- scheduleId: 排班ID
+	
+	错误情况：
+	- 409: 当前还有患者正在就诊，请先完成当前患者再呼叫下一位
 	
 	注意：如果需要先完成当前患者，请先调用 /consultation/complete
 	"""
@@ -1988,7 +1997,7 @@ async def call_next(
 
 @router.post("/consultation/pass", response_model=ResponseModel)
 async def pass_current_patient(
-	patient_id: int = Body(..., embed=True),
+	order_id: int = Body(..., embed=True),
 	max_pass_count: Optional[int] = Body(None, embed=True),
 	db: AsyncSession = Depends(get_db),
 	current_user: UserSchema = Depends(get_current_user)
@@ -1996,7 +2005,7 @@ async def pass_current_patient(
 	"""
 	过号操作（当前被叫号的患者未到场）
 	
-	- **patient_id**: 需要过号的患者订单ID（必须是正在叫号的患者）
+	- **order_id**: 需要过号的挂号订单ID（必须是正在叫号的订单）
 	- **max_pass_count**: 可选，覆盖系统配置的过号次数上限
 	  - 不传：从配置读取（优先级：医生配置 > 全局配置 > 默认3次）
 	  - 传入：使用指定值（临时覆盖，不影响配置）
@@ -2028,7 +2037,7 @@ async def pass_current_patient(
 		# 验证订单是否属于当前医生
 		if doctor_id:
 			res = await db.execute(
-				select(RegistrationOrder).where(RegistrationOrder.order_id == patient_id)
+				select(RegistrationOrder).where(RegistrationOrder.order_id == order_id)
 			)
 			patient_order = res.scalar_one_or_none()
 			if patient_order and patient_order.doctor_id != doctor_id:
@@ -2037,13 +2046,11 @@ async def pass_current_patient(
 					msg="只能对本人患者执行过号操作",
 					status_code=403
 				)
-		
-		# 调用服务层
+
+		# 调用服务层（注意：pass_patient 的签名为 (db, patient_order_id, max_pass_count=None)）
 		result = await pass_patient(
 			db=db,
-			patient_order_id=patient_id,
-			doctor_id=doctor_id,
-			slot_date=date.today(),
+			patient_order_id=order_id,
 			max_pass_count=max_pass_count
 		)
 		

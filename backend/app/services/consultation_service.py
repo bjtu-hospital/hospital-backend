@@ -76,37 +76,46 @@ async def get_consultation_queue(
     )
     waitlist_list = waitlist_query.scalars().all()
     
-    # 3. 查询已完成数量
-    completed_count_query = await db.execute(
-        select(func.count(RegistrationOrder.order_id))
+    # 3. 查询已完成队列（COMPLETED，按叫号时间/就诊时间倒序）
+    completed_query = await db.execute(
+        select(RegistrationOrder)
+        .options(selectinload(RegistrationOrder.patient))
         .where(
             and_(
                 RegistrationOrder.schedule_id == schedule_id,
                 RegistrationOrder.status == OrderStatus.COMPLETED
             )
         )
+        .order_by(RegistrationOrder.call_time.desc())  # 按叫号时间倒序，最近完成的在前
     )
-    completed_count = completed_count_query.scalar() or 0
+    completed_list = completed_query.scalars().all()
     
-    # 4. 动态生成队列号
+    # 4. 查询已完成数量
+    completed_count = len(completed_list)
+    
+    # 5. 动态生成队列号
     for idx, order in enumerate(confirmed_list, start=1):
         order.queue_number_display = f"A{idx:03d}"
     
-    # 5. 筛选出当前患者和候诊队列
+    # 为已完成队列也生成队列号
+    for idx, order in enumerate(completed_list):
+        order.queue_number_display = f"C{idx+1:03d}"  # C代表Completed
+    
+    # 6. 筛选出当前患者和候诊队列
     current_patient = next((o for o in confirmed_list if o.is_calling), None)
     waiting_queue = [o for o in confirmed_list if not o.is_calling]
     
-    # 6. 找到下一位
+    # 7. 找到下一位
     next_patient = waiting_queue[0] if waiting_queue else None
     
-    # 7. 统计数据
+    # 8. 统计数据
     # totalSlots 修改为实际订单总数：已确认 + 候补 + 已完成
-    dynamic_total_slots = len(confirmed_list) + len(waitlist_list) + int(completed_count)
+    dynamic_total_slots = len(confirmed_list) + len(waitlist_list) + completed_count
     stats = {
         "totalSlots": dynamic_total_slots,
         "confirmedCount": len(confirmed_list),
         "waitlistCount": len(waitlist_list),
-        "completedCount": int(completed_count),
+        "completedCount": completed_count,
         "waitingCount": len(waiting_queue),
         "passedCount": len([o for o in confirmed_list if o.pass_count > 0])
     }
@@ -122,35 +131,31 @@ async def get_consultation_queue(
         "currentPatient": _format_patient_info(current_patient) if current_patient else None,
         "nextPatient": _format_patient_info(next_patient, minimal=True) if next_patient else None,
         "queue": [_format_patient_info(o) for o in waiting_queue],
-        "waitlist": [_format_patient_info(o, is_waitlist=True) for o in waitlist_list]
+        "waitlist": [_format_patient_info(o, is_waitlist=True) for o in waitlist_list],
+        "completedQueue": [_format_patient_info(o, is_completed=True) for o in completed_list]
     }
 
 
 async def complete_current_patient(
     db: AsyncSession,
-    patient_id: int,
-    schedule_id: int,
-    doctor_id: int
+    order_id: int
 ) -> dict:
     """
     完成当前患者就诊（患者到场并完成就诊）
     
     流程：
-    1. 验证患者是否正在就诊（is_calling=True）
+    1. 验证订单是否正在就诊（is_calling=True）
     2. 标记为已完成（status=COMPLETED）
     3. 记录就诊时间（visit_times）
     
     使用事务确保原子性
     """
     async with db.begin_nested():
-        # 锁定并验证患者
+        # 锁定并验证订单
         patient_query = await db.execute(
             select(RegistrationOrder)
             .options(selectinload(RegistrationOrder.patient))
-            .where(
-                RegistrationOrder.patient_id == patient_id,
-                RegistrationOrder.schedule_id == schedule_id
-            )
+            .where(RegistrationOrder.order_id == order_id)
             .with_for_update()
         )
         patient = patient_query.scalar_one_or_none()
@@ -158,7 +163,7 @@ async def complete_current_patient(
         if not patient:
             raise BusinessHTTPException(
                 code=settings.REQ_ERROR_CODE,
-                msg=f"未找到患者 {patient_id} 在排班 {schedule_id} 下的订单",
+                msg=f"订单 {order_id} 不存在",
                 status_code=404
             )
         
@@ -175,8 +180,6 @@ async def complete_current_patient(
                 msg="只能完成正在就诊的患者（is_calling=True）",
                 status_code=400
             )
-        
-        # 由于已经通过 schedule_id 筛选，并且在 API 层已经验证了医生权限，这里不需要再次验证
         
         # 标记为已完成
         patient.status = OrderStatus.COMPLETED
@@ -203,14 +206,35 @@ async def call_next_patient(
     - schedule_id: 排班ID
     
     流程：
-    1. 从队列中选取下一位（CONFIRMED 且未叫号）
-    2. 标记为正在就诊（is_calling=True）
-    3. 记录叫号时间（call_time）
+    1. **安全检查：确保当前没有患者正在就诊（防止数据覆盖）**
+    2. 从队列中选取下一位（CONFIRMED 且未叫号）
+    3. 标记为正在就诊（is_calling=True）
+    4. 记录叫号时间（call_time）
     
     使用事务和行锁确保并发安全
     """
     async with db.begin_nested():  # 嵌套事务
-        # 选取下一位（正式队列中第一个未叫号的）
+        # 1. 安全检查：确保当前没有患者正在就诊
+        current_calling_query = await db.execute(
+            select(RegistrationOrder.order_id, RegistrationOrder.patient_id)
+            .where(
+                and_(
+                    RegistrationOrder.schedule_id == schedule_id,
+                    RegistrationOrder.is_calling == True
+                )
+            )
+            .limit(1)
+        )
+        current_calling = current_calling_query.first()
+        
+        if current_calling:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg=f"当前还有患者正在就诊（订单 {current_calling[0]}），请先完成当前患者再呼叫下一位",
+                status_code=409
+            )
+        
+        # 2. 选取下一位（正式队列中第一个未叫号的）
         next_query = await db.execute(
             select(RegistrationOrder)
             .options(selectinload(RegistrationOrder.patient))
@@ -231,7 +255,7 @@ async def call_next_patient(
         )
         next_patient = next_query.scalar_one_or_none()
         
-        # 标记为正在就诊
+        # 3. 标记为正在就诊
         if next_patient:
             next_patient.is_calling = True
             next_patient.call_time = datetime.now()
@@ -375,7 +399,7 @@ async def pass_patient(
         }
 
 
-def _format_patient_info(order: RegistrationOrder, minimal: bool = False, is_waitlist: bool = False) -> dict:
+def _format_patient_info(order: RegistrationOrder, minimal: bool = False, is_waitlist: bool = False, is_completed: bool = False) -> dict:
     """
     格式化患者信息为 API 响应格式
     
@@ -383,6 +407,7 @@ def _format_patient_info(order: RegistrationOrder, minimal: bool = False, is_wai
         order: 挂号订单对象
         minimal: 是否只返回最小信息（用于 nextPatient）
         is_waitlist: 是否为候补队列
+        is_completed: 是否为已完成队列
     """
     if not order:
         return None
@@ -408,6 +433,18 @@ def _format_patient_info(order: RegistrationOrder, minimal: bool = False, is_wai
             "status": order.status.value,
             "createTime": order.create_time.strftime('%Y-%m-%d %H:%M:%S') if order.create_time else None,
             "waitlistPosition": order.waitlist_position
+        })
+    elif is_completed:
+        # 已完成队列信息
+        base_info.update({
+            "gender": patient.gender.value if patient and patient.gender else None,
+            "age": _calculate_age(patient.birth_date) if patient and patient.birth_date else None,
+            "queueNumber": getattr(order, 'queue_number_display', '--'),
+            "status": order.status.value,
+            "callTime": order.call_time.strftime('%Y-%m-%d %H:%M:%S') if order.call_time else None,
+            "visitTime": order.visit_times if order.visit_times else None,
+            "completedTime": order.visit_times if order.visit_times else None,
+            "passCount": order.pass_count
         })
     else:
         # 完整信息（正式队列）
