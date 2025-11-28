@@ -228,13 +228,15 @@ class AddSlotAuditResponse(BaseModel):
     audit_id: int
     schedule_id: int
     doctor_id: int
+    doctor_name: Optional[str] = None
     patient_id: int
+    patient_name: Optional[str] = None
     slot_type: str
     reason: Optional[str] = None
     applicant_id: int
     submit_time: Optional[datetime] = None
     status: str
-    auditor_admin_id: Optional[int] = None
+    auditor_user_id: Optional[int] = None
     audit_time: Optional[datetime] = None
     audit_remark: Optional[str] = None
 

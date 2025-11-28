@@ -21,6 +21,7 @@ from app.schemas.response import (
 from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
 from app.models.hospital_area import HospitalArea
+from app.models.patient import Patient
 from app.services.crawler_service import import_all_json, crawl_and_import_schedules
 from app.models.user_ban import UserBan
 from app.models.risk_log import RiskLog
@@ -3185,16 +3186,24 @@ async def get_add_slot_audits(
         if not current_user.is_admin:
             raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="仅管理员可查看加号申请", status_code=403)
 
-        result = await db.execute(select(AddSlotAudit))
-        audits = result.scalars().all()
+        # 关联查询医生和患者姓名
+        result = await db.execute(
+            select(AddSlotAudit, Doctor.name, Patient.name)
+            .join(Doctor, Doctor.doctor_id == AddSlotAudit.doctor_id)
+            .join(Patient, Patient.patient_id == AddSlotAudit.patient_id)
+            .order_by(AddSlotAudit.submit_time.desc())
+        )
+        rows = result.all()
 
         audit_list = []
-        for a in audits:
+        for a, doctor_name, patient_name in rows:
             audit_list.append({
                 "audit_id": a.audit_id,
                 "schedule_id": a.schedule_id,
                 "doctor_id": a.doctor_id,
+                "doctor_name": doctor_name,
                 "patient_id": a.patient_id,
+                "patient_name": patient_name,
                 "slot_type": a.slot_type,
                 "reason": a.reason,
                 "applicant_id": a.applicant_id,

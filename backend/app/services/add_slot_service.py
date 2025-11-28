@@ -54,7 +54,7 @@ async def execute_add_slot_and_register(
         slot_date=schedule.date,
         time_section=schedule.time_section,
         status=OrderStatus.CONFIRMED,  # 加号直接进入正式队列
-        priority=0,
+        priority=-1,  # 加号患者优先级更高，排在队列前面（priority越小越优先）
         notes=f"加号申请 (由用户 {applicant_user_id} 发起)",
     )
 

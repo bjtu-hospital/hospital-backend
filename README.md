@@ -1639,7 +1639,7 @@ Authorization: Bearer <token>
 
 #### 5.11 管理员查看所有加号申请 GET: `/admin/audit/add-slot`
 - 权限：仅管理员。
-- 说明：返回所有 `AddSlotAudit` 记录（当前实现无分页）。建议在记录量大时加入分页与筛选参数（如 status/doctor_id/patient_id/date range）。
+- 说明：返回所有 `AddSlotAudit` 记录，按提交时间倒序排列，包含医生姓名和患者姓名（当前实现无分页）。建议在记录量大时加入分页与筛选参数（如 status/doctor_id/patient_id/date range）。
 - 响应示例：
 ```json
 {
@@ -1650,13 +1650,15 @@ Authorization: Bearer <token>
                 "audit_id": 2001,
                 "schedule_id": 12345,
                 "doctor_id": 10,
+                "doctor_name": "张医生",
                 "patient_id": 67890,
+                "patient_name": "李患者",
                 "slot_type": "普通",
                 "reason": "病人有特殊情况",
                 "applicant_id": 10,
                 "submit_time": "2025-11-13T10:00:00",
                 "status": "pending",
-                "auditor_admin_id": null,
+                "auditor_user_id": null,
                 "audit_time": null,
                 "audit_remark": null
             }
