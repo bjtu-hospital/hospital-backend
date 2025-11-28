@@ -21,6 +21,7 @@ class LeaveAudit(Base):
     # 请假详情
     leave_start_date = Column(Date, nullable=False, comment='请假起始日期')
     leave_end_date = Column(Date, nullable=False, comment='请假结束日期')
+    shift = Column(String(16), default='full', nullable=False, comment='请假时段: morning/afternoon/night/full')
     reason = Column(Text, nullable=False, comment='请假详细原因')
     
     # 附件数据
@@ -31,11 +32,11 @@ class LeaveAudit(Base):
     submit_time = Column(DateTime, default=datetime.datetime.now, nullable=False, comment='提交申请时间')
     
     status = Column(String(20), default='pending', nullable=False, comment='审核状态: pending, approved, rejected')
-    auditor_admin_id = Column(Integer, ForeignKey('administrator.admin_id'), comment='审核人ID')
+    auditor_user_id = Column(Integer, ForeignKey('user.user_id'), comment='审核人User ID(可以是管理员或科室长)')
     audit_time = Column(DateTime, comment='审核时间')
     audit_remark = Column(Text, comment='审核备注/原因')
 
     # 关系
     doctor = relationship("Doctor", back_populates="leave_audits")
-    administrator = relationship("Administrator", back_populates="leave_audits")
+    auditor = relationship("User", foreign_keys=[auditor_user_id], back_populates="audited_leave_audits")
     

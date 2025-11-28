@@ -1,0 +1,75 @@
+.idea
+.ipynb_checkpoints
+.mypy_cache
+.vscode
+__pycache__
+.pytest_cache
+htmlcov
+dist
+site
+.coverage*
+coverage.xml
+.netlify
+test.db
+###############################
+# Git Ignore (deduplicated)
+###############################
+
+# IDE & Editor
+.idea/
+.vscode/
+*.swp
+.*.sw?
+*~
+
+# OS / Misc
+.DS_Store
+.cache
+.ipynb_checkpoints
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+env3.*
+.mypy_cache/
+.pytest_cache/
+
+# Test & Coverage
+htmlcov/
+.coverage*
+coverage.xml
+
+# Build / Distribution Artifacts
+dist/
+site/
+docs_build/
+site_build/
+docs.zip
+archive.zip
+Pipfile.lock
+
+# Logs & Temp DB
+logs/
+log.txt
+*.log
+test.db
+/backend/logs/
+
+# Hosting / CI
+.netlify/
+
+# Generated crawler data (ignore large weekly schedule outputs)
+/backend/schedule/
+/backend/all.json
+
+# Test data generation scripts (no need to commit)
+/backend/scripts/
+
+# Redundant __pycache__ in subdirs covered by global rule (removed)
+# /backend/app/__pycache__/ etc.

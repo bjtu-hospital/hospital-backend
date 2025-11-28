@@ -31,5 +31,7 @@ class Schedule(Base):
     # 关系字段
     doctor = relationship("Doctor", back_populates="schedules")
     clinic = relationship("Clinic", back_populates="schedules")
+    add_slot_audits = relationship("AddSlotAudit", back_populates="schedule")
+    attendance_records = relationship("AttendanceRecord", back_populates="schedule")
 
 

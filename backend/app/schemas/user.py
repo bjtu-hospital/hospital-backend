@@ -59,3 +59,19 @@ class UserUpdate(BaseModel):
     
 class UserRoleUpdate(BaseModel):
     is_admin: bool
+
+# 患者精确查询相关
+class PatientSearchItem(BaseModel):
+    """患者搜索结果项"""
+    patient_id: str  # 患者业务ID，转为字符串格式如"P123"
+    name: str
+    gender: str
+    age: int
+    phone: str
+    
+    class Config:
+        from_attributes = True
+
+class SearchPatientResult(BaseModel):
+    """患者精确查询响应"""
+    patients: list[PatientSearchItem]

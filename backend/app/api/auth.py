@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import Union, Optional
 from jose import jwt, JWTError
-from datetime import timedelta
+from datetime import timedelta, date
 import logging
 import time
 
@@ -12,9 +12,17 @@ from app.core.security import get_hash_pwd, verify_pwd, create_access_token
 from app.schemas.user import user as UserSchema, PatientLogin, StaffLogin
 from app.schemas.response import ResponseModel, AuthErrorResponse, UserRoleResponse, DeleteResponse, UpdateUserRoleResponse, UserAccessLogPageResponse, AdminRegisterResponse
 from app.db.base import get_db, redis, User, UserAccessLog, Administrator
+from app.models.doctor import Doctor
+from app.models.minor_department import MinorDepartment
 from app.models.user import UserType
+from app.models.patient import Patient, PatientType, Gender
+from app.services.risk_detection_service import risk_detection_service
+from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
+import os
+import mimetypes
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +85,26 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
             raise HTTPException(status_code=401, detail="用户不存在或已被删除")
         if not user.is_verified:
             raise HTTPException(status_code=401, detail="邮箱未验证，请先完成邮箱验证")
+        
+        # 检查用户是否被封禁
+        ban_result = await db.execute(
+            select(UserBan).where(
+                and_(
+                    UserBan.user_id == user.user_id,
+                    UserBan.is_active == True  # noqa: E712
+                )
+            )
+        )
+        active_ban = ban_result.scalar_one_or_none()
+        if active_ban:
+            # 检查封禁类型是否影响登录
+            if active_ban.ban_type in ('login', 'all'):
+                ban_msg = f"账号已被封禁，原因: {active_ban.reason or '未说明'}";
+                if active_ban.ban_until:
+                    ban_msg += f"，封禁至: {active_ban.ban_until.strftime('%Y-%m-%d %H:%M:%S')}"
+                else:
+                    ban_msg += "，永久封禁"
+                raise HTTPException(status_code=403, detail=ban_msg)
 
         now_ts = int(time.time())
         login_ip = request.client.host if request.client else "unknown"
@@ -112,7 +140,7 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
 
 
 @router.post("/patient/login", response_model=ResponseModel[Union[str, AuthErrorResponse]])
-async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get_db)):
+async def patient_login(login_data: PatientLogin, request: Request, db: AsyncSession = Depends(get_db)):
     """患者端登录接口 - 使用手机号和密码进行认证"""
     user = await authenticate_patient(db, login_data.phonenumber, login_data.password)
     if not user:
@@ -122,6 +150,35 @@ async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get
             status_code=401
         )
     
+    # 检查用户是否被封禁
+    ban_result = await db.execute(
+        select(UserBan).where(
+            and_(
+                UserBan.user_id == user.user_id,
+                UserBan.is_active == True  
+            )
+        )
+    )
+    active_ban = ban_result.scalar_one_or_none()
+    if active_ban:
+        # 检查封禁类型是否影响登录
+        if active_ban.ban_type in ('login', 'all'):
+            ban_msg = f"账号已被封禁，原因: {active_ban.reason or '未说明'}";
+            if active_ban.ban_until:
+                ban_msg += f"，封禁至: {active_ban.ban_until.strftime('%Y-%m-%d %H:%M:%S')}"
+            else:
+                ban_msg += "，永久封禁"
+            raise AuthHTTPException(
+                code=settings.LOGIN_FAILED_CODE,
+                msg=ban_msg,
+                status_code=403
+            )
+    # 登录风险检测(成功认证后执行)
+    try:
+        await risk_detection_service.detect_login_risk(db, user.user_id, request.client.host if request.client else "unknown")
+    except Exception:
+        pass
+
     # 生成并保存 token
     token = create_access_token({"sub": str(user.user_id)})
     
@@ -147,7 +204,7 @@ async def patient_login(login_data: PatientLogin, db: AsyncSession = Depends(get
 
 
 @router.post("/staff/login", response_model=ResponseModel[Union[str, AuthErrorResponse]])
-async def staff_login(login_data: StaffLogin, db: AsyncSession = Depends(get_db)):
+async def staff_login(login_data: StaffLogin, request: Request, db: AsyncSession = Depends(get_db)):
     """医生/管理员登录接口 - 使用工号和密码进行认证"""
     user = await authenticate_staff(db, login_data.identifier, login_data.password)
     if not user:
@@ -157,6 +214,35 @@ async def staff_login(login_data: StaffLogin, db: AsyncSession = Depends(get_db)
             status_code=401
         )
     
+    # 检查用户是否被封禁
+    ban_result = await db.execute(
+        select(UserBan).where(
+            and_(
+                UserBan.user_id == user.user_id,
+                UserBan.is_active == True  # noqa: E712
+            )
+        )
+    )
+    active_ban = ban_result.scalar_one_or_none()
+    if active_ban:
+        # 检查封禁类型是否影响登录
+        if active_ban.ban_type in ('login', 'all'):
+            ban_msg = f"账号已被封禁，原因: {active_ban.reason or '未说明'}";
+            if active_ban.ban_until:
+                ban_msg += f"，封禁至: {active_ban.ban_until.strftime('%Y-%m-%d %H:%M:%S')}"
+            else:
+                ban_msg += "，永久封禁"
+            raise AuthHTTPException(
+                code=settings.LOGIN_FAILED_CODE,
+                msg=ban_msg,
+                status_code=403
+            )
+    # 登录风险检测(成功认证后执行)
+    try:
+        await risk_detection_service.detect_login_risk(db, user.user_id, request.client.host if request.client else "unknown")
+    except Exception:
+        pass
+
     # 生成并保存 token
     token = create_access_token({"sub": str(user.user_id)})
     
@@ -300,6 +386,58 @@ async def get_me(current_user: UserSchema = Depends(get_current_user)):
         )
 
 
+@router.post("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_user_info(current_user: UserSchema = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """获取医生端用户信息（若当前登录用户绑定医生记录则返回医生资料）"""
+    try:
+        doctor_res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
+        doctor = doctor_res.scalar_one_or_none()
+        if not doctor:
+            return ResponseModel(code=0, message={"doctor": None})
+        dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
+        dept = dept_res.scalar_one_or_none()
+        # 读取并编码医生照片（如果存在）
+        photo_base64 = None
+        photo_mime = None
+        if doctor.photo_path:
+            base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+            rel_path = doctor.photo_path.lstrip("/")
+            if rel_path.startswith("app/"):
+                rel_path = rel_path[4:]
+            fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+            if os.path.exists(fs_path) and os.path.isfile(fs_path):
+                mime_type, _ = mimetypes.guess_type(fs_path)
+                if not mime_type:
+                    mime_type = "application/octet-stream"
+                try:
+                    with open(fs_path, "rb") as f:
+                        bdata = f.read()
+                        photo_base64 = base64.b64encode(bdata).decode("utf-8")
+                        photo_mime = mime_type
+                except Exception:
+                    photo_base64 = None
+                    photo_mime = None
+        return ResponseModel(code=0, message={
+            "doctor": {
+                "id": doctor.doctor_id,
+                "name": doctor.name,
+                "department": dept.name if dept else None,
+                "department_id": doctor.dept_id,
+                "hospital": "主院区",
+                "title": doctor.title,
+                # 标记该医生是否为科室长，便于前端权限/展示判断
+                "is_department_head": bool(getattr(doctor, "is_department_head", False)),
+                "photo_mime": photo_mime,
+                "photo_base64": photo_base64
+            }
+        })
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生用户信息异常: {e}")
+        raise BusinessHTTPException(code=settings.USER_GET_FAILED_CODE, msg="获取用户信息失败", status_code=500)
+
+
 @router.delete("/users/{user_id}", response_model=ResponseModel[Union[DeleteResponse, AuthErrorResponse]])
 async def delete_user(user_id: int, db: AsyncSession = Depends(get_db), current_user: UserSchema = Depends(get_current_user)):
     """删除用户，只允许管理员进行删除，且管理员不能删除其他管理员"""
@@ -394,10 +532,14 @@ async def get_user_logs(
 
 @router.post("/register", response_model=ResponseModel[Union[str, AuthErrorResponse]])
 async def register_patient(
-    phonenumber: str,
-    password: str,
-    name: str,
-    email: Optional[str] = None,
+    phonenumber: str = Body(...),
+    password: str = Body(...),
+    name: str = Body(...),
+    email: Optional[str] = Body(None),
+    patient_type: Optional[str] = Body(None),
+    gender: Optional[str] = Body(None),
+    birth_date: Optional[str] = Body(None),
+    student_id: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
     """患者注册接口"""
@@ -414,10 +556,11 @@ async def register_patient(
         # 创建新用户
         new_user = User(
             phonenumber=phonenumber,
-            name=name,
             hashed_password=get_hash_pwd(password),
             email=email,
-            is_admin=False
+            is_admin=False,
+            # 新注册的患者默认不是管理员，user_type 暂设为 EXTERNAL
+            user_type=UserType.EXTERNAL
         )
         db.add(new_user)
         await db.commit()
@@ -429,6 +572,68 @@ async def register_patient(
         # 保存 token 到 Redis
         await redis.set(f"token:{token}", str(new_user.user_id), ex=settings.TOKEN_EXPIRE_TIME * 60)
         await redis.set(f"user_token:{new_user.user_id}", token, ex=settings.TOKEN_EXPIRE_TIME * 60)
+
+        # 若提供了患者详细信息，则同时创建 Patient 记录
+        try:
+            create_patient = any([patient_type, gender, birth_date, student_id])
+            if create_patient:
+                # 解析 patient_type
+                p_type = None
+                if patient_type:
+                    pt = str(patient_type).strip()
+                    # 支持中文/英文输入（如 '学生' 或 'STUDENT'）
+                    if pt in ("学生", "STUDENT", "student", "Student"):
+                        p_type = PatientType.STUDENT
+                    elif pt in ("教师", "TEACHER", "teacher", "Teacher"):
+                        p_type = PatientType.TEACHER
+                    elif pt in ("职工", "STAFF", "staff", "Staff"):
+                        p_type = PatientType.STAFF
+                # 解析 gender
+                g = None
+                if gender:
+                    gg = str(gender).strip()
+                    if gg in ("男", "MALE", "male", "Male"):
+                        g = Gender.MALE
+                    elif gg in ("女", "FEMALE", "female", "Female"):
+                        g = Gender.FEMALE
+                    else:
+                        g = Gender.UNKNOWN
+
+                # 解析 birth_date (YYYY-MM-DD)
+                bdate = None
+                if birth_date:
+                    try:
+                        from datetime import datetime as _dt
+                        bdate = _dt.strptime(birth_date, "%Y-%m-%d").date()
+                    except Exception:
+                        bdate = None
+
+                # 为避免 Enum 存储值/名称与数据库已有 ENUM 定义不一致，直接写入枚举的 value（中文描述）
+                # 插入数据库时传入 Enum 成员（SQLAlchemy 会处理到数据库的表示），
+                # 避免直接写入枚举的 value 导致与数据库列定义不一致的问题。
+                # 将解析结果存入数据库时使用枚举的 value（存储为数据库定义的字符串），
+                # 以兼容数据库中 ENUM 的定义（数据库中使用中文值：'男','女','未知' 等）。
+                patient = Patient(
+                    user_id=new_user.user_id,
+                    name=name,
+                    gender=(g.value if g else Gender.UNKNOWN.value),
+                    birth_date=bdate,
+                    patient_type=(p_type.value if p_type else PatientType.STUDENT.value),
+                    student_id=student_id,
+                    is_verified=False,
+                    create_time=date.today()
+                )
+                db.add(patient)
+                await db.commit()
+                await db.refresh(patient)
+        except Exception:
+            # 如果创建 Patient 失败，不影响用户注册，记录错误并回滚本次子事务以清理 Session 状态
+            logger.exception("创建 Patient 记录失败，已回滚 Patient 子记录，但用户已创建")
+            try:
+                await db.rollback()
+            except Exception:
+                # 忽略回滚期间的错误，至少记录日志
+                logger.exception("回滚 Patient 子记录时发生异常")
 
         return ResponseModel(code=0, message=token)
     except AuthHTTPException:

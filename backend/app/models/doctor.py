@@ -17,6 +17,7 @@ class Doctor(Base):
     photo_path = Column(String(255), nullable=True, comment="自建服务器上的图片访问路径")
     original_photo_url = Column(String(255), nullable=True, comment="原医院的完整图片下载URL (用于备份)")
     create_time = Column(DateTime, default=None, comment="记录创建时间")
+    is_department_head = Column(Integer, nullable=False, default=0, comment="是否科室长(0/1)")
     
     # 关系字段
     user = relationship("User", back_populates="doctor")
@@ -24,3 +25,5 @@ class Doctor(Base):
     schedules = relationship("Schedule", back_populates="doctor")
     schedule_audits = relationship("ScheduleAudit", back_populates="doctor")
     leave_audits = relationship("LeaveAudit", back_populates="doctor")
+    add_slot_audits = relationship("AddSlotAudit", back_populates="doctor")
+    attendance_records = relationship("AttendanceRecord", back_populates="doctor")

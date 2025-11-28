@@ -1,0 +1,78 @@
+from typing import Optional, List
+from datetime import datetime, date
+from pydantic import BaseModel, Field
+
+class AntiScalperUserItem(BaseModel):
+    user_id: int
+    username: Optional[str] = None
+    risk_level: Optional[str] = None
+    risk_score: Optional[int] = None
+    banned: bool = False
+    ban_type: Optional[str] = None
+    ban_until: Optional[datetime] = None
+
+class AntiScalperUserListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    users: List[AntiScalperUserItem]
+
+class AntiScalperUserDetailResponse(BaseModel):
+    user_id: int
+    username: Optional[str]
+    is_admin: bool
+    risk_score: Optional[int]
+    risk_level: Optional[str]
+    ban_active: bool
+    ban_type: Optional[str]
+    ban_until: Optional[datetime]
+    ban_reason: Optional[str]
+    unban_time: Optional[datetime]
+    # 新增：完整风险日志与封禁记录
+    risk_logs: List["RiskLogItem"] = []
+    ban_records: List["BanRecordItem"] = []
+
+class AntiScalperUserStatsResponse(BaseModel):
+    user_id: int
+    start_date: date
+    end_date: date
+    total_registrations: int
+    total_cancellations: int
+    cancellation_rate: float
+    # 新增：细粒度统计
+    total_completed: int
+    total_no_show: int
+    total_confirmed: int
+    total_pending: int
+    total_waitlist: int
+    login_count: Optional[int] = None
+
+class UserBanRequest(BaseModel):
+    user_id: int
+    ban_type: str = Field(pattern="^(register|login|all)$", description="封禁类型: register/login/all")
+    duration_days: int = Field(ge=0, description="封禁天数, 0 表示永久")
+    reason: str = Field(min_length=1, max_length=500)
+
+class UserUnbanRequest(BaseModel):
+    user_id: int
+    reason: str = Field(min_length=1, max_length=500, description="解除封禁备注")
+
+
+class RiskLogItem(BaseModel):
+    log_id: int
+    risk_score: int
+    risk_level: str
+    behavior_type: Optional[str] = None
+    description: Optional[str] = None
+    alert_time: datetime
+
+
+class BanRecordItem(BaseModel):
+    ban_id: int
+    ban_type: str
+    ban_until: Optional[datetime]
+    is_active: bool
+    reason: Optional[str] = None
+    banned_at: datetime
+    deactivated_at: Optional[datetime] = None
+
