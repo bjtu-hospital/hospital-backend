@@ -5,7 +5,7 @@ from typing import Optional
 #USER数据模型
 
 class userBase(BaseModel):
-    identifier: str = Field(max_length=50, description="工号（必填）")
+    identifier: Optional[str] = Field(default=None, max_length=50, description="工号（员工必填，患者可选）")
     email: Optional[EmailStr] = Field(default=None, description="邮箱（可选）")
     phonenumber: Optional[str] = Field(default=None, max_length=14, description="手机号（可选）")
 

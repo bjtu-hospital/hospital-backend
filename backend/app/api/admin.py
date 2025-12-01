@@ -2180,7 +2180,7 @@ async def get_patients(
                 "phone": user.phonenumber,
                 "gender": patient.gender.value if patient.gender else "未知",
                 "age": age,
-                "id_card": patient.student_id  # 使用student_id作为身份证号/学号工号
+                "id_card": getattr(patient, 'identifier', None)  # 使用 identifier 作为身份证号/学号/工号
             })
         
         return ResponseModel(code=0, message={"patients": patients})

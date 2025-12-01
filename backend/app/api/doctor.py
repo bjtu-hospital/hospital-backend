@@ -2746,13 +2746,13 @@ async def get_patient_detail(
 				# 太短的号码用星号代替
 				phone_masked = "*" * len(phone)
 		
-		# 身份证号脱敏（保留前6位和后4位） - 使用 student_id 作为身份证号
+		# 证件号/学号脱敏（保留前6位和后4位）
 		idcard_masked = None
-		if patient.student_id and len(patient.student_id) >= 10:
-			idcard = patient.student_id
+		if getattr(patient, 'identifier', None) and len(patient.identifier) >= 10:
+			idcard = patient.identifier
 			idcard_masked = idcard[:6] + "********" + idcard[-4:]
-		elif patient.student_id:
-			idcard_masked = patient.student_id
+		elif getattr(patient, 'identifier', None):
+			idcard_masked = patient.identifier
 		
 		# 构建基本信息
 		basic_info = {
