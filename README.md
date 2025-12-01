@@ -494,7 +494,203 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
-## 8. 管理员注册（开发/运维） Post: `/auth/register-admin`
+## 4. 获取用户信息（多角色） Post: `/auth/user-info`
+
+### 用途
+多角色通用用户信息接口,返回当前登录用户的患者信息和医生信息（如果有）
+
+### 请求头
+```
+Authorization: Bearer <token>
+```
+
+### 响应结构
+返回结构包含患者与医生信息（按角色返回可用字段）：
+- `patient`: 按 USER-API 约定返回患者个人信息字段（若用户有患者记录）
+- `doctor`: 若当前用户绑定医生记录则返回医生资料，否则为 `null`
+
+### 成功响应示例
+```json
+{
+    "code": 0,
+    "message": {
+        "patient": {
+            "id": "12345",
+            "phonenumber": "13800138000",
+            "realName": "张三",
+            "studentId": "2021001",
+            "idCard": "2021001",
+            "email": "zhangsan@bjtu.edu.cn",
+            "gender": "男",
+            "birthDate": "2000-01-01",
+            "patientType": "学生",
+            "avatar": null,
+            "verified": true,
+            "createdAt": "2024-01-01 10:00:00",
+            "updatedAt": null,
+            "maskedInfo": {
+                "phone": "138****8000",
+                "idCard": "202100********001"
+            },
+            "age": 25
+        },
+        "doctor": {
+            "id": 1,
+            "name": "张三",
+            "department": "心内科",
+            "department_id": 1,
+            "hospital": "主院区",
+            "title": "主治医师",
+            "is_department_head": false,
+            "photo_mime": "image/jpeg",
+            "photo_base64": "/9j/4AAQSkZJRg..."
+        }
+    }
+}
+```
+
+### 字段说明
+
+#### patient 字段
+- `id`: 患者ID
+- `phonenumber`: 手机号
+- `realName`: 真实姓名
+- `studentId`: 学号（仅学生类型患者有值）
+- `idCard`: 证件号（使用 identifier 字段）
+- `email`: 邮箱
+- `gender`: 性别（男/女/未知）
+- `birthDate`: 出生日期（YYYY-MM-DD格式）
+- `patientType`: 患者类型（学生/教师/职工）
+- `avatar`: 头像（当前为 null）
+- `verified`: 是否已验证
+- `createdAt`: 创建时间
+- `updatedAt`: 更新时间
+- `maskedInfo`: 脱敏信息
+  - `phone`: 脱敏后的手机号（前3位+****+后4位）
+  - `idCard`: 脱敏后的证件号（前6位+********+后4位）
+- `age`: 根据出生日期计算的年龄
+
+#### doctor 字段
+- `id`: 医生ID
+- `name`: 医生姓名
+- `department`: 科室名称
+- `department_id`: 科室ID
+- `hospital`: 院区名称
+- `title`: 职称
+- `is_department_head`: 是否为科室长
+- `photo_mime`: 照片MIME类型
+- `photo_base64`: Base64编码的照片数据
+
+### 注意事项
+- 若用户没有患者记录，`patient` 为 `null`
+- 若用户没有医生记录，`doctor` 为 `null`
+- 患者类型为非学生时，`studentId` 为 `null`
+
+---
+
+## 5. 更新用户信息 Put: `/auth/profile`
+
+### 用途
+更新当前登录用户的个人信息
+
+### 请求头
+```
+Authorization: Bearer <token>
+```
+
+### 请求参数
+所有参数均为可选，只需传递需要更新的字段
+
+```json
+{
+    "realName": "李四",
+    "email": "lisi@bjtu.edu.cn",
+    "gender": "女",
+    "birthDate": "1995-06-15"
+}
+```
+
+### 参数说明
+- `realName` (string, optional): 真实姓名，更新患者表的 `name` 字段
+- `email` (string, optional): 邮箱，更新用户表的 `email` 字段（会检查唯一性）
+- `gender` (string, optional): 性别，支持以下值：
+  - 中文: "男" / "女" / "未知"
+  - 英文: "MALE" / "FEMALE" / "UNKNOWN"（不区分大小写）
+- `birthDate` (string, optional): 出生日期，格式为 `YYYY-MM-DD`
+
+### 成功响应示例
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "个人信息更新成功",
+        "updatedFields": {
+            "realName": "李四",
+            "email": "lisi@bjtu.edu.cn",
+            "gender": "女",
+            "birthDate": "1995-06-15"
+        }
+    }
+}
+```
+
+### 错误响应示例
+
+#### 患者记录不存在
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "资源错误",
+        "msg": "患者记录不存在，请先完成注册"
+    }
+}
+```
+
+#### 邮箱已被占用
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "该邮箱已被其他用户使用"
+    }
+}
+```
+
+#### 性别参数无效
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "性别参数无效，请使用：男/女/未知"
+    }
+}
+```
+
+#### 出生日期格式错误
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "出生日期格式错误，请使用 YYYY-MM-DD 格式"
+    }
+}
+```
+
+### 业务规则
+1. **患者记录检查**: 用户必须有对应的患者记录才能更新信息
+2. **邮箱唯一性**: 更新邮箱时会检查是否被其他用户使用
+3. **性别验证**: 支持中英文输入，不区分大小写
+4. **日期格式**: 出生日期必须严格遵循 `YYYY-MM-DD` 格式
+5. **部分更新**: 仅更新提供的字段，未提供的字段保持不变
+6. **事务安全**: 所有更新在一个事务中完成，确保数据一致性
+
+---
+
+## 6. 管理员注册（开发/运维） Post: `/auth/register-admin`
 ### 用途
 用于创建管理员账户。逻辑如下：
 - 如果系统尚无 Administrator 记录（首次引导），允许无认证创建第一个管理员（bootstrap）。

@@ -388,53 +388,122 @@ async def get_me(current_user: UserSchema = Depends(get_current_user)):
 
 @router.post("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
 async def get_user_info(current_user: UserSchema = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """获取医生端用户信息（若当前登录用户绑定医生记录则返回医生资料）"""
+    """多角色通用用户信息接口
+
+    返回结构包含患者与医生信息（按角色返回可用字段）：
+    - patient: 按 USER-API 约定返回患者个人信息字段
+    - doctor: 若当前用户绑定医生记录则返回医生资料，否则为 None
+    """
     try:
+        # 查询医生信息（如有）
         doctor_res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
         doctor = doctor_res.scalar_one_or_none()
-        if not doctor:
-            return ResponseModel(code=0, message={"doctor": None})
-        dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
-        dept = dept_res.scalar_one_or_none()
-        # 读取并编码医生照片（如果存在）
+        dept = None
         photo_base64 = None
         photo_mime = None
-        if doctor.photo_path:
-            base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
-            rel_path = doctor.photo_path.lstrip("/")
-            if rel_path.startswith("app/"):
-                rel_path = rel_path[4:]
-            fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
-            if os.path.exists(fs_path) and os.path.isfile(fs_path):
-                mime_type, _ = mimetypes.guess_type(fs_path)
-                if not mime_type:
-                    mime_type = "application/octet-stream"
-                try:
-                    with open(fs_path, "rb") as f:
-                        bdata = f.read()
-                        photo_base64 = base64.b64encode(bdata).decode("utf-8")
-                        photo_mime = mime_type
-                except Exception:
-                    photo_base64 = None
-                    photo_mime = None
-        return ResponseModel(code=0, message={
-            "doctor": {
+        if doctor:
+            dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
+            dept = dept_res.scalar_one_or_none()
+            # 读取并编码医生照片（如果存在）
+            if doctor.photo_path:
+                base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+                rel_path = doctor.photo_path.lstrip("/")
+                if rel_path.startswith("app/"):
+                    rel_path = rel_path[4:]
+                fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+                if os.path.exists(fs_path) and os.path.isfile(fs_path):
+                    mime_type, _ = mimetypes.guess_type(fs_path)
+                    if not mime_type:
+                        mime_type = "application/octet-stream"
+                    try:
+                        with open(fs_path, "rb") as f:
+                            bdata = f.read()
+                            photo_base64 = base64.b64encode(bdata).decode("utf-8")
+                            photo_mime = mime_type
+                    except Exception:
+                        photo_base64 = None
+                        photo_mime = None
+
+        # 查询患者信息（如有）
+        patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        patient = patient_res.scalar_one_or_none()
+
+        # 计算年龄
+        age = None
+        if patient and patient.birth_date:
+            from datetime import date as date_type
+            today = date_type.today()
+            age = today.year - patient.birth_date.year
+            if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                age -= 1
+
+        # 敏感信息脱敏
+        phone_masked = None
+        if getattr(current_user, "phonenumber", None):
+            phone = str(current_user.phonenumber)
+            if len(phone) >= 11:
+                phone_masked = phone[:3] + "****" + phone[-4:]
+            elif len(phone) >= 7:
+                phone_masked = phone[:3] + "****" + phone[-4:]
+            else:
+                phone_masked = "*" * len(phone)
+
+        # 证件号（使用 identifier 作为学号/工号/证件号），进行掩码
+        idcard_masked = None
+        identifier_val = getattr(patient, "identifier", None) if patient else None
+        if identifier_val and len(identifier_val) >= 10:
+            idcard_masked = identifier_val[:6] + "********" + identifier_val[-4:]
+        elif identifier_val:
+            idcard_masked = identifier_val
+
+        # 构建患者信息（遵循 USER-API 字段命名）
+        patient_info = None
+        if patient:
+            patient_info = {
+                "id": str(patient.patient_id),
+                "phonenumber": current_user.phonenumber,
+                "realName": patient.name,
+                "studentId": identifier_val if patient.patient_type == PatientType.STUDENT.value else None,
+                "idCard": identifier_val,  # 业务上暂用 identifier 作为证件号/学号/工号
+                "email": getattr(current_user, "email", None),
+                "gender": (patient.gender.value if patient.gender else "未知"),
+                "birthDate": (patient.birth_date.strftime("%Y-%m-%d") if patient.birth_date else None),
+                "patientType": (patient.patient_type if isinstance(patient.patient_type, str) else getattr(patient.patient_type, "value", None)),
+                "avatar": None,
+                "verified": bool(getattr(patient, "is_verified", False)),
+                "createdAt": (patient.create_time.strftime("%Y-%m-%d %H:%M:%S") if getattr(patient, "create_time", None) else None),
+                "updatedAt": None,
+                # 额外可选：返回脱敏后的手机号与证件信息，便于前端直接展示
+                "maskedInfo": {
+                    "phone": phone_masked,
+                    "idCard": idcard_masked
+                },
+                "age": age
+            }
+
+        # 构建医生信息（保持原有字段）
+        doctor_info = None
+        if doctor:
+            doctor_info = {
                 "id": doctor.doctor_id,
                 "name": doctor.name,
                 "department": dept.name if dept else None,
                 "department_id": doctor.dept_id,
                 "hospital": "主院区",
                 "title": doctor.title,
-                # 标记该医生是否为科室长，便于前端权限/展示判断
                 "is_department_head": bool(getattr(doctor, "is_department_head", False)),
                 "photo_mime": photo_mime,
                 "photo_base64": photo_base64
             }
+
+        return ResponseModel(code=0, message={
+            "patient": patient_info,
+            "doctor": doctor_info
         })
     except AuthHTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取医生用户信息异常: {e}")
+        logger.error(f"获取用户信息异常: {e}")
         raise BusinessHTTPException(code=settings.USER_GET_FAILED_CODE, msg="获取用户信息失败", status_code=500)
 
 
@@ -539,7 +608,7 @@ async def register_patient(
     patient_type: Optional[str] = Body(None),
     gender: Optional[str] = Body(None),
     birth_date: Optional[str] = Body(None),
-    student_id: Optional[str] = Body(None),
+    identifier: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
     """患者注册接口"""
@@ -575,7 +644,7 @@ async def register_patient(
 
         # 若提供了患者详细信息，则同时创建 Patient 记录
         try:
-            create_patient = any([patient_type, gender, birth_date, student_id])
+            create_patient = any([patient_type, gender, birth_date, identifier])
             if create_patient:
                 # 解析 patient_type
                 p_type = None
@@ -619,8 +688,8 @@ async def register_patient(
                     gender=(g.value if g else Gender.UNKNOWN.value),
                     birth_date=bdate,
                     patient_type=(p_type.value if p_type else PatientType.STUDENT.value),
-                    student_id=student_id,
-                    is_verified=False,
+                    identifier=identifier,
+                    is_verified=True, #后续再调整
                     create_time=date.today()
                 )
                 db.add(patient)
@@ -768,6 +837,119 @@ async def logout(current_user: UserSchema = Depends(get_current_user)):
         raise BusinessHTTPException(
             code=settings.DATA_DELETE_FAILED_CODE,
             msg="登出失败，请稍后重试",
+            status_code=500
+        )
+
+
+@router.put("/profile", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_profile(
+    realName: Optional[str] = Body(None),
+    email: Optional[str] = Body(None),
+    gender: Optional[str] = Body(None),
+    birthDate: Optional[str] = Body(None),
+    current_user: UserSchema = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """更新当前登录用户的个人信息
+    
+    允许用户更新以下字段（可选）：
+    - realName: 真实姓名
+    - email: 邮箱
+    - gender: 性别（男/女/未知）
+    - birthDate: 出生日期（YYYY-MM-DD格式）
+    """
+    try:
+        # 查询患者记录
+        patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        patient = patient_res.scalar_one_or_none()
+        
+        if not patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者记录不存在，请先完成注册",
+                status_code=404
+            )
+        
+        # 更新姓名
+        if realName is not None:
+            patient.name = realName
+        
+        # 更新邮箱（更新 User 表）
+        if email is not None:
+            # 检查邮箱是否已被其他用户使用
+            email_check = await db.execute(
+                select(User).where(
+                    and_(
+                        User.email == email,
+                        User.user_id != current_user.user_id
+                    )
+                )
+            )
+            if email_check.scalar_one_or_none():
+                raise BusinessHTTPException(
+                    code=settings.DATA_UPDATE_FAILED_CODE,
+                    msg="该邮箱已被其他用户使用",
+                    status_code=400
+                )
+            
+            user_res = await db.execute(select(User).where(User.user_id == current_user.user_id))
+            user = user_res.scalar_one_or_none()
+            if user:
+                user.email = email
+        
+        # 更新性别
+        if gender is not None:
+            g = str(gender).strip()
+            if g in ("男", "MALE", "male", "Male"):
+                patient.gender = Gender.MALE.value
+            elif g in ("女", "FEMALE", "female", "Female"):
+                patient.gender = Gender.FEMALE.value
+            elif g in ("未知", "UNKNOWN", "unknown", "Unknown"):
+                patient.gender = Gender.UNKNOWN.value
+            else:
+                raise BusinessHTTPException(
+                    code=settings.DATA_UPDATE_FAILED_CODE,
+                    msg="性别参数无效，请使用：男/女/未知",
+                    status_code=400
+                )
+        
+        # 更新出生日期
+        if birthDate is not None:
+            try:
+                from datetime import datetime as _dt
+                bdate = _dt.strptime(birthDate, "%Y-%m-%d").date()
+                patient.birth_date = bdate
+            except ValueError:
+                raise BusinessHTTPException(
+                    code=settings.DATA_UPDATE_FAILED_CODE,
+                    msg="出生日期格式错误，请使用 YYYY-MM-DD 格式",
+                    status_code=400
+                )
+        
+        await db.commit()
+        await db.refresh(patient)
+        
+        return ResponseModel(code=0, message={
+            "detail": "个人信息更新成功",
+            "updatedFields": {
+                "realName": patient.name if realName is not None else None,
+                "email": email if email is not None else None,
+                "gender": patient.gender if gender is not None else None,
+                "birthDate": patient.birth_date.strftime("%Y-%m-%d") if birthDate is not None and patient.birth_date else None
+            }
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"更新用户信息时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_UPDATE_FAILED_CODE,
+            msg="更新用户信息失败，请稍后重试",
             status_code=500
         )
 
