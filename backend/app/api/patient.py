@@ -12,6 +12,7 @@ from app.db.base import get_db, User, MajorDepartment, MinorDepartment, Doctor, 
 from app.models.hospital_area import HospitalArea
 from app.models.registration_order import RegistrationOrder, OrderStatus, PaymentStatus
 from app.models.patient import Patient
+from app.models.visit_history import VisitHistory
 from app.schemas.response import ResponseModel
 from app.schemas.appointment import (
     AppointmentCreate,
@@ -19,6 +20,15 @@ from app.schemas.appointment import (
     AppointmentListResponse,
     AppointmentListItem,
     CancelAppointmentResponse
+)
+from app.schemas.health_record import (
+    HealthRecordResponse,
+    BasicInfo,
+    MedicalHistory,
+    ConsultationRecord,
+    VisitRecordDetailResponse,
+    VisitRecordDetail,
+    RecordData
 )
 from app.core.config import settings
 from app.core.exception_handler import BusinessHTTPException, ResourceHTTPException, AuthHTTPException
@@ -1267,3 +1277,223 @@ async def cancel_appointment(
         )
 
 
+# ====== 健康档案相关接口 ======
+
+
+@router.get("/health-record", response_model=ResponseModel[HealthRecordResponse])
+async def get_my_health_record(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取我的健康档案（完整数据）- 需要登录
+    
+    返回内容:
+    - 基本信息（姓名、性别、年龄、身高、电话、证件号、地址）
+    - 病史信息（既往病史、过敏史、家族病史）
+    - 就诊记录列表
+    """
+    try:
+        # 1. 查询患者信息
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        patient = patient_res.scalar_one_or_none()
+        
+        if not patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 2. 计算年龄
+        age = None
+        if patient.birth_date:
+            today = date_type.today()
+            age = today.year - patient.birth_date.year
+            if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                age -= 1
+        
+        # 3. 脱敏处理
+        phone_masked = None
+        if getattr(current_user, "phonenumber", None):
+            phone = str(current_user.phonenumber)
+            if len(phone) >= 11:
+                phone_masked = phone[:3] + "****" + phone[-4:]
+            elif len(phone) >= 7:
+                phone_masked = phone[:3] + "****" + phone[-4:]
+            else:
+                phone_masked = "*" * len(phone)
+        
+        idcard_masked = None
+        identifier_val = getattr(patient, "identifier", None)
+        if identifier_val and len(identifier_val) >= 10:
+            idcard_masked = identifier_val[:6] + "********" + identifier_val[-4:]
+        elif identifier_val:
+            idcard_masked = identifier_val
+        
+        # 4. 构建基本信息
+        basic_info = BasicInfo(
+            name=patient.name,
+            gender=patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
+            age=age,
+            height=None,  # TODO: 需要在 Patient 模型中添加身高字段
+            phone=phone_masked or "",
+            idCard=idcard_masked,
+            address=None  # TODO: 需要在 Patient 模型中添加地址字段
+        )
+        
+        # 5. 病史信息（目前使用空列表，待后续扩展）
+        # TODO: 需要创建 MedicalHistory 表来存储既往病史、过敏史、家族病史
+        medical_history = MedicalHistory(
+            pastHistory=[],
+            allergyHistory=[],
+            familyHistory=[]
+        )
+        
+        # 6. 查询就诊记录
+        visit_res = await db.execute(
+            select(VisitHistory, Doctor, MinorDepartment, RegistrationOrder)
+            .outerjoin(Doctor, Doctor.doctor_id == VisitHistory.doctor_id)
+            .outerjoin(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .outerjoin(RegistrationOrder, RegistrationOrder.order_id == VisitHistory.order_id)
+            .where(VisitHistory.patient_id == patient.patient_id)
+            .order_by(VisitHistory.visit_date.desc())
+        )
+        
+        visit_rows = visit_res.all()
+        
+        consultation_records = []
+        for visit, doctor, dept, order in visit_rows:
+            # 判断状态
+            status = "completed"
+            if visit.followup_required:
+                status = "ongoing"
+            
+            consultation_records.append(ConsultationRecord(
+                id=str(visit.visit_id),
+                outpatientNo=order.order_no if order else None,
+                visitDate=visit.visit_date.strftime("%Y-%m-%d %H:%M") if isinstance(visit.visit_date, datetime) else str(visit.visit_date),
+                department=dept.name if dept else "未知科室",
+                doctorName=doctor.name if doctor else "未知医生",
+                chiefComplaint=None,  # VisitHistory 表中没有主诉字段
+                presentIllness=None,  # VisitHistory 表中没有现病史字段
+                auxiliaryExam=None,  # VisitHistory 表中没有辅助检查字段
+                diagnosis=visit.diagnosis,
+                prescription=visit.prescription,
+                status=status
+            ))
+        
+        # 7. 构建响应
+        response = HealthRecordResponse(
+            patientId=str(patient.patient_id),
+            basicInfo=basic_info,
+            medicalHistory=medical_history,
+            consultationRecords=consultation_records
+        )
+        
+        return ResponseModel(code=0, message=response)
+        
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取健康档案时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取健康档案失败",
+            status_code=500
+        )
+
+
+@router.get("/visit-record/{visitId}", response_model=ResponseModel[VisitRecordDetailResponse])
+async def get_visit_record_detail(
+    visitId: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取就诊记录详情 - 需要登录
+    
+    参数:
+    - visitId: 就诊记录ID
+    
+    返回:
+    - 基本信息（患者、医生、科室等）
+    - 记录数据（主诉、现病史、辅助检查、诊断、处方）
+    """
+    try:
+        # 1. 查询就诊记录及关联信息
+        visit_res = await db.execute(
+            select(VisitHistory, Patient, Doctor, MinorDepartment, RegistrationOrder)
+            .join(Patient, Patient.patient_id == VisitHistory.patient_id)
+            .outerjoin(Doctor, Doctor.doctor_id == VisitHistory.doctor_id)
+            .outerjoin(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .outerjoin(RegistrationOrder, RegistrationOrder.order_id == VisitHistory.order_id)
+            .where(VisitHistory.visit_id == visitId)
+        )
+        
+        row = visit_res.first()
+        
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="就诊记录不存在",
+                status_code=404
+            )
+        
+        visit, patient, doctor, dept, order = row
+        
+        # 2. 验证权限（只能查看自己的就诊记录）
+        if patient.user_id != current_user.user_id:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权查看该就诊记录",
+                status_code=403
+            )
+        
+        # 3. 计算年龄
+        age = None
+        if patient.birth_date:
+            today = date_type.today()
+            age = today.year - patient.birth_date.year
+            if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                age -= 1
+        
+        # 4. 构建基本信息
+        basic_info = VisitRecordDetail(
+            patientName=patient.name,
+            gender=patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
+            age=age,
+            outpatientNo=order.order_no if order else None,
+            visitDate=visit.visit_date.strftime("%Y-%m-%d %H:%M") if isinstance(visit.visit_date, datetime) else str(visit.visit_date),
+            department=dept.name if dept else "未知科室",
+            doctorName=doctor.name if doctor else "未知医生"
+        )
+        
+        # 5. 构建记录数据
+        record_data = RecordData(
+            chiefComplaint=None,  # VisitHistory 表中没有主诉字段
+            presentIllness=None,  # VisitHistory 表中没有现病史字段
+            auxiliaryExam=None,  # VisitHistory 表中没有辅助检查字段
+            diagnosis=visit.diagnosis,
+            prescription=visit.prescription
+        )
+        
+        # 6. 构建响应
+        response = VisitRecordDetailResponse(
+            basicInfo=basic_info,
+            recordData=record_data
+        )
+        
+        return ResponseModel(code=0, message=response)
+        
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取就诊记录详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取就诊记录详情失败",
+            status_code=500
+        )

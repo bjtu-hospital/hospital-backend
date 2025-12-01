@@ -5295,7 +5295,181 @@ PUT /appointments/1001/cancel
 
 ---
 
-## 3. 配置说明
+## 3. 健康档案相关接口（需要登录）
+
+### 3.1 获取我的健康档案 Get: `/patient/health-record`
+
+获取当前登录患者的完整健康档案，包含基本信息、病史信息和就诊记录列表。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "patientId": "123456",
+        "basicInfo": {
+            "name": "张三",
+            "gender": "男",
+            "age": 35,
+            "height": 175,
+            "phone": "138****5678",
+            "idCard": "110101********1234",
+            "address": "北京市海淀区学院路37号北京交通大学"
+        },
+        "medicalHistory": {
+            "pastHistory": [
+                "2020年患急性阑尾炎，已手术治疗",
+                "2018年患轻度高血压，正在药物控制中"
+            ],
+            "allergyHistory": [
+                "青霉素过敏",
+                "海鲜过敏（虾、蟹）"
+            ],
+            "familyHistory": [
+                "父亲患有高血压",
+                "母亲患有糖尿病"
+            ]
+        },
+        "consultationRecords": [
+            {
+                "id": "1",
+                "outpatientNo": "061651734",
+                "visitDate": "2025-07-05 09:04",
+                "department": "全科医学科(综合内科)门诊",
+                "doctorName": "姜岚",
+                "chiefComplaint": "胆红素代谢紊乱史",
+                "presentIllness": "胆红素代谢紊乱史，来诊复查化验",
+                "auxiliaryExam": "2025-04-25 13:07，常规生化，肝功4白蛋白/球蛋白 2.56；*直接胆红素 8.7*umol/L；",
+                "diagnosis": "胆红素代谢紊乱",
+                "prescription": "1.全血细胞计数+5分类\n2.凝血分析\n3.生化23",
+                "status": "completed"
+            }
+        ]
+    }
+}
+```
+
+#### 字段说明:
+
+**basicInfo (基本信息)**:
+- `name`: 患者姓名
+- `gender`: 性别
+- `age`: 年龄（根据出生日期自动计算）
+- `height`: 身高（cm）
+- `phone`: 联系电话（已脱敏）
+- `idCard`: 身份证号/学号/工号（已脱敏）
+- `address`: 居住地址
+
+**medicalHistory (病史信息)**:
+- `pastHistory`: 既往病史列表
+- `allergyHistory`: 过敏史列表
+- `familyHistory`: 家族病史列表
+
+**consultationRecords (就诊记录列表)**:
+- `id`: 就诊记录ID
+- `outpatientNo`: 门诊号
+- `visitDate`: 就诊时间
+- `department`: 科室
+- `doctorName`: 医生
+- `chiefComplaint`: 主诉
+- `presentIllness`: 现病史
+- `auxiliaryExam`: 辅助检查
+- `diagnosis`: 诊断
+- `prescription`: 处方
+- `status`: 状态（completed/ongoing/cancelled）
+
+#### 注意事项:
+- 仅返回当前登录用户的健康档案
+- 敏感信息已脱敏处理（电话、证件号）
+- 病史信息需要管理员维护（当前返回空列表）
+- 就诊记录按日期倒序排列
+
+---
+
+### 3.2 获取就诊记录详情 Get: `/patient/visit-record/{visitId}`
+
+获取指定就诊记录的完整详细信息。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `visitId`: 就诊记录ID
+
+#### 请求示例:
+```
+GET /patient/visit-record/194
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "basicInfo": {
+            "patientName": "张三",
+            "gender": "男",
+            "age": 35,
+            "outpatientNo": "061651734",
+            "visitDate": "2025-07-05 09:04",
+            "department": "全科医学科(综合内科)门诊",
+            "doctorName": "姜岚"
+        },
+        "recordData": {
+            "chiefComplaint": "胆红素代谢紊乱史",
+            "presentIllness": "胆红素代谢紊乱史，来诊复查化验",
+            "auxiliaryExam": "2025-04-25 13:07，常规生化，肝功4白蛋白/球蛋白 2.56",
+            "diagnosis": "胆红素代谢紊乱",
+            "prescription": "1.全血细胞计数+5分类\n2.凝血分析\n3.生化23"
+        }
+    }
+}
+```
+
+#### 字段说明:
+
+**basicInfo (基本信息)**:
+- `patientName`: 患者姓名
+- `gender`: 性别
+- `age`: 年龄
+- `outpatientNo`: 门诊号
+- `visitDate`: 就诊时间
+- `department`: 科室
+- `doctorName`: 医生
+
+**recordData (记录数据)**:
+- `chiefComplaint`: 主诉
+- `presentIllness`: 现病史
+- `auxiliaryExam`: 辅助检查
+- `diagnosis`: 诊断
+- `prescription`: 处方
+
+#### 权限控制:
+- 患者只能查看自己的就诊记录
+- 医生可查看自己接诊的病历
+- 管理员可查看所有病历
+
+#### 错误示例:
+```json
+{
+    "code": 102,
+    "message": {
+        "error": "权限不足",
+        "msg": "无权查看该就诊记录"
+    }
+}
+```
+
+---
+
+## 4. 配置说明
 
 患者端挂号受以下配置影响（支持分级配置：DOCTOR > CLINIC > MINOR_DEPT > GLOBAL）：
 
