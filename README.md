@@ -16,6 +16,7 @@
 - API 权限与标准响应
 - 认证 API 接口（`/auth`）
 - 管理员 API 接口（`/admin`）
+ - 患者 API 接口（`/patient`）
 
 ---
 
@@ -5661,7 +5662,7 @@ Authorization: Bearer <token>
 Authorization: Bearer <token>
 ```
 
-### 2.1 创建预约挂号 Post: `/appointments`
+### 3.1 创建预约挂号 Post: `/appointments`
 
 创建新的预约挂号订单。
 
@@ -5731,7 +5732,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 2.2 获取我的预约列表 Get: `/appointments`
+### 3.2 获取我的预约列表 Get: `/appointments`
 
 获取当前用户的所有预约记录，支持状态过滤和分页。
 
@@ -5808,7 +5809,7 @@ GET /appointments?status=pending&page=1&pageSize=20
 
 ---
 
-### 2.3 取消预约 Put: `/appointments/{appointmentId}/cancel`
+### 3.3 取消预约 Put: `/appointments/{appointmentId}/cancel`
 
 取消指定的预约订单。
 
@@ -5858,9 +5859,9 @@ PUT /appointments/1001/cancel
 
 ---
 
-## 3. 健康档案相关接口（需要登录）
+## 4. 健康档案相关接口（需要登录）
 
-### 3.1 获取我的健康档案 Get: `/patient/health-record`
+### 4.1 获取我的健康档案 Get: `/patient/health-record`
 
 获取当前登录患者的完整健康档案，包含基本信息、病史信息和就诊记录列表。
 
@@ -5956,7 +5957,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 3.2 获取就诊记录详情 Get: `/patient/visit-record/{visitId}`
+### 4.2 获取就诊记录详情 Get: `/patient/visit-record/{visitId}`
 
 获取指定就诊记录的完整详细信息。
 
@@ -6055,6 +6056,33 @@ GET /patient/visit-record/194
 
 ---
 
+## 5. 校园身份认证接口
+### 5.1  校内身份认证接口：`POST /patient/identity/verify`
+- 说明：先登录校方系统成功，再获取身份信息入库；失败不入库。
+- 请求体：
+    - `identifier`：学号/工号（字符串）
+    - `password`：校园系统密码（字符串）
+- 成功返回（`message` 字段示例）：
+    ```json
+    {
+        "status": "0",
+        "patient_id": 3,
+        "identifier": "23301082",
+        "patient_type": "学生",
+        "userId": "23301082",
+        "userName": "张三",
+        "roleCode": "xs",
+        "roleName": "学生"
+    }
+    ```
+- 失败示例：
+    - `校园登录失败，请检查账号或密码`
+    - `该学号已被其他患者使用`
+    - `该学号已被其他账号使用`
+- 入库与校验规则：
+    - 更新 `Patient.identifier`，`Patient.patient_type` 由 `roleName` 映射（学生/教师/职工），并置 `Patient.is_verified=true`。
+    - 同步更新 `User.identifier` 与 `User.user_type`（student/teacher/external），并置 `User.is_verified=true`。
+    - 学号唯一性：若该 `identifier` 已被其他患者或用户占用，返回业务错误，不更新。
 
 # 七、通用相关 API (`/common`)
 
