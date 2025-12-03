@@ -9,6 +9,7 @@ class PatientType(enum.Enum):
     STUDENT = "学生"
     TEACHER = "教师"
     STAFF = "职工"
+    EXTERNAL = "校外"  # 校外就诊人（通过关系添加）
 
 
 # 定义性别枚举
@@ -23,7 +24,7 @@ class Patient(Base):
     __tablename__ = "patient"
     
     patient_id = Column(BigInteger, primary_key=True, autoincrement=True, comment="患者业务 ID")
-    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False, unique=True, comment="外键，关联 user.user_id")
+    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=True, unique=True, comment="外键，关联 user.user_id")
     name = Column(String(50), nullable=False, comment="真实姓名")
     # 使用枚举的 value 存储（例如中文值："男"/"女"/"未知"），
     # 避免 SQLAlchemy 默认按枚举成员名（MALE/FEMALE/UNKNOWN）验证导致与 DB 已有字符串值冲突。
@@ -37,6 +38,7 @@ class Patient(Base):
     patient_type = Column(
         Enum(PatientType, values_callable=lambda e: [v.value for v in e], name="patienttype", native_enum=False),
         nullable=False,
+        default=PatientType.EXTERNAL,  # 默认为校外就诊人
         comment="患者身份类型"
     )
     identifier = Column(String(50), nullable=True, unique=True, comment="学号/工号/证件号（用于认证）")
