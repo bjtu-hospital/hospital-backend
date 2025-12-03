@@ -72,9 +72,13 @@ class User(Base):
     # 与patient表为一对一的关系
     patient = relationship("Patient", back_populates="user", uselist=False)
 
+
     # 与加号申请的关系（发起者/患者接收）
     add_slot_applications = relationship("AddSlotAudit", back_populates="applicant", foreign_keys='AddSlotAudit.applicant_id')
-    
+
+    # 反馈（意见反馈）一对多
+    feedbacks = relationship("Feedback", back_populates="user")
+
     # 审核人关系(管理员或科室长)
     audited_leave_audits = relationship("LeaveAudit", back_populates="auditor", foreign_keys='LeaveAudit.auditor_user_id')
     audited_add_slot_audits = relationship("AddSlotAudit", back_populates="auditor", foreign_keys='AddSlotAudit.auditor_user_id')
