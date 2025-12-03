@@ -21,6 +21,7 @@ from app.services.risk_detection_service import risk_detection_service
 from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
+from app.services.sms_service import SMSService
 import os
 import mimetypes
 import base64
@@ -29,6 +30,32 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer("/auth/swagger-login", auto_error=False)
+
+
+@router.post("/sms/send-code", summary="发送手机号验证码", tags=["Auth"]) 
+async def send_sms_code(phone: str = Body(..., embed=True)):
+    """发送验证码到指定手机号，受限流与TTL控制"""
+    try:
+        result = await SMSService.send_code(phone)
+        return ResponseModel(code=0, message=result)
+    except BusinessHTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"发送短信验证码异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="短信发送失败", status_code=500)
+
+
+@router.post("/sms/verify-code", summary="校验手机号验证码", tags=["Auth"]) 
+async def verify_sms_code(phone: str = Body(..., embed=True), code: str = Body(..., embed=True)):
+    """校验验证码，成功后在Redis写入 verified 标记，窗口期内可注册"""
+    try:
+        result = await SMSService.verify_code(phone, code)
+        return ResponseModel(code=0, message=result)
+    except BusinessHTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"校验短信验证码异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="验证码校验失败", status_code=500)
 
 async def get_current_user_optional(
     token: Optional[str] = Depends(oauth2_scheme),
@@ -85,7 +112,7 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
         if user.is_deleted:
             raise HTTPException(status_code=401, detail="用户不存在或已被删除")
         if not user.is_verified:
-            raise HTTPException(status_code=401, detail="邮箱未验证，请先完成邮箱验证")
+            raise HTTPException(status_code=401, detail="账号未验证，请先完成验证")
         
         # 检查用户是否被封禁
         ban_result = await db.execute(
@@ -151,6 +178,14 @@ async def patient_login(login_data: PatientLogin, request: Request, db: AsyncSes
             status_code=401
         )
     
+    # 检查用户是否已验证
+    if not user.is_verified:
+        raise AuthHTTPException(
+            code=settings.LOGIN_FAILED_CODE,
+            msg="账号未验证，请先完成手机号验证",
+            status_code=401
+        )
+    
     # 检查用户是否被封禁
     ban_result = await db.execute(
         select(UserBan).where(
@@ -212,6 +247,14 @@ async def staff_login(login_data: StaffLogin, request: Request, db: AsyncSession
         raise AuthHTTPException(
             code=settings.LOGIN_FAILED_CODE,
             msg="用户不存在或密码错误",
+            status_code=401
+        )
+    
+    # 检查用户是否已验证
+    if not user.is_verified:
+        raise AuthHTTPException(
+            code=settings.LOGIN_FAILED_CODE,
+            msg="账号未验证，请联系管理员",
             status_code=401
         )
     
@@ -614,6 +657,17 @@ async def register_patient(
 ):
     """患者注册接口"""
     try:
+        # 校验手机号是否通过短信验证（窗口期内）
+        try:
+            verified = await redis.get(f"sms:verified:{phonenumber}")
+        except Exception:
+            verified = None
+        if not verified:
+            raise BusinessHTTPException(
+                code=settings.REGISTER_FAILED_CODE,
+                msg="手机号未验证或验证已过期，请先完成验证码验证",
+                status_code=400
+            )
         # 检查手机号是否已被注册
         result = await db.execute(select(User).where(User.phonenumber == phonenumber))
         if result.scalar_one_or_none():
@@ -630,11 +684,18 @@ async def register_patient(
             email=email,
             is_admin=False,
             # 新注册的患者默认不是管理员，user_type 暂设为 EXTERNAL
-            user_type=UserType.EXTERNAL
+            user_type=UserType.EXTERNAL,
+            is_verified=True
         )
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
+
+        # 一次性消费 verified 标记
+        try:
+            await redis.delete(f"sms:verified:{phonenumber}")
+        except Exception:
+            pass
 
         # 生成并返回 token
         token = create_access_token({"sub": str(new_user.user_id)})

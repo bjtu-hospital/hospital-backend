@@ -61,6 +61,10 @@ log.txt
 test.db
 /backend/logs/
 
+# Environment & Secrets
+.env
+backend/.env
+
 # Hosting / CI
 .netlify/
 

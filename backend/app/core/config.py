@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     REDIS_PORT: int
     REDIS_PASSWORD: str
 
+    # SMS / Alibaba Cloud configuration
+    ALI_ACCESS_KEY_ID: str | None = None
+    ALI_ACCESS_KEY_SECRET: str | None = None
+    SMS_TEMPLATE_CODE: str | None = None
+    SMS_SIGN_NAME: str | None = None
+    SMS_CODE_TTL_SECONDS: int = 300
+    SMS_RATE_LIMIT_SECONDS: int = 60
+    SMS_VERIFIED_WINDOW_SECONDS: int = 900
+
     class Config:
         env_file = ".env"
     
