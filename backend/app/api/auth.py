@@ -16,6 +16,7 @@ from app.models.doctor import Doctor
 from app.models.minor_department import MinorDepartment
 from app.models.user import UserType
 from app.models.patient import Patient, PatientType, Gender
+from app.models.patient_relation import PatientRelation
 from app.services.risk_detection_service import risk_detection_service
 from app.models.user_ban import UserBan
 from app.core.config import settings
@@ -695,6 +696,34 @@ async def register_patient(
                 db.add(patient)
                 await db.commit()
                 await db.refresh(patient)
+
+                # 创建“本人”就诊关系，并将默认就诊人设置为本人（写入 Redis）
+                try:
+                    # 避免重复创建
+                    rel_exist_res = await db.execute(
+                        select(PatientRelation).where(
+                            and_(
+                                PatientRelation.user_patient_id == patient.patient_id,
+                                PatientRelation.related_patient_id == patient.patient_id
+                            )
+                        )
+                    )
+                    rel_exist = rel_exist_res.scalar_one_or_none()
+                    if not rel_exist:
+                        self_rel = PatientRelation(
+                            user_patient_id=patient.patient_id,
+                            related_patient_id=patient.patient_id,
+                            relation_type="本人",
+                            is_default=False,
+                            remark=None
+                        )
+                        db.add(self_rel)
+                        await db.commit()
+
+                    # 以 Redis 为权威设置默认就诊人
+                    await redis.set(f"user_default_patient:{patient.patient_id}", str(patient.patient_id))
+                except Exception:
+                    logger.exception("注册时创建本人关系或设置默认就诊人失败（已忽略以不影响注册）")
         except Exception:
             # 如果创建 Patient 失败，不影响用户注册，记录错误并回滚本次子事务以清理 Session 状态
             logger.exception("创建 Patient 记录失败，已回滚 Patient 子记录，但用户已创建")
@@ -703,6 +732,56 @@ async def register_patient(
             except Exception:
                 # 忽略回滚期间的错误，至少记录日志
                 logger.exception("回滚 Patient 子记录时发生异常")
+
+        # 兜底：若前面未创建 Patient，也保证至少创建本人 Patient 与关系，并设置默认
+        try:
+            ensure_res = await db.execute(select(Patient).where(Patient.user_id == new_user.user_id))
+            ensured_patient = ensure_res.scalar_one_or_none()
+            if not ensured_patient:
+                ensured_patient = Patient(
+                    user_id=new_user.user_id,
+                    name=name,
+                    gender=Gender.UNKNOWN.value,
+                    birth_date=None,
+                    patient_type=PatientType.STUDENT.value,
+                    identifier=identifier,
+                    is_verified=True,
+                    create_time=date.today()
+                )
+                db.add(ensured_patient)
+                await db.commit()
+                await db.refresh(ensured_patient)
+
+            # 创建本人关系（若不存在）
+            rel_exist_res2 = await db.execute(
+                select(PatientRelation).where(
+                    and_(
+                        PatientRelation.user_patient_id == ensured_patient.patient_id,
+                        PatientRelation.related_patient_id == ensured_patient.patient_id
+                    )
+                )
+            )
+            if not rel_exist_res2.scalar_one_or_none():
+                self_rel2 = PatientRelation(
+                    user_patient_id=ensured_patient.patient_id,
+                    related_patient_id=ensured_patient.patient_id,
+                    relation_type="本人",
+                    is_default=False,
+                    remark=None
+                )
+                db.add(self_rel2)
+                await db.commit()
+
+            # 默认就诊人写入 Redis（若原本未设置）
+            try:
+                cache_key = f"user_default_patient:{ensured_patient.patient_id}"
+                cached = await redis.get(cache_key)
+                if not cached:
+                    await redis.set(cache_key, str(ensured_patient.patient_id))
+            except Exception:
+                logger.warning("注册兜底阶段写入默认就诊人缓存失败（忽略）")
+        except Exception:
+            logger.exception("注册兜底阶段创建 Patient/本人关系失败（忽略继续返回 token）")
 
         return ResponseModel(code=0, message=token)
     except AuthHTTPException:

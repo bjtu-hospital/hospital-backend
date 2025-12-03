@@ -5105,7 +5105,314 @@ GET /hospitals/schedules?hospitalId=1&departmentId=1&date=2025-11-20
 
 ---
 
-## 2. 预约管理接口（需要登录）
+## 2. 就诊人管理接口（需要登录）
+
+患者可以添加和管理就诊人（本人或亲友），用于挂号时选择。支持设置默认就诊人，实现 Redis + 数据库双写持久化。
+
+### 2.1 获取我的就诊人列表 Get: `/patient/patients`
+
+获取当前登录用户的所有就诊人列表。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "total": 3,
+        "patients": [
+            {
+                "relation_id": 1,
+                "patient": {
+                    "patient_id": 12345,
+                    "name": "张三",
+                    "gender": "男",
+                    "age": 30,
+                    "birth_date": "1994-01-01",
+                    "id_card": "110101********1234",
+                    "phone": "138****5678"
+                },
+                "relation_type": "本人",
+                "is_default": true,
+                "remark": null,
+                "create_time": "2025-12-01T10:00:00"
+            },
+            {
+                "relation_id": 2,
+                "patient": {
+                    "patient_id": 12346,
+                    "name": "李四",
+                    "gender": "女",
+                    "age": 28,
+                    "birth_date": "1996-05-15",
+                    "id_card": "110101********5678",
+                    "phone": ""
+                },
+                "relation_type": "配偶",
+                "is_default": false,
+                "remark": "妻子",
+                "create_time": "2025-12-02T14:30:00"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `total`: 就诊人总数
+- `relation_id`: 关系记录ID
+- `patient`: 就诊人详细信息
+  - `patient_id`: 患者ID
+  - `name`: 姓名
+  - `gender`: 性别（"男"/"女"/"未知"）
+  - `age`: 年龄（根据出生日期计算）
+  - `birth_date`: 出生日期（YYYY-MM-DD）
+  - `id_card`: 身份证号（脱敏：前6后4）
+  - `phone`: 手机号（脱敏：前3后4）
+- `relation_type`: 关系类型（"本人"/"父母"/"子女"/"配偶"/"同学"等）
+- `is_default`: 是否为默认就诊人
+- `remark`: 备注信息
+- `create_time`: 创建时间
+
+查询逻辑：
+1. 优先从 Redis 读取默认就诊人 ID（key: `user_default_patient:{user_patient_id}`）
+2. Redis 失败时回退到数据库 `is_default=True`
+3. 返回列表时，默认就诊人排在最前面
+
+---
+
+### 2.2 添加就诊人 Post: `/patient/patients`
+
+为当前用户添加新的就诊人。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+#### 请求体:
+```json
+{
+    "relation_type": "配偶",
+    "name": "李四",
+    "id_card": "110101199605151234",
+    "gender": "女",
+    "birth_date": "1996-05-15",
+    "is_default": false,
+    "remark": "妻子"
+}
+```
+
+必填字段：
+- `relation_type` (string): 关系类型
+- `name` (string): 就诊人姓名
+- `id_card` (string): 身份证号（15或18位）
+
+可选字段：
+- `gender` (string): 性别（"男"/"女"/"未知"，默认"未知"）
+- `birth_date` (string): 出生日期（YYYY-MM-DD格式）
+- `is_default` (boolean): 是否设为默认就诊人（默认false）
+- `remark` (string): 备注信息
+
+业务规则：
+1. **身份证唯一性**：同一身份证号只能添加一次
+2. **自动创建患者记录**：系统会自动创建 Patient 表记录，patient_type 默认为"校外"
+3. **默认就诊人唯一性**：若 is_default=true，会自动将其他就诊人的默认标记取消，双写到数据库和 Redis
+4. **数据持久化**：数据库为主存储，Redis 为缓存加速
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "relation_id": 2,
+        "patient_id": 12346,
+        "message": "添加就诊人成功"
+    }
+}
+```
+
+错误示例：
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "该身份证号已添加为就诊人"
+    }
+}
+```
+
+---
+
+### 2.3 更新就诊人信息 Put: `/patient/patients/{patient_id}`
+
+更新指定就诊人的信息。
+
+#### Path 参数:
+- `patient_id`: 就诊人的 patient_id
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+#### 请求体（所有字段可选）:
+```json
+{
+    "relation_type": "家人",
+    "name": "李四（更新）",
+    "id_card": "110101199605151234",
+    "gender": "女",
+    "birth_date": "1996-05-15",
+    "remark": "妻子-已更新"
+}
+```
+
+业务规则：
+1. 只能更新属于当前用户的就诊人
+2. 身份证号更新时会检查唯一性
+3. 更新操作不影响 is_default 状态（使用专门的设置默认接口）
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "message": "更新成功"
+    }
+}
+```
+
+---
+
+### 2.4 删除就诊人 Delete: `/patient/patients/{patient_id}`
+
+删除指定的就诊人。
+
+#### Path 参数:
+- `patient_id`: 就诊人的 patient_id
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+业务规则：
+1. 只能删除属于当前用户的就诊人
+2. **禁止删除本人**：如果就诊人关联了当前用户账号（user_id 一致），不允许删除
+3. 删除时会同步清理数据库中的关系记录和 Redis 中的默认标记（如适用）
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "message": "删除成功"
+    }
+}
+```
+
+错误示例：
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "业务规则校验失败",
+        "msg": "不能删除本人"
+    }
+}
+```
+
+---
+
+### 2.5 设置默认就诊人 Put: `/patient/patients/{patient_id}/set-default`
+
+将指定就诊人设置为默认。
+
+#### Path 参数:
+- `patient_id`: 要设为默认的就诊人 patient_id
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+业务规则：
+1. **双写策略**：
+   - 先更新数据库（事务保证）：将所有就诊人的 is_default 设为 False，再将指定就诊人设为 True
+   - 再更新 Redis 缓存（best-effort）：写入 key: `user_default_patient:{user_patient_id}`
+2. **Redis 失败处理**：Redis 写入失败不影响主流程，仅记录警告日志
+3. **数据持久化**：数据库为真实来源，Redis 为加速查询
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "message": "设置成功"
+    }
+}
+```
+
+查询优先级：
+- 读取时：Redis 优先 → 数据库回退
+- 写入时：数据库优先（事务） → Redis 同步
+
+---
+
+### 2.6 获取默认就诊人 Get: `/patient/patients/default`
+
+获取当前用户的默认就诊人信息。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+#### 输出（有默认就诊人）:
+```json
+{
+    "code": 0,
+    "message": {
+        "relation_id": 1,
+        "patient": {
+            "patient_id": 12345,
+            "name": "张三",
+            "gender": "男",
+            "age": 30,
+            "birth_date": "1994-01-01",
+            "id_card": "110101********1234",
+            "phone": "138****5678"
+        },
+        "relation_type": "本人",
+        "is_default": true,
+        "remark": null,
+        "create_time": "2025-12-01T10:00:00"
+    }
+}
+```
+
+#### 输出（无默认就诊人）:
+```json
+{
+    "code": 0,
+    "message": null
+}
+```
+
+查询逻辑：
+1. 优先从 Redis 读取（key: `user_default_patient:{user_patient_id}`）
+2. Redis 失败或无数据时，查询数据库 is_default=True 的记录
+3. 如果都没有，返回 null
+
+---
+
+## 3. 预约管理接口（需要登录）
 
 所有预约管理接口需要在请求头中携带 token：
 ```

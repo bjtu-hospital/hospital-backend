@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Body, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
-from app.db.base import get_db
+from app.db.base import get_db, User
 import logging
 from app.api.auth import get_current_user
 from app.schemas.user import user as UserSchema
@@ -2295,6 +2295,8 @@ async def exact_search_patient(
 		
 	except AuthHTTPException:
 		raise
+	except BusinessHTTPException:
+		raise
 	except Exception as e:
 		import traceback
 		traceback.print_exc()
@@ -2687,6 +2689,8 @@ async def get_leave_history(
 
 	except AuthHTTPException:
 		raise
+	except BusinessHTTPException:
+		raise
 	except Exception as e:
 		import logging
 		logging.getLogger(__name__).error(f"获取请假历史失败: {e}")
@@ -2755,16 +2759,24 @@ async def get_patient_detail(
 				age -= 1
 		
 		# 手机号脱敏（保留前3位和后4位）
+		# 患者可能未绑定用户账号(user_id为None)，此时无手机号
 		phone_masked = None
-		if patient.user and patient.user.phonenumber:
-			phone = str(patient.user.phonenumber)
-			if len(phone) >= 11:  # 标准手机号11位
-				phone_masked = phone[:3] + "****" + phone[-4:]
-			elif len(phone) >= 7:  # 至少7位才脱敏
-				phone_masked = phone[:3] + "****" + phone[-4:]
-			else:
-				# 太短的号码用星号代替
-				phone_masked = "*" * len(phone)
+		if patient.user_id:
+			# 查询关联的用户信息获取手机号
+			user_res = await db.execute(
+				select(User).where(User.user_id == patient.user_id)
+			)
+			user = user_res.scalar_one_or_none()
+			if user and user.phonenumber:
+				phone = str(user.phonenumber)
+				if len(phone) >= 11:  # 标准手机号11位
+					phone_masked = phone[:3] + "****" + phone[-4:]
+				elif len(phone) >= 7:  # 至少7位才脱敏
+					phone_masked = phone[:3] + "****" + phone[-4:]
+				else:
+					# 太短的号码用星号代替
+					phone_masked = "*" * len(phone)
+		# 如果患者未绑定用户账号，phone_masked 保持为 None
 		
 		# 身份证脱敏（保留前6位和后4位）
 		idcard_masked = None
@@ -2855,6 +2867,8 @@ async def get_patient_detail(
 		})
 		
 	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
 		raise
 	except ResourceHTTPException:
 		raise

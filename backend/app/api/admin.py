@@ -2147,8 +2147,9 @@ async def get_patients(
         # 导入Patient模型
         from app.models.patient import Patient
         
-        # 构建查询，关联User表获取手机号
-        stmt = select(Patient, User).join(
+        # 构建查询，使用 LEFT JOIN 关联User表获取手机号
+        # 使用 LEFT JOIN 以支持查询未绑定用户的患者(user_id为None)
+        stmt = select(Patient, User).outerjoin(
             User, Patient.user_id == User.user_id
         )
         
@@ -2158,6 +2159,7 @@ async def get_patients(
         if name:
             stmt = stmt.where(Patient.name.like(f"%{name}%"))
         if phone:
+            # 只在有手机号的患者中搜索
             stmt = stmt.where(User.phonenumber.like(f"%{phone}%"))
         
         result = await db.execute(stmt)
@@ -2177,7 +2179,7 @@ async def get_patients(
             patients.append({
                 "patient_id": patient.patient_id,
                 "name": patient.name,
-                "phone": user.phonenumber,
+                "phone": user.phonenumber if user else None,  # 患者未绑定用户时为 None
                 "gender": patient.gender.value if patient.gender else "未知",
                 "age": age,
                 "identifier": patient.identifier,  # 学号/工号(明文)

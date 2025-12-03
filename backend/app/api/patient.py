@@ -8,11 +8,12 @@ import base64
 import os
 import aiofiles
 
-from app.db.base import get_db, User, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule
+from app.db.base import get_db, User, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, redis
 from app.models.hospital_area import HospitalArea
 from app.models.registration_order import RegistrationOrder, OrderStatus, PaymentStatus
 from app.models.patient import Patient
 from app.models.visit_history import VisitHistory
+from app.models.patient_relation import PatientRelation
 from app.schemas.response import ResponseModel
 from app.schemas.appointment import (
     AppointmentCreate,
@@ -29,6 +30,13 @@ from app.schemas.health_record import (
     VisitRecordDetailResponse,
     VisitRecordDetail,
     RecordData
+)
+from app.schemas.patient_relation import (
+    PatientRelationCreate,
+    PatientRelationUpdate,
+    PatientRelationResponse,
+    PatientRelationListResponse,
+    PatientInfo
 )
 from app.core.config import settings
 from app.core.exception_handler import BusinessHTTPException, ResourceHTTPException, AuthHTTPException
@@ -167,6 +175,8 @@ async def get_hospitals(
         
         return ResponseModel(code=0, message={"areas": area_list})
         
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
     except Exception as e:
         logger.error(f"查询院区失败: {e}")
         raise BusinessHTTPException(
@@ -199,6 +209,8 @@ async def get_major_departments(
         
         return ResponseModel(code=0, message={"departments": dept_list})
         
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
     except Exception as e:
         logger.error(f"获取大科室列表时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -276,6 +288,8 @@ async def get_minor_departments(
             "departments": dept_list
         })
         
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
     except Exception as e:
         logger.error(f"获取小科室列表时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -358,6 +372,8 @@ async def get_clinics(
             "clinics": clinic_list
         })
         
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
     except Exception as e:
         logger.error(f"获取门诊列表时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -463,6 +479,8 @@ async def get_doctors(
             }
         )
         
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
     except Exception as e:
         logger.error(f"获取医生列表时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -547,6 +565,8 @@ async def get_department_schedules(
         
     except ResourceHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取科室排班时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -624,6 +644,8 @@ async def get_doctor_schedules(
         
     except ResourceHTTPException:
         raise
+    except BusinessHTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取医生排班时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -700,6 +722,8 @@ async def get_clinic_schedules(
         return ResponseModel(code=0, message={"schedules": data})
         
     except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
         raise
     except Exception as e:
         logger.error(f"获取门诊排班时发生异常: {str(e)}")
@@ -809,9 +833,11 @@ async def get_schedules(
 
         return ResponseModel(code=0, message={"schedules": data})
         
-    except ResourceHTTPException:
+    except AuthHTTPException:
         raise
     except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
         raise
     except Exception as e:
         logger.error(f"获取排班列表时发生异常: {str(e)}")
@@ -1132,6 +1158,8 @@ async def get_my_appointments(
             list=appointment_list
         ))
         
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
     except Exception as e:
         logger.error(f"获取预约列表时发生异常: {str(e)}")
         raise BusinessHTTPException(
@@ -1316,6 +1344,7 @@ async def get_my_health_record(
         
         # 3. 脱敏处理
         phone_masked = None
+        # 优先从 current_user 获取手机号(患者绑定了账号)
         if getattr(current_user, "phonenumber", None):
             phone = str(current_user.phonenumber)
             if len(phone) >= 11:
@@ -1324,13 +1353,15 @@ async def get_my_health_record(
                 phone_masked = phone[:3] + "****" + phone[-4:]
             else:
                 phone_masked = "*" * len(phone)
+        # 如果患者没有绑定账号,phone_masked 保持为 None
         
+        # 身份证脱敏（前6后4）
         idcard_masked = None
-        identifier_val = getattr(patient, "identifier", None)
-        if identifier_val and len(identifier_val) >= 10:
-            idcard_masked = identifier_val[:6] + "********" + identifier_val[-4:]
-        elif identifier_val:
-            idcard_masked = identifier_val
+        id_card_val = getattr(patient, "id_card", None)
+        if id_card_val and len(id_card_val) >= 10:
+            idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+        elif id_card_val:
+            idcard_masked = id_card_val
         
         # 4. 构建基本信息
         basic_info = BasicInfo(
@@ -1339,6 +1370,7 @@ async def get_my_health_record(
             age=age,
             height=None,  # TODO: 需要在 Patient 模型中添加身高字段
             phone=phone_masked or "",
+            identifier=patient.identifier,
             idCard=idcard_masked,
             address=None  # TODO: 需要在 Patient 模型中添加地址字段
         )
@@ -1395,6 +1427,8 @@ async def get_my_health_record(
         return ResponseModel(code=0, message=response)
         
     except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
         raise
     except Exception as e:
         logger.error(f"获取健康档案时发生异常: {str(e)}")
@@ -1483,12 +1517,13 @@ async def get_visit_record_detail(
             basicInfo=basic_info,
             recordData=record_data
         )
-        
         return ResponseModel(code=0, message=response)
         
     except AuthHTTPException:
         raise
     except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
         raise
     except Exception as e:
         logger.error(f"获取就诊记录详情时发生异常: {str(e)}")
@@ -1497,3 +1532,905 @@ async def get_visit_record_detail(
             msg="获取就诊记录详情失败",
             status_code=500
         )
+
+
+# ====== 就诊人管理接口 ======
+
+
+@router.get("/patients", response_model=ResponseModel[PatientRelationListResponse])
+async def get_my_patients(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取我的就诊人列表 - 需要登录
+    
+    返回当前用户添加的所有就诊人信息,包括关系、是否默认等
+    """
+    try:
+        # 1. 获取当前用户的 patient_id
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 2. 查询所有就诊人关系
+        result = await db.execute(
+            select(PatientRelation, Patient)
+            .join(Patient, Patient.patient_id == PatientRelation.related_patient_id)
+            .where(PatientRelation.user_patient_id == user_patient.patient_id)
+            .order_by(PatientRelation.is_default.desc(), PatientRelation.create_time.desc())
+        )
+        
+        rows = result.all()
+        
+        # 2.1 读取 Redis 中的默认就诊人(若存在则覆盖数据库中的 is_default)
+        default_related_id: Optional[int] = None
+        try:
+            redis_key = f"user_default_patient:{user_patient.patient_id}"
+            cached = await redis.get(redis_key)
+            logger.info(f"[get_my_patients] 查询默认就诊人 - user_patient_id={user_patient.patient_id}, redis_key={redis_key}, cached={cached}")
+            if cached:
+                try:
+                    default_related_id = int(cached.decode() if isinstance(cached, (bytes, bytearray)) else cached)
+                    logger.info(f"[get_my_patients] Redis 中的默认就诊人 ID: {default_related_id}")
+                except Exception as e:
+                    # 内容异常则忽略
+                    logger.warning(f"[get_my_patients] Redis 值解析失败: {e}")
+                    default_related_id = None
+            else:
+                logger.info(f"[get_my_patients] Redis 中没有默认就诊人记录")
+        except Exception as e:
+            # Redis 不可用时忽略, 退回使用数据库字段
+            logger.warning(f"[get_my_patients] Redis 查询失败: {e}")
+            default_related_id = None
+        
+        # 3. 构建响应
+        patient_list = []
+        for relation, patient in rows:
+            # 计算年龄
+            age = None
+            if patient.birth_date:
+                today = date_type.today()
+                age = today.year - patient.birth_date.year
+                if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                    age -= 1
+            
+            # 脱敏处理(患者可能未绑定用户账号,无手机号)
+            phone_masked = ""
+            # 如果患者绑定了用户账号,从 User 表获取手机号
+            if patient.user_id:
+                # 需要查询 User 表获取手机号
+                user_res = await db.execute(
+                    select(User).where(User.user_id == patient.user_id)
+                )
+                user = user_res.scalar_one_or_none()
+                if user and user.phonenumber:
+                    phone = str(user.phonenumber)
+                    if len(phone) >= 11:
+                        phone_masked = phone[:3] + "****" + phone[-4:]
+                    elif len(phone) >= 7:
+                        phone_masked = phone[:3] + "****" + phone[-4:]
+                    else:
+                        phone_masked = "*" * len(phone)
+            # 如果没有绑定用户账号,phone_masked 保持为空字符串
+            
+            # 身份证脱敏（前6后4）
+            idcard_masked = None
+            id_card_val = getattr(patient, "id_card", None)
+            if id_card_val and len(id_card_val) >= 10:
+                idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+            elif id_card_val:
+                idcard_masked = id_card_val
+            
+            patient_info = PatientInfo(
+                patient_id=patient.patient_id,
+                real_name=patient.name,
+                identifier=patient.identifier,
+                id_card=idcard_masked or "",
+                phone_number=phone_masked,
+                gender=patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender) if patient.gender else None,
+                birth_date=str(patient.birth_date) if patient.birth_date else None,
+                age=age
+            )
+            
+            # 计算是否默认: 优先以 Redis 为准, 否则使用数据库中的 is_default
+            computed_is_default = relation.is_default
+            if default_related_id is not None:
+                computed_is_default = (patient.patient_id == default_related_id)
+            
+            logger.info(f"[get_my_patients] patient_id={patient.patient_id}, relation_type={relation.relation_type}, db_is_default={relation.is_default}, redis_default_id={default_related_id}, computed_is_default={computed_is_default}")
+
+            patient_list.append(PatientRelationResponse(
+                relation_id=relation.relation_id,
+                patient=patient_info,
+                relation_type=relation.relation_type,
+                is_default=computed_is_default,
+                remark=relation.remark,
+                create_time=relation.create_time
+            ))
+        
+        # 4. 根据是否默认进行排序(默认优先), 保持与旧行为一致
+        try:
+            patient_list.sort(key=lambda x: (not x.is_default, ), reverse=False)
+        except Exception:
+            pass
+
+        return ResponseModel(code=0, message=PatientRelationListResponse(
+            total=len(patient_list),
+            patients=patient_list
+        ))
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取就诊人列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取就诊人列表失败",
+            status_code=500
+        )
+
+
+@router.post("/patients", response_model=ResponseModel)
+async def add_patient(
+    data: PatientRelationCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """添加就诊人 - 需要登录
+    
+    新版业务规则(通过身份证号+姓名添加):
+    1. 必须提供身份证号(id_card)和姓名(name)
+    2. 根据身份证号查询患者:
+       - 如果身份证号存在且姓名一致: 直接建立关系
+       - 如果身份证号存在但姓名不一致: 返回错误(身份信息冲突)
+       - 如果身份证号不存在: 创建新患者记录并建立关系
+    3. 不能添加自己为就诊人
+    4. 同一患者不能重复添加
+    5. 如果设为默认,自动取消其他默认就诊人
+    """
+    try:
+        # 1. 参数验证
+        if not data.id_card or not data.name:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="身份证号和姓名为必填项",
+                status_code=400
+            )
+        
+        # 2. 获取当前用户的 patient_id
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 3. 根据身份证号查询患者
+        related_patient_res = await db.execute(
+            select(Patient).where(Patient.id_card == data.id_card)
+        )
+        related_patient = related_patient_res.scalar_one_or_none()
+        
+        if related_patient:
+            # 3.1 身份证号存在,检查姓名是否一致
+            if related_patient.name != data.name:
+                raise BusinessHTTPException(
+                    code=settings.REQ_ERROR_CODE,
+                    msg=f"请核对身份证号和姓名是否正确",
+                    status_code=400
+                )
+            
+            # 3.2 身份证号和姓名都匹配,检查是否为本人
+            if related_patient.patient_id == user_patient.patient_id:
+                raise BusinessHTTPException(
+                    code=settings.REQ_ERROR_CODE,
+                    msg="不能添加自己为就诊人",
+                    status_code=400
+                )
+            
+            # 3.3 检查是否已存在关系
+            existing_res = await db.execute(
+                select(PatientRelation).where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.related_patient_id == related_patient.patient_id
+                    )
+                )
+            )
+            if existing_res.scalar_one_or_none():
+                raise BusinessHTTPException(
+                    code=settings.REQ_ERROR_CODE,
+                    msg="该就诊人已存在",
+                    status_code=400
+                )
+            
+            logger.info(f"通过身份证号匹配到已有患者: patient_id={related_patient.patient_id}, name={related_patient.name}")
+        
+        else:
+            # 3.4 身份证号不存在,创建新患者记录
+            # 注意: 新患者没有关联 user_id,也不设置 identifier(学号/工号)
+            related_patient = Patient(
+                name=data.name,
+                id_card=data.id_card,
+                identifier=None,  # 就诊人无学号/工号
+                user_id=None,  # 就诊人不绑定用户账号
+                gender=data.gender if hasattr(data, 'gender') and data.gender else None,
+                birth_date=data.birth_date if hasattr(data, 'birth_date') and data.birth_date else None
+            )
+            db.add(related_patient)
+            await db.flush()  # 获取新插入的 patient_id
+            
+            logger.info(f"创建新患者记录作为就诊人: patient_id={related_patient.patient_id}, name={related_patient.name}, id_card={data.id_card}")
+        
+        # 4. 创建关系，如果需要设为默认则手动清除其他默认
+        new_relation = PatientRelation(
+            user_patient_id=user_patient.patient_id,
+            related_patient_id=related_patient.patient_id,
+            relation_type=data.relation_type,
+            is_default=data.is_default,  # 直接使用请求中的值
+            remark=data.remark
+        )
+        
+        db.add(new_relation)
+        
+        # 如果设为默认，需要先取消其他关系的默认标记
+        if data.is_default:
+            await db.execute(
+                update(PatientRelation)
+                .where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.related_patient_id != related_patient.patient_id
+                    )
+                )
+                .values(is_default=False)
+            )
+        
+        await db.commit()
+        await db.refresh(new_relation)
+
+        # 5. 同步更新 Redis 缓存
+        if data.is_default:
+            try:
+                await redis.set(f"user_default_patient:{user_patient.patient_id}", str(related_patient.patient_id))
+                logger.info(f"[add_patient] Redis 缓存已更新 - default_patient_id={related_patient.patient_id}")
+            except Exception as redis_err:
+                # Redis 写入失败不影响主流程
+                logger.warning(f"[add_patient] Redis 更新失败: {redis_err}")
+        
+        logger.info(f"添加就诊人成功: relation_id={new_relation.relation_id}, user_patient_id={user_patient.patient_id}, related_patient_id={related_patient.patient_id}, is_default={data.is_default}")
+        
+        return ResponseModel(code=0, message={
+            "relation_id": new_relation.relation_id,
+            "patient_id": related_patient.patient_id,
+            "message": "添加就诊人成功"
+        })
+        
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"添加就诊人时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="添加就诊人失败",
+            status_code=500
+        )
+
+
+@router.put("/patients/{patient_id}", response_model=ResponseModel)
+async def update_patient_relation(
+    patient_id: int,
+    data: PatientRelationUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新就诊人信息 - 需要登录
+    
+    参数:
+    - patient_id: 被添加的患者ID(related_patient_id)
+    - data: 更新的关系类型和备注
+    """
+    try:
+        # 1. 获取当前用户的 patient_id
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 2. 禁止修改“本人”关系
+        if patient_id == user_patient.patient_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="不能修改本人关系",
+                status_code=400
+            )
+
+        # 3. 查询关系记录
+        relation_res = await db.execute(
+            select(PatientRelation).where(
+                and_(
+                    PatientRelation.user_patient_id == user_patient.patient_id,
+                    PatientRelation.related_patient_id == patient_id
+                )
+            )
+        )
+        relation = relation_res.scalar_one_or_none()
+        
+        if not relation:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="就诊人关系不存在",
+                status_code=404
+            )
+        
+        # 4. 更新字段
+        if data.relation_type is not None:
+            relation.relation_type = data.relation_type
+        if data.remark is not None:
+            relation.remark = data.remark
+        
+        db.add(relation)
+        await db.commit()
+        
+        logger.info(f"更新就诊人成功: relation_id={relation.relation_id}")
+        
+        return ResponseModel(code=0, message={"message": "更新成功"})
+        
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"更新就诊人时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="更新就诊人失败",
+            status_code=500
+        )
+
+
+@router.delete("/patients/{patient_id}", response_model=ResponseModel)
+async def delete_patient_relation(
+    patient_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """删除就诊人 - 需要登录
+    
+    参数:
+    - patient_id: 被添加的患者ID(related_patient_id)
+    
+    业务规则:
+    - 不能删除默认就诊人(需先取消默认)
+    """
+    try:
+        # 1. 获取当前用户的 patient_id
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 2. 查询关系记录
+        relation_res = await db.execute(
+            select(PatientRelation).where(
+                and_(
+                    PatientRelation.user_patient_id == user_patient.patient_id,
+                    PatientRelation.related_patient_id == patient_id
+                )
+            )
+        )
+        relation = relation_res.scalar_one_or_none()
+        
+        if not relation:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="就诊人关系不存在",
+                status_code=404
+            )
+        
+        # 3. 禁止删除“本人”关系
+        if patient_id == user_patient.patient_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="不能删除本人就诊人",
+                status_code=400
+            )
+
+        # 4. 不能删除默认就诊人(检查缓存)
+        try:
+            redis_key = f"user_default_patient:{user_patient.patient_id}"
+            cached = await redis.get(redis_key)
+            if cached is not None:
+                try:
+                    cached_id = int(cached.decode() if isinstance(cached, (bytes, bytearray)) else cached)
+                except Exception:
+                    cached_id = None
+                if cached_id == patient_id:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg="不能删除默认就诊人,请先取消默认设置",
+                        status_code=400
+                    )
+        except BusinessHTTPException:
+            raise
+        except Exception as _e:
+            logger.warning(
+                f"检查默认就诊人缓存失败: user_patient_id={user_patient.patient_id}, err={_e}"
+            )
+
+        # 5. 删除关系
+        await db.delete(relation)
+        await db.commit()
+        
+        logger.info(f"删除就诊人成功: relation_id={relation.relation_id}")
+        # 6. 若被删除的是 Redis 中的默认就诊人, 同步清理默认键
+        try:
+            redis_key = f"user_default_patient:{user_patient.patient_id}"
+            cached = await redis.get(redis_key)
+            if cached is not None:
+                try:
+                    cached_id = int(cached.decode() if isinstance(cached, (bytes, bytearray)) else cached)
+                except Exception:
+                    cached_id = None
+                if cached_id == patient_id:
+                    await redis.delete(redis_key)
+                    logger.info(
+                        f"已清理默认就诊人缓存: user_patient_id={user_patient.patient_id}, related_patient_id={patient_id}"
+                    )
+        except Exception as _e:
+            logger.warning(
+                f"删除就诊人后清理默认缓存失败: user_patient_id={user_patient.patient_id}, related_patient_id={patient_id}, err={_e}"
+            )
+
+        return ResponseModel(code=0, message={"message": "删除成功"})
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"删除就诊人时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="删除就诊人失败",
+            status_code=500
+        )
+
+
+@router.put("/patients/{patient_id}/set-default", response_model=ResponseModel)
+async def set_default_patient(
+    patient_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """设置默认就诊人 - 需要登录
+    
+    参数:
+    - patient_id: 被设置为默认的患者ID(related_patient_id)
+    
+    规则:
+    - 使用 Redis 记录默认就诊人, 保证全局唯一
+    """
+    try:
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 2. 查询要设为默认的关系记录
+        relation_res = await db.execute(
+            select(PatientRelation).where(
+                and_(
+                    PatientRelation.user_patient_id == user_patient.patient_id,
+                    PatientRelation.related_patient_id == patient_id
+                )
+            )
+        )
+        relation = relation_res.scalar_one_or_none()
+        
+        if not relation:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="就诊人关系不存在",
+                status_code=404
+            )
+        
+        # 3. 双写策略：同时更新 Redis 和数据库
+        # 3.1 先更新数据库（事务保证）
+        try:
+            # 取消当前用户所有就诊人的默认标记
+            await db.execute(
+                update(PatientRelation)
+                .where(PatientRelation.user_patient_id == user_patient.patient_id)
+                .values(is_default=False)
+            )
+            
+            # 设置指定就诊人为默认
+            await db.execute(
+                update(PatientRelation)
+                .where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.related_patient_id == patient_id
+                    )
+                )
+                .values(is_default=True)
+            )
+            
+            await db.commit()
+            logger.info(f"[set_default_patient] 数据库更新成功 - user_patient_id={user_patient.patient_id}, default_patient_id={patient_id}")
+        except Exception as db_err:
+            await db.rollback()
+            logger.error(f"[set_default_patient] 数据库更新失败: {db_err}")
+            raise BusinessHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="设置默认就诊人失败",
+                status_code=500
+            )
+        
+        # 3.2 更新 Redis 缓存（异步，失败不影响主流程）
+        try:
+            redis_key = f"user_default_patient:{user_patient.patient_id}"
+            logger.info(f"[set_default_patient] 更新 Redis 缓存 - redis_key={redis_key}, value={patient_id}")
+            await redis.set(redis_key, str(patient_id))
+            
+            # 验证写入
+            verify = await redis.get(redis_key)
+            logger.info(f"[set_default_patient] Redis 写入验证成功 - value={verify}")
+        except Exception as redis_err:
+            # Redis 失败不影响主流程，仅记录日志
+            logger.warning(f"[set_default_patient] Redis 更新失败（不影响功能）: {redis_err}")
+
+        logger.info(f"设置默认就诊人成功: user_patient_id={user_patient.patient_id}, related_patient_id={patient_id}")
+
+        return ResponseModel(code=0, message={"message": "设置成功"})
+        
+    except ResourceHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"设置默认就诊人时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="设置默认就诊人失败",
+            status_code=500
+        )
+
+
+@router.get("/patients/default", response_model=ResponseModel)
+async def get_default_patient(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取当前默认就诊人信息 - 需要登录
+    
+    返回:
+    - 默认就诊人的完整信息，如果没有设置默认就诊人则返回 null
+    """
+    try:
+        # 1. 获取当前用户的患者信息
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+        
+        # 2. 先从 Redis 获取默认就诊人 ID
+        default_related_id: Optional[int] = None
+        try:
+            redis_key = f"user_default_patient:{user_patient.patient_id}"
+            cached = await redis.get(redis_key)
+            logger.info(f"[get_default_patient] 查询默认就诊人 - user_patient_id={user_patient.patient_id}, redis_key={redis_key}, cached={cached}")
+            
+            if cached:
+                try:
+                    default_related_id = int(cached.decode() if isinstance(cached, (bytes, bytearray)) else cached)
+                    logger.info(f"[get_default_patient] Redis 中的默认就诊人 ID: {default_related_id}")
+                except Exception as e:
+                    logger.warning(f"[get_default_patient] Redis 值解析失败: {e}")
+                    default_related_id = None
+            else:
+                logger.info(f"[get_default_patient] Redis 中没有默认就诊人记录，查询数据库")
+        except Exception as e:
+            logger.warning(f"[get_default_patient] Redis 查询失败，回退到数据库: {e}")
+            default_related_id = None
+        
+        # 3. 如果 Redis 中没有，从数据库查询
+        if default_related_id is None:
+            db_relation_res = await db.execute(
+                select(PatientRelation)
+                .where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.is_default == True
+                    )
+                )
+            )
+            db_relation = db_relation_res.scalar_one_or_none()
+            if db_relation:
+                default_related_id = db_relation.related_patient_id
+                logger.info(f"[get_default_patient] 从数据库获取默认就诊人 ID: {default_related_id}")
+        
+        # 4. 如果没有默认就诊人
+        if default_related_id is None:
+            logger.info(f"[get_default_patient] 用户 {user_patient.patient_id} 没有设置默认就诊人")
+            return ResponseModel(code=0, message=None)
+        
+        # 5. 查询默认就诊人的完整信息
+        result = await db.execute(
+            select(PatientRelation, Patient)
+            .join(Patient, Patient.patient_id == PatientRelation.related_patient_id)
+            .where(
+                and_(
+                    PatientRelation.user_patient_id == user_patient.patient_id,
+                    PatientRelation.related_patient_id == default_related_id
+                )
+            )
+        )
+        row = result.one_or_none()
+        
+        if not row:
+            logger.warning(f"[get_default_patient] 默认就诊人记录不存在: related_patient_id={default_related_id}")
+            return ResponseModel(code=0, message=None)
+        
+        relation, patient = row
+        
+        # 6. 计算年龄
+        age = None
+        if patient.birth_date:
+            today = date_type.today()
+            age = today.year - patient.birth_date.year
+            if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                age -= 1
+        
+        # 7. 脱敏处理手机号
+        phone_masked = ""
+        if patient.user_id:
+            user_res = await db.execute(
+                select(User).where(User.user_id == patient.user_id)
+            )
+            user = user_res.scalar_one_or_none()
+            if user and user.phonenumber:
+                phone = str(user.phonenumber)
+                if len(phone) >= 11:
+                    phone_masked = phone[:3] + "****" + phone[-4:]
+                else:
+                    phone_masked = phone
+        
+        # 8. 脱敏身份证号
+        id_card_masked = ""
+        if patient.id_card:
+            id_card = str(patient.id_card)
+            if len(id_card) == 18:
+                id_card_masked = id_card[:6] + "********" + id_card[-4:]
+            elif len(id_card) == 15:
+                id_card_masked = id_card[:6] + "*****" + id_card[-4:]
+            else:
+                id_card_masked = id_card
+        
+        # 9. 构建响应
+        default_patient_info = {
+            "relation_id": relation.relation_id,
+            "patient": {
+                "patient_id": patient.patient_id,
+                "name": patient.name,
+                "gender": patient.gender,
+                "age": age,
+                "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
+                "id_card": id_card_masked,
+                "phone": phone_masked
+            },
+            "relation_type": relation.relation_type,
+            "is_default": True,
+            "remark": relation.remark,
+            "create_time": relation.create_time.isoformat() if relation.create_time else None
+        }
+        
+        logger.info(f"[get_default_patient] 获取默认就诊人成功: user_patient_id={user_patient.patient_id}, default_patient_id={default_related_id}")
+        
+        return ResponseModel(code=0, message=default_patient_info)
+        
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取默认就诊人时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="获取默认就诊人失败",
+            status_code=500
+        )
+
+
+@router.get("/appointments/{appointmentId}", response_model=ResponseModel)
+async def get_appointment_detail(
+    appointmentId: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取预约详情 - 需要登录
+    
+    参数:
+    - appointmentId: 预约订单ID
+    
+    返回:
+    - 预约的完整信息,包括医院、科室、医生、患者、时间、状态等
+    """
+    try:
+        # 1. 查询预约订单及关联信息
+        result = await db.execute(
+            select(RegistrationOrder, Schedule, Doctor, Clinic, MinorDepartment, HospitalArea, Patient)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Clinic.minor_dept_id)
+            .join(HospitalArea, HospitalArea.area_id == Clinic.area_id)
+            .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+            .where(RegistrationOrder.order_id == appointmentId)
+        )
+        
+        row = result.first()
+        
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="预约不存在",
+                status_code=404
+            )
+        
+        order, schedule, doctor, clinic, dept, area, patient = row
+        
+        # 2. 验证权限（只能查看自己的预约）
+        if order.user_id != current_user.user_id:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权查看该预约",
+                status_code=403
+            )
+        
+        # 3. 判断是否可取消
+        can_cancel = False
+        if order.status in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+            # 获取配置
+            schedule_config = await get_schedule_config(db)
+            reg_config = await get_registration_config(
+                db,
+                scope_type="DOCTOR",
+                scope_id=order.doctor_id
+            )
+            
+            if not schedule_config:
+                schedule_config = {}
+            if not reg_config:
+                reg_config = {}
+            
+            cancel_hours_before = reg_config.get("cancelHoursBefore", 2)
+            
+            now = datetime.now()
+            appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
+            
+            # 根据时间段从配置中获取开始时间
+            if order.time_section == "上午":
+                time_str = schedule_config.get("morningStart", "08:00")
+            elif order.time_section == "下午":
+                time_str = schedule_config.get("afternoonStart", "13:30")
+            else:
+                time_str = schedule_config.get("eveningStart", "18:00")
+            
+            hour, minute = parse_time_to_hour_minute(time_str)
+            cancel_deadline = appointment_datetime.replace(hour=hour, minute=minute) - timedelta(hours=cancel_hours_before)
+            
+            can_cancel = now < cancel_deadline
+        
+        # 4. 构建响应
+        appointment_detail = {
+            "id": order.order_id,
+            "orderNo": order.order_no or "",
+            "hospitalId": area.area_id,
+            "hospitalName": area.name,
+            "hospitalAddress": area.destination,
+            "departmentId": dept.minor_dept_id,
+            "departmentName": dept.name,
+            "doctorId": doctor.doctor_id,
+            "doctorName": doctor.name,
+            "doctorTitle": doctor.title or "",
+            "doctorSpecialty": doctor.specialty,
+            "scheduleId": schedule.schedule_id,
+            "appointmentDate": str(order.slot_date),
+            "appointmentTime": f"{order.time_section}",
+            "slotType": _slot_type_to_str(schedule.slot_type),
+            "patientId": patient.patient_id,
+            "patientName": patient.name,
+            "patientGender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender) if patient.gender else None,
+            "patientPhone": None,  # 患者表中无 phone_number 字段,需要从 User 表获取
+            "symptoms": order.symptoms,
+            "price": float(order.price) if order.price else 0.0,
+            "status": order.status.value,
+            "paymentStatus": order.payment_status.value,
+            "canCancel": can_cancel,
+            "createdAt": order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
+            "paidAt": order.payment_time.strftime("%Y-%m-%d %H:%M:%S") if order.payment_time else None,
+            "cancelledAt": order.cancel_time.strftime("%Y-%m-%d %H:%M:%S") if order.cancel_time else None
+        }
+        
+        return ResponseModel(code=0, message=appointment_detail)
+        
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取预约详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取预约详情失败",
+            status_code=500
+        )   
