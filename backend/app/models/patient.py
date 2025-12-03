@@ -40,6 +40,7 @@ class Patient(Base):
         comment="患者身份类型"
     )
     identifier = Column(String(50), nullable=True, unique=True, comment="学号/工号/证件号（用于认证）")
+    id_card = Column(String(18), nullable=True, unique=True, comment="身份证号（18位）")
     is_verified = Column(Boolean, default=False, comment="身份是否已通过管理员审核 (0=否, 1=是)")
     create_time = Column(Date, default=None, comment="创建时间")
     
