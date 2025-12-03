@@ -12,6 +12,8 @@ from app.db.base import get_db, User, MajorDepartment, MinorDepartment, Doctor, 
 from app.models.hospital_area import HospitalArea
 from app.models.registration_order import RegistrationOrder, OrderStatus, PaymentStatus
 from app.models.patient import Patient
+from app.models.patient import PatientType
+from app.models.user import UserType
 from app.models.visit_history import VisitHistory
 from app.models.patient_relation import PatientRelation
 from app.schemas.response import ResponseModel
@@ -54,12 +56,89 @@ from app.services.config_service import (
     get_schedule_config,
     parse_time_to_hour_minute
 )
+import requests
+import urllib3
+import hashlib
+from app.schemas.patient_identity import IdentityVerifyRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 # ====== 患者端公开查询接口(无需登录) ======
+
+
+# ====== 校园认证辅助函数（内联实现，后续移除 app.verify 依赖） ======
+
+def _md5_encrypt(text: str) -> str:
+    md5 = hashlib.md5()
+    md5.update(text.encode('utf-8'))
+    return md5.hexdigest()
+
+
+def _get_captcha() -> tuple[str, str]:
+    url = "https://10.126.59.109:6440/cp/auth/captchaImage"
+    response = requests.get(url, verify=False)
+    res = response.json()
+    code = res.get("data", {}).get("code", -1)
+    uuid = res.get("data", {}).get("uuid", -1)
+    return (code, uuid)
+
+
+def login_to_iclass(loginName: str, password: str) -> dict:
+    """
+    校园登录：成功返回非空字典，失败返回 {}。
+    仅在校园网可用。
+    """
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    url = "https://10.126.59.109:6440/cp/auth/signIn"
+    headers = {
+        'accept': 'application/json, text/plain, */*',
+        'content-type': 'application/json;charset=UTF-8',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    }
+    code, uuid = _get_captcha()
+    data = {
+        "loginDeviceType": "1",
+        "loginName": loginName,
+        "password": _md5_encrypt(password),
+        "verifyCode": code,
+        "verifyUuid": uuid
+    }
+
+    session = requests.Session()
+    session.trust_env = True
+    session.proxies = {
+        'http': None,
+        'https': None,
+        'no_proxy': 'bjju.edu.cn,*.bjju.edu.cn'
+    }
+
+    raw_data = {}
+    try:
+        response = session.post(url, headers=headers, json=data, verify=False)
+        raw = response.json()
+        raw_data = raw
+    except Exception:
+        raw_data = {}
+    finally:
+        if raw_data.get("meta", {}).get("success", False):
+            return raw_data
+        return {}
+
+
+def getInfoById(userId: str) -> dict:
+    base_info_url = f"http://123.121.147.7:88/ve/back/coursePlatform/coursePlatform.shtml?method=getUserInfo&userId={userId}"
+    response = requests.get(url=base_info_url)
+    raw_data = response.json()
+    return {
+        "status": raw_data.get("STATUS", -1),
+        "userId": raw_data.get("result", {}).get("userId", ""),
+        "userName": raw_data.get("result", {}).get("userName", ""),
+        "roleCode": raw_data.get("result", {}).get("roleCode", ""),
+        "roleName": raw_data.get("result", {}).get("roleName", ""),
+    }
 
 
 async def _load_image_as_base64(image_path: str) -> Optional[dict]:
@@ -1535,6 +1614,157 @@ async def get_visit_record_detail(
 
 
 # ====== 就诊人管理接口 ======
+
+
+@router.post("/identity/verify", response_model=ResponseModel)
+async def verify_identity(
+    data: IdentityVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """校内身份校验并更新患者信息 - 需要登录
+    
+    入参:
+    - identifier: 学号/工号
+    - password: 校园系统密码
+    
+    成功:
+    - 更新当前登录用户对应的 `Patient.identifier`
+    - 根据校方返回的 `roleName` 映射并更新 `patient_type`
+    - 将 `is_verified` 置为 True
+    
+    返回统一格式 ResponseModel
+    """
+    try:
+        # 1. 先查当前用户对应的患者记录
+        patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        patient = patient_res.scalar_one_or_none()
+        if not patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者信息不存在",
+                status_code=404
+            )
+
+        # 2. 先调用校园登录接口校验密码，成功后再获取身份信息
+        login_result = login_to_iclass(data.identifier, data.password)
+        if not login_result:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="校园登录失败，请检查账号或密码",
+                status_code=400
+            )
+
+        verify_result = getInfoById(data.identifier)
+        # 期望格式: {'status': '0', 'userId': '...', 'userName': '...', 'roleCode': '...', 'roleName': '学生'}
+        status_val = str(verify_result.get("status", "-1"))
+        role_name = verify_result.get("roleName", "")
+        user_id_from_school = verify_result.get("userId", "")
+        user_name_from_school = verify_result.get("userName", "")
+
+        if status_val != "0" or not role_name:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="校园身份验证失败，请检查学号是否正确",
+                status_code=400
+            )
+
+        # 3. 映射 roleName -> PatientType
+        # 学校返回中文: 学生/教师/职工 等
+        mapped_type = PatientType.EXTERNAL
+        if role_name == PatientType.STUDENT.value:
+            mapped_type = PatientType.STUDENT
+        elif role_name == PatientType.TEACHER.value:
+            mapped_type = PatientType.TEACHER
+        elif role_name == PatientType.STAFF.value:
+            mapped_type = PatientType.STAFF
+
+        # 3.1 标识唯一性检查：identifier 是否已被其他患者/用户占用
+        # 检查 Patient 表
+        exist_patient_res = await db.execute(
+            select(Patient).where(
+                and_(
+                    Patient.identifier == data.identifier,
+                    Patient.patient_id != patient.patient_id
+                )
+            )
+        )
+        exist_patient = exist_patient_res.scalar_one_or_none()
+        if exist_patient:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="该学号已被其他患者使用",
+                status_code=400
+            )
+
+        # 检查 User 表
+        exist_user_res = await db.execute(
+            select(User).where(
+                and_(
+                    User.identifier == data.identifier,
+                    User.user_id != current_user.user_id
+                )
+            )
+        )
+        exist_user = exist_user_res.scalar_one_or_none()
+        if exist_user:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="该学号已被其他账号使用",
+                status_code=400
+            )
+
+        # 4. 更新患者信息
+        patient.identifier = data.identifier
+        # 若姓名为空或不同，以学校返回为准（仅在提供且非空时覆盖）
+        if user_name_from_school:
+            patient.name = user_name_from_school
+        patient.patient_type = mapped_type
+        patient.is_verified = True
+
+        db.add(patient)
+        # 同步更新用户表的 user_type 与 identifier
+        user_res = await db.execute(select(User).where(User.user_id == current_user.user_id))
+        user_obj = user_res.scalar_one_or_none()
+        if user_obj:
+            user_obj.identifier = data.identifier
+            # role 映射到 UserType
+            mapped_user_type = UserType.EXTERNAL
+            if role_name == PatientType.STUDENT.value:
+                mapped_user_type = UserType.STUDENT
+            elif role_name == PatientType.TEACHER.value:
+                mapped_user_type = UserType.TEACHER
+            elif role_name == PatientType.STAFF.value:
+                mapped_user_type = UserType.EXTERNAL
+            user_obj.user_type = mapped_user_type
+            user_obj.is_verified = True
+            db.add(user_obj)
+        await db.commit()
+        await db.refresh(patient)
+
+        return ResponseModel(code=0, message={
+            "status": status_val,
+            "patient_id": patient.patient_id,
+            "identifier": patient.identifier,
+            "patient_type": patient.patient_type.value if hasattr(patient.patient_type, 'value') else str(patient.patient_type),
+            "userId": user_id_from_school,
+            "userName": user_name_from_school,
+            "roleCode": verify_result.get("roleCode", ""),
+            "roleName": role_name
+        })
+
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"身份校验接口异常: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="身份校验失败",
+            status_code=500
+        )
 
 
 @router.get("/patients", response_model=ResponseModel[PatientRelationListResponse])
