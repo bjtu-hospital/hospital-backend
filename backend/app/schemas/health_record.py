@@ -11,7 +11,8 @@ class BasicInfo(BaseModel):
     age: Optional[int] = Field(None, description="年龄")
     height: Optional[int] = Field(None, description="身高(cm)")
     phone: str = Field(..., description="联系电话(已脱敏)")
-    idCard: Optional[str] = Field(None, description="身份证号(已脱敏)")
+    identifier: Optional[str] = Field(None, description="学号/工号")
+    idCard: Optional[str] = Field(None, description="身份证号(已脱敏，保留前6后4)")
     address: Optional[str] = Field(None, description="居住地址")
 
 

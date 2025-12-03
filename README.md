@@ -556,7 +556,8 @@ Authorization: Bearer <token>
 - `phonenumber`: 手机号
 - `realName`: 真实姓名
 - `studentId`: 学号（仅学生类型患者有值）
-- `idCard`: 证件号（使用 identifier 字段）
+- `identifier`: 学号/工号（明文显示，用于身份识别）
+- `idCard`: 18位身份证号（脱敏显示：前6后4，中间8个星号）
 - `email`: 邮箱
 - `gender`: 性别（男/女/未知）
 - `birthDate`: 出生日期（YYYY-MM-DD格式）
@@ -567,7 +568,7 @@ Authorization: Bearer <token>
 - `updatedAt`: 更新时间
 - `maskedInfo`: 脱敏信息
   - `phone`: 脱敏后的手机号（前3位+****+后4位）
-  - `idCard`: 脱敏后的证件号（前6位+********+后4位）
+  - `idCard`: 脱敏后的身份证号（前6位+********+后4位）
 - `age`: 根据出生日期计算的年龄
 
 #### doctor 字段
@@ -1527,6 +1528,7 @@ Authorization: Bearer <token>
                 "phone": "13812345678",
                 "gender": "男",
                 "age": 28,
+                "identifier": "2021001",
                 "id_card": "110101199501011234"
             },
             {
@@ -1535,7 +1537,8 @@ Authorization: Bearer <token>
                 "phone": "13898765432",
                 "gender": "女",
                 "age": 32,
-                "id_card": "110102198901012345"
+                "identifier": "T2020005",
+                "id_card": "110101199501011234"
             }
         ]
     }
@@ -1548,7 +1551,8 @@ Authorization: Bearer <token>
 - `phone`：从关联的 User 表中获取的手机号
 - `gender`：性别（中文字符串："男"/"女"/"其他"）
 - `age`：根据出生日期自动计算的年龄
-- `id_card`：身份证号（脱敏处理由前端实现）
+- `identifier`：学号/工号（明文显示，用于身份识别）
+- `id_card`：18位身份证号（已脱敏：保留前6位和后4位，中间8个星号，如 `110101********1234`）
 
 注意：
 - 至少需要提供一个搜索条件，否则返回参数错误
@@ -3435,7 +3439,9 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
                 "name": "测试患者0001",
                 "gender": "女",
                 "age": 34,
-                "phone": "13800000001"
+                "phone": "13800000001",
+                "identifier": "2021001",
+                "id_card": "110101********1234"
             }
         ]
     }
@@ -3453,14 +3459,18 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
                 "name": "重名李",
                 "gender": "女",
                 "age": 22,
-                "phone": "13999999991"
+                "phone": "13999999991",
+                "identifier": "2019005",
+                "id_card": "110106********7668"
             },
             {
                 "patient_id": "P998",
                 "name": "重名李",
                 "gender": "男",
                 "age": 45,
-                "phone": "13999999992"
+                "phone": "13999999992",
+                "identifier": "T2015003",
+                "id_card": "220102********8912"
             }
         ]
     }
@@ -3483,6 +3493,8 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
 - `gender`：性别（"男"/"女"/"未知"）
 - `age`：年龄（根据出生日期自动计算）
 - `phone`：手机号
+- `identifier`：学号/工号（明文显示，用于身份识别）
+- `id_card`：18位身份证号（已脱敏：保留前6位和后4位，中间8个星号）
 
 注意事项：
 - 查询是**精确匹配**，不支持模糊查询
@@ -4640,6 +4652,7 @@ Authorization: Bearer <token>
       "age": 25,
       "height": null,
       "phone": "138****5678",
+      "identifier": "2021001",
       "idCard": "110101********1234",
       "address": "北京市海淀区学院路37号北京交通大学"
     },
@@ -4697,7 +4710,8 @@ Authorization: Bearer <token>
 - `age`: 年龄（根据出生日期自动计算）
 - `height`: 身高（当前数据库暂无此字段，返回 null）
 - `phone`: 手机号（脱敏处理，保留前3位和后4位，如 `138****5678`；短号码用星号代替）
-- `idCard`: 身份证号（脱敏处理，保留前6位和后4位，如 `110101********1234`）
+- `identifier`: 学号/工号（明文显示，用于身份识别）
+- `idCard`: 18位身份证号（脱敏处理，保留前6位和后4位，中间8个星号，如 `110101********1234`）
 - `address`: 地址（默认为学校地址）
 
 **medicalHistory（病史信息）**:
@@ -5318,6 +5332,7 @@ Authorization: Bearer <token>
             "age": 35,
             "height": 175,
             "phone": "138****5678",
+            "identifier": "2021001",
             "idCard": "110101********1234",
             "address": "北京市海淀区学院路37号北京交通大学"
         },
@@ -5361,8 +5376,9 @@ Authorization: Bearer <token>
 - `gender`: 性别
 - `age`: 年龄（根据出生日期自动计算）
 - `height`: 身高（cm）
-- `phone`: 联系电话（已脱敏）
-- `idCard`: 身份证号/学号/工号（已脱敏）
+- `phone`: 联系电话（已脱敏：前3后4）
+- `identifier`: 学号/工号（明文显示，用于身份识别）
+- `idCard`: 18位身份证号（已脱敏：保留前6位和后4位，中间8个星号）
 - `address`: 居住地址
 
 **medicalHistory (病史信息)**:

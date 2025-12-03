@@ -2233,12 +2233,22 @@ async def exact_search_patient(
 				if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
 					age -= 1
 			
+			# 身份证脱敏（前6后4）
+			idcard_masked = None
+			id_card_val = getattr(patient, "id_card", None)
+			if id_card_val and len(id_card_val) >= 10:
+				idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+			elif id_card_val:
+				idcard_masked = id_card_val
+			
 			result_patients = [{
 				"patient_id": f"P{patient.patient_id}",
 				"name": patient.name,
 				"gender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
 				"age": age,
-				"phone": user.phonenumber
+				"phone": user.phonenumber,
+				"identifier": patient.identifier,
+				"id_card": idcard_masked
 			}]
 			return ResponseModel(code=0, message={"patients": result_patients})
 		
@@ -2261,12 +2271,22 @@ async def exact_search_patient(
 					if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
 						age -= 1
 				
+				# 身份证脱敏（前6后4）
+				idcard_masked = None
+				id_card_val = getattr(patient, "id_card", None)
+				if id_card_val and len(id_card_val) >= 10:
+					idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+				elif id_card_val:
+					idcard_masked = id_card_val
+				
 				result_patients.append({
 					"patient_id": f"P{patient.patient_id}",
 					"name": patient.name,
 					"gender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
 					"age": age,
-					"phone": user.phonenumber
+					"phone": user.phonenumber,
+					"identifier": patient.identifier,
+					"id_card": idcard_masked
 				})
 			return ResponseModel(code=0, message={"patients": result_patients})
 		
@@ -2746,13 +2766,13 @@ async def get_patient_detail(
 				# 太短的号码用星号代替
 				phone_masked = "*" * len(phone)
 		
-		# 证件号/学号脱敏（保留前6位和后4位）
+		# 身份证脱敏（保留前6位和后4位）
 		idcard_masked = None
-		if getattr(patient, 'identifier', None) and len(patient.identifier) >= 10:
-			idcard = patient.identifier
-			idcard_masked = idcard[:6] + "********" + idcard[-4:]
-		elif getattr(patient, 'identifier', None):
-			idcard_masked = patient.identifier
+		id_card_val = getattr(patient, 'id_card', None)
+		if id_card_val and len(id_card_val) >= 10:
+			idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+		elif id_card_val:
+			idcard_masked = id_card_val
 		
 		# 构建基本信息
 		basic_info = {
@@ -2761,6 +2781,7 @@ async def get_patient_detail(
 			"age": age,
 			"height": None,  # 数据库暂无身高字段，返回 null
 			"phone": phone_masked,
+			"identifier": patient.identifier,  # 学号/工号
 			"idCard": idcard_masked,
 			"address": "北京市海淀区学院路37号北京交通大学"  # 默认地址
 		}
