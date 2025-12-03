@@ -2280,7 +2280,7 @@ async def get_default_patient(
                 "gender": patient.gender,
                 "age": age,
                 "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
-                "id_card": id_card_masked,
+                "idCard": id_card_masked,
                 "phone": phone_masked
             },
             "relation_type": relation.relation_type,

@@ -1529,7 +1529,7 @@ Authorization: Bearer <token>
                 "gender": "男",
                 "age": 28,
                 "identifier": "2021001",
-                "id_card": "110101199501011234"
+                "idCard": "110101199501011234"
             },
             {
                 "patient_id": 12346,
@@ -1538,7 +1538,7 @@ Authorization: Bearer <token>
                 "gender": "女",
                 "age": 32,
                 "identifier": "T2020005",
-                "id_card": "110101199501011234"
+                "idCard": "110101199501011234"
             }
         ]
     }
@@ -1552,7 +1552,7 @@ Authorization: Bearer <token>
 - `gender`：性别（中文字符串："男"/"女"/"其他"）
 - `age`：根据出生日期自动计算的年龄
 - `identifier`：学号/工号（明文显示，用于身份识别）
-- `id_card`：18位身份证号（已脱敏：保留前6位和后4位，中间8个星号，如 `110101********1234`）
+- `idCard`：18位身份证号（已脱敏：保留前6位和后4位，中间8个星号，如 `110101********1234`）
 
 注意：
 - 至少需要提供一个搜索条件，否则返回参数错误
@@ -3441,7 +3441,7 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
                 "age": 34,
                 "phone": "13800000001",
                 "identifier": "2021001",
-                "id_card": "110101********1234"
+                "idCard": "110101********1234"
             }
         ]
     }
@@ -3461,7 +3461,7 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
                 "age": 22,
                 "phone": "13999999991",
                 "identifier": "2019005",
-                "id_card": "110106********7668"
+                "idCard": "110106********7668"
             },
             {
                 "patient_id": "P998",
@@ -3470,7 +3470,7 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
                 "age": 45,
                 "phone": "13999999992",
                 "identifier": "T2015003",
-                "id_card": "220102********8912"
+                "idCard": "220102********8912"
             }
         ]
     }
@@ -3494,7 +3494,7 @@ GET /doctor/patients/exact-search?keyword=测试患者0001
 - `age`：年龄（根据出生日期自动计算）
 - `phone`：手机号
 - `identifier`：学号/工号（明文显示，用于身份识别）
-- `id_card`：18位身份证号（已脱敏：保留前6位和后4位，中间8个星号）
+- `idCard`：18位身份证号（已脱敏：保留前6位和后4位，中间8个星号）
 
 注意事项：
 - 查询是**精确匹配**，不支持模糊查询
@@ -5133,7 +5133,7 @@ Authorization: Bearer <token>
                     "gender": "男",
                     "age": 30,
                     "birth_date": "1994-01-01",
-                    "id_card": "110101********1234",
+                    "idCard": "110101********1234",
                     "phone": "138****5678"
                 },
                 "relation_type": "本人",
@@ -5149,7 +5149,7 @@ Authorization: Bearer <token>
                     "gender": "女",
                     "age": 28,
                     "birth_date": "1996-05-15",
-                    "id_card": "110101********5678",
+                    "idCard": "110101********5678",
                     "phone": ""
                 },
                 "relation_type": "配偶",
@@ -5171,7 +5171,7 @@ Authorization: Bearer <token>
   - `gender`: 性别（"男"/"女"/"未知"）
   - `age`: 年龄（根据出生日期计算）
   - `birth_date`: 出生日期（YYYY-MM-DD）
-  - `id_card`: 身份证号（脱敏：前6后4）
+    - `idCard`: 身份证号（脱敏：前6后4）
   - `phone`: 手机号（脱敏：前3后4）
 - `relation_type`: 关系类型（"本人"/"父母"/"子女"/"配偶"/"同学"等）
 - `is_default`: 是否为默认就诊人
@@ -5199,7 +5199,7 @@ Authorization: Bearer <token>
 {
     "relation_type": "配偶",
     "name": "李四",
-    "id_card": "110101199605151234",
+    "idCard": "110101199605151234",
     "gender": "女",
     "birth_date": "1996-05-15",
     "is_default": false,
@@ -5210,7 +5210,7 @@ Authorization: Bearer <token>
 必填字段：
 - `relation_type` (string): 关系类型
 - `name` (string): 就诊人姓名
-- `id_card` (string): 身份证号（15或18位）
+- `idCard` (string): 身份证号（15或18位）
 
 可选字段：
 - `gender` (string): 性别（"男"/"女"/"未知"，默认"未知"）
@@ -5266,7 +5266,7 @@ Authorization: Bearer <token>
 {
     "relation_type": "家人",
     "name": "李四（更新）",
-    "id_card": "110101199605151234",
+    "idCard": "110101199605151234",
     "gender": "女",
     "birth_date": "1996-05-15",
     "remark": "妻子-已更新"
@@ -5386,7 +5386,7 @@ Authorization: Bearer <token>
             "gender": "男",
             "age": 30,
             "birth_date": "1994-01-01",
-            "id_card": "110101********1234",
+            "idCard": "110101********1234",
             "phone": "138****5678"
         },
         "relation_type": "本人",

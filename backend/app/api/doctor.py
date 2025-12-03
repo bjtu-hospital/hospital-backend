@@ -2248,7 +2248,7 @@ async def exact_search_patient(
 				"age": age,
 				"phone": user.phonenumber,
 				"identifier": patient.identifier,
-				"id_card": idcard_masked
+				"idCard": idcard_masked
 			}]
 			return ResponseModel(code=0, message={"patients": result_patients})
 		
@@ -2286,7 +2286,7 @@ async def exact_search_patient(
 					"age": age,
 					"phone": user.phonenumber,
 					"identifier": patient.identifier,
-					"id_card": idcard_masked
+					"idCard": idcard_masked
 				})
 			return ResponseModel(code=0, message={"patients": result_patients})
 		

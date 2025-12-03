@@ -2183,7 +2183,7 @@ async def get_patients(
                 "gender": patient.gender.value if patient.gender else "未知",
                 "age": age,
                 "identifier": patient.identifier,  # 学号/工号(明文)
-                "id_card": patient.id_card  # 18位身份证号(管理员可见完整号码,不脱敏)
+                "idCard": patient.id_card  # 18位身份证号(管理员可见完整号码,不脱敏)
             })
         
         return ResponseModel(code=0, message={"patients": patients})
