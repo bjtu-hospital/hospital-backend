@@ -1489,6 +1489,99 @@ Authorization: Bearer <token>
 
 ---
 
+## 3. 意见反馈管理（管理员）
+
+### 3.1 获取所有反馈列表
+- GET `/admin/feedbacks`
+- 说明：管理员获取所有用户的意见反馈（按提交时间倒序）
+
+权限：仅管理员可访问
+
+请求头：
+```
+Authorization: Bearer <token>
+```
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": [
+        {
+            "feedback_id": 1,
+            "type": "bug",
+            "content": "系统在提交挂号时偶尔会出现卡顿...",
+            "submitDate": "2025-12-03",
+            "status": "pending"
+        },
+        {
+            "feedback_id": 2,
+            "type": "suggestion",
+            "content": "希望能增加科室搜索功能...",
+            "submitDate": "2025-12-02",
+            "status": "processing"
+        }
+    ]
+}
+```
+
+字段说明：
+- 返回所有用户的反馈记录
+- `content` 字段会截取前30个字符作为预览
+- 按 `created_at` 倒序排列（最新的在前）
+- `type` 类型包括：`"bug"`(功能异常)、`"suggestion"`(功能建议)、`"complaint"`(服务投诉)、`"praise"`(表扬建议)
+- `status` 状态包括：`"pending"`(待处理)、`"processing"`(处理中)、`"replied"`(已回复)、`"closed"`(已关闭)
+
+### 3.2 更新反馈状态
+- PUT `/admin/feedbacks/{feedback_id}/status`
+- 说明：管理员更新反馈的处理状态
+
+权限：仅管理员可访问
+
+参数：
+- `feedback_id`: 反馈ID（路径参数）
+
+请求头：
+```
+Authorization: Bearer <token>
+```
+
+请求体：
+```json
+{
+    "status": "processing"
+}
+```
+
+字段说明：
+- `status` (必填): 新的反馈状态
+  - `"pending"`: 待处理
+  - `"processing"`: 处理中
+  - `"replied"`: 已回复
+  - `"closed"`: 已关闭
+
+响应示例：
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "反馈状态已更新",
+        "feedback_id": 1,
+        "status": "processing"
+    }
+}
+```
+
+错误响应示例：
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "资源错误",
+        "msg": "反馈记录不存在"
+    }
+}
+```
 
 ---
 
@@ -6030,6 +6123,144 @@ Authorization: Bearer <token>
 **响应**:
 - 成功：返回PDF文件二进制流（`Content-Type: application/pdf`）
 - 失败：返回JSON错误信息
+
+---
+
+### 5) POST `/common/feedback`
+
+**描述**: 患者提交意见反馈
+
+**权限**: 需要登录（患者或其他已认证用户）
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+**请求体**:
+```json
+{
+    "type": "bug",
+    "content": "系统在提交挂号时偶尔会出现卡顿的情况",
+    "contactPhone": "13800138000",
+    "contactEmail": "patient@example.com"
+}
+```
+
+**字段说明**:
+- `type` (必填): 反馈类型
+  - `"bug"`: 功能异常
+  - `"suggestion"`: 功能建议
+  - `"complaint"`: 服务投诉
+  - `"praise"`: 表扬建议
+- `content` (必填): 反馈内容，1-500字符
+- `contactPhone` (可选): 联系电话，最多20字符
+- `contactEmail` (可选): 联系邮箱
+
+**响应示例**:
+```json
+{
+    "code": 0,
+    "message": {
+        "feedback_id": 1,
+        "type": "bug",
+        "typeText": "功能异常",
+        "content": "系统在提交挂号时偶尔会出现卡顿的情况",
+        "status": "pending",
+        "submitDate": "2025-12-03",
+        "createdAt": "2025-12-03T10:30:00Z"
+    }
+}
+```
+
+---
+
+### 6) GET `/common/feedback`
+
+**描述**: 获取当前登录用户的所有反馈记录
+
+**权限**: 需要登录
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+**响应示例**:
+```json
+{
+    "code": 0,
+    "message": [
+        {
+            "feedback_id": 1,
+            "type": "bug",
+            "content": "系统在提交挂号时偶尔会出现卡顿...",
+            "submitDate": "2025-12-03",
+            "status": "processing"
+        },
+        {
+            "feedback_id": 2,
+            "type": "suggestion",
+            "content": "希望能增加科室搜索功能...",
+            "submitDate": "2025-12-02",
+            "status": "replied"
+        }
+    ]
+}
+```
+
+**字段说明**:
+- `content`: 内容会截取前30个字符作为预览
+- `status`: 反馈状态
+  - `"pending"`: 待处理
+  - `"processing"`: 处理中
+  - `"replied"`: 已回复
+  - `"closed"`: 已关闭
+
+---
+
+### 7) GET `/common/feedback/{feedback_id}`
+
+**描述**: 获取指定反馈的详细信息
+
+**权限**: 需要登录，只能查看自己提交的反馈
+
+**参数**:
+- `feedback_id`: 反馈ID（路径参数）
+
+**请求头**:
+```
+Authorization: Bearer <token>
+```
+
+**响应示例**:
+```json
+{
+    "code": 0,
+    "message": {
+        "feedback_id": 1,
+        "type": "bug",
+        "typeText": "功能异常",
+        "content": "系统在提交挂号时偶尔会出现卡顿的情况，尤其是在高峰期",
+        "contactPhone": "13800138000",
+        "contactEmail": "patient@example.com",
+        "status": "processing",
+        "submitDate": "2025-12-03",
+        "createdAt": "2025-12-03T10:30:00Z"
+    }
+}
+```
+
+**错误响应**:
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "资源错误",
+        "msg": "反馈记录不存在或无权访问"
+    }
+}
+```
 
 ---
 

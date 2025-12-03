@@ -71,6 +71,10 @@ from app.schemas.anti_scalper import (
     BanRecordItem,
 )
 
+from app.models.feedback import Feedback
+from app.schemas.feedback import FeedbackStatus, FeedbackSimpleOut
+from pydantic import BaseModel
+
 
 
 logger = logging.getLogger(__name__)
@@ -2199,6 +2203,108 @@ async def get_patients(
         raise BusinessHTTPException(
             code=settings.DATA_GET_FAILED_CODE,
             msg=f"查询患者失败: {str(e)}"
+        )
+
+
+# ====== 意见反馈管理接口 ======
+
+
+
+class FeedbackStatusUpdateIn(BaseModel):
+    status: FeedbackStatus
+
+@router.get("/feedbacks", response_model=ResponseModel)
+async def admin_get_all_feedbacks(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取所有意见反馈 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        result = await db.execute(select(Feedback).order_by(Feedback.created_at.desc()))
+        feedbacks = result.scalars().all()
+        
+        feedback_list = [
+            FeedbackSimpleOut(
+                feedback_id=f.feedback_id,
+                type=f.type,
+                content=f.content[:30] if len(f.content) > 30 else f.content,
+                submitDate=f.submit_date,
+                status=f.status
+            ) for f in feedbacks
+        ]
+        
+        logger.info(f"管理员获取反馈列表成功，共 {len(feedback_list)} 条")
+        return ResponseModel(code=0, message=feedback_list)
+        
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"管理员获取反馈列表失败: {e}", exc_info=True)
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取反馈列表失败",
+            status_code=500
+        )
+
+
+@router.put("/feedbacks/{feedback_id}/status", response_model=ResponseModel)
+async def admin_update_feedback_status(
+    feedback_id: int,
+    data: FeedbackStatusUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新反馈状态 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+        
+        result = await db.execute(select(Feedback).where(Feedback.feedback_id == feedback_id))
+        feedback = result.scalar_one_or_none()
+        
+        if not feedback:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="反馈记录不存在",
+                status_code=404
+            )
+        
+        feedback.status = data.status.value
+        db.add(feedback)
+        await db.commit()
+        await db.refresh(feedback)
+        
+        logger.info(f"管理员更新反馈状态成功: feedback_id={feedback_id}, status={data.status}")
+        return ResponseModel(
+            code=0,
+            message={
+                "detail": "反馈状态已更新",
+                "feedback_id": feedback_id,
+                "status": data.status.value
+            }
+        )
+        
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"管理员修改反馈状态失败: {e}", exc_info=True)
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="修改反馈状态失败",
+            status_code=500
         )
 
 
