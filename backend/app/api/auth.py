@@ -652,13 +652,14 @@ async def register_patient(
     password: str = Body(...),
     name: str = Body(...),
     email: Optional[str] = Body(None),
-    patient_type: Optional[str] = Body(None),
     gender: Optional[str] = Body(None),
     birth_date: Optional[str] = Body(None),
-    identifier: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
-    """患者注册接口"""
+    """患者注册接口
+    
+    新注册患者默认为校外人员（EXTERNAL），身份认证由认证模块单独处理。
+    """
     try:
         # 校验手机号是否通过短信验证（窗口期内）
         try:
@@ -707,22 +708,10 @@ async def register_patient(
         await redis.set(f"token:{token}", str(new_user.user_id), ex=settings.TOKEN_EXPIRE_TIME * 60)
         await redis.set(f"user_token:{new_user.user_id}", token, ex=settings.TOKEN_EXPIRE_TIME * 60)
 
-        # 若提供了患者详细信息，则同时创建 Patient 记录
+        # 必须创建 Patient 记录（无论是否提供可选信息）
+        # 注册必然产生一条患者记录，确保 user_id 总是被正确设置
         try:
-            create_patient = any([patient_type, gender, birth_date, identifier])
-            if create_patient:
-                # 解析 patient_type
-                p_type = None
-                if patient_type:
-                    pt = str(patient_type).strip()
-                    # 支持中文/英文输入（如 '学生' 或 'STUDENT'）
-                    if pt in ("学生", "STUDENT", "student", "Student"):
-                        p_type = PatientType.STUDENT
-                    elif pt in ("教师", "TEACHER", "teacher", "Teacher"):
-                        p_type = PatientType.TEACHER
-                    elif pt in ("职工", "STAFF", "staff", "Staff"):
-                        p_type = PatientType.STAFF
-                # 解析 gender
+            # 解析 gender
                 g = None
                 if gender:
                     gg = str(gender).strip()
@@ -742,19 +731,16 @@ async def register_patient(
                     except Exception:
                         bdate = None
 
-                # 为避免 Enum 存储值/名称与数据库已有 ENUM 定义不一致，直接写入枚举的 value（中文描述）
-                # 插入数据库时传入 Enum 成员（SQLAlchemy 会处理到数据库的表示），
-                # 避免直接写入枚举的 value 导致与数据库列定义不一致的问题。
-                # 将解析结果存入数据库时使用枚举的 value（存储为数据库定义的字符串），
-                # 以兼容数据库中 ENUM 的定义（数据库中使用中文值：'男','女','未知' 等）。
+                # 创建 Patient 记录，默认身份为 EXTERNAL（校外人员）
+                # 身份认证由认证模块单独处理
                 patient = Patient(
                     user_id=new_user.user_id,
                     name=name,
                     gender=(g.value if g else Gender.UNKNOWN.value),
                     birth_date=bdate,
-                    patient_type=(p_type.value if p_type else PatientType.STUDENT.value),
-                    identifier=identifier,
-                    is_verified=True, #后续再调整
+                    patient_type=PatientType.EXTERNAL.value,  # 默认为校外人员
+                    identifier=None,  # 注册时不设置，由认证模块处理
+                    is_verified=True,
                     create_time=date.today()
                 )
                 db.add(patient)
@@ -807,8 +793,8 @@ async def register_patient(
                     name=name,
                     gender=Gender.UNKNOWN.value,
                     birth_date=None,
-                    patient_type=PatientType.STUDENT.value,
-                    identifier=identifier,
+                    patient_type=PatientType.EXTERNAL.value,  # 默认为校外人员
+                    identifier=None,  # 注册时不设置，由认证模块处理
                     is_verified=True,
                     create_time=date.today()
                 )

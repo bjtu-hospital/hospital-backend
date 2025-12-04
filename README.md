@@ -500,6 +500,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 1. 用户调用 `/auth/sms/send-code` 获取验证码
 2. 用户调用 `/auth/sms/verify-code` 校验验证码
 3. 验证通过后15分钟内调用本接口完成注册
+4. 新注册患者默认为校外人员（EXTERNAL），身份认证由认证模块单独处理
 
 ### 输入：JSON格式的注册数据
 
@@ -516,12 +517,23 @@ curl -X POST http://127.0.0.1:8000/doctors \
 ```json
 {
     "email": "user@example.com",
-    "patient_type": "student",    // 学生/教师/职工
     "gender": "男",               // 男/女/未知
-    "birth_date": "2000-01-01",   // YYYY-MM-DD
-    "identifier": "2021001"       // 学号/工号/证件号
+    "birth_date": "2000-01-01"    // YYYY-MM-DD
 }
 ```
+
+**字段说明**:
+- `phonenumber`: 手机号（必填，用于患者登录）
+- `password`: 密码（必填）
+- `name`: 真实姓名（必填）
+- `email`: 邮箱（可选）
+- `gender`: 性别（可选，支持：男/女/未知）
+- `birth_date`: 出生日期（可选，格式为 YYYY-MM-DD）
+
+**重要说明**:
+- 新注册患者默认身份为 **EXTERNAL（校外人员）**
+- `identifier`（学号/工号）不在注册时设置，由认证模块单独处理身份认证
+- 患者身份类型的认证流程与注册相分离，确保身份信息的严格管理
 
 ### 成功响应:
 ```json
@@ -534,7 +546,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 **响应说明**: 
 - `message` 字段包含登录 token，注册成功即自动登录
 - 用户的 `is_verified` 字段自动设置为 `true`
-- 同时创建 Patient 记录及本人就诊关系
+- 同时创建 Patient 记录（身份默认为 EXTERNAL）及本人就诊关系
 
 ### 错误响应:
 
@@ -3618,7 +3630,7 @@ Authorization: Bearer <token>
   - `status IN (COMPLETED, CONFIRMED)`
   - `visit_times IS NOT NULL`（数据库级别过滤）
 
-### 1.7. 医生用户信息（含照片） Post: `/auth/user-info` (注意这个在auth中并非doctor)
+### 1.7. 医生用户信息（含照片） Get: `/auth/user-info` (注意这个在auth中并非doctor)
 说明：返回当前登录账号绑定的医生档案及照片二进制（Base64）。若不是医生账号则 `doctor: null`。
 
 成功响应：
