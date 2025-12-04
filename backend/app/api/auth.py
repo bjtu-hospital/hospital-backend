@@ -430,7 +430,7 @@ async def get_me(current_user: UserSchema = Depends(get_current_user)):
         )
 
 
-@router.post("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+@router.get("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
 async def get_user_info(current_user: UserSchema = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """多角色通用用户信息接口
 
@@ -492,23 +492,26 @@ async def get_user_info(current_user: UserSchema = Depends(get_current_user), db
             else:
                 phone_masked = "*" * len(phone)
 
-        # 证件号（使用 identifier 作为学号/工号/证件号），进行掩码
+        # 身份证脱敏
         idcard_masked = None
+        id_card_val = getattr(patient, "id_card", None) if patient else None
+        if id_card_val and len(id_card_val) >= 10:
+            idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+        elif id_card_val:
+            idcard_masked = id_card_val
+        
+        # 学号/工号
         identifier_val = getattr(patient, "identifier", None) if patient else None
-        if identifier_val and len(identifier_val) >= 10:
-            idcard_masked = identifier_val[:6] + "********" + identifier_val[-4:]
-        elif identifier_val:
-            idcard_masked = identifier_val
 
         # 构建患者信息（遵循 USER-API 字段命名）
         patient_info = None
         if patient:
             patient_info = {
                 "id": str(patient.patient_id),
+                "identifier": identifier_val,  # 学号/工号/证件号
                 "phonenumber": current_user.phonenumber,
                 "realName": patient.name,
-                "studentId": identifier_val if patient.patient_type == PatientType.STUDENT.value else None,
-                "idCard": identifier_val,  # 业务上暂用 identifier 作为证件号/学号/工号
+                "idCard": idcard_masked,  # 身份证号（已脱敏）
                 "email": getattr(current_user, "email", None),
                 "gender": (patient.gender.value if patient.gender else "未知"),
                 "birthDate": (patient.birth_date.strftime("%Y-%m-%d") if patient.birth_date else None),

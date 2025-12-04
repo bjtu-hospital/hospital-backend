@@ -644,7 +644,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
-## 4. 获取用户信息（多角色） Post: `/auth/user-info`
+## 4. 获取用户信息（多角色） Get: `/auth/user-info`
 
 ### 用途
 多角色通用用户信息接口,返回当前登录用户的患者信息和医生信息（如果有）
@@ -666,10 +666,10 @@ Authorization: Bearer <token>
     "message": {
         "patient": {
             "id": "12345",
+            "identifier": "2021001",
             "phonenumber": "13800138000",
             "realName": "张三",
-            "studentId": "2021001",
-            "idCard": "2021001",
+            "idCard": "110101********1234",
             "email": "zhangsan@bjtu.edu.cn",
             "gender": "男",
             "birthDate": "2000-01-01",
@@ -680,7 +680,7 @@ Authorization: Bearer <token>
             "updatedAt": null,
             "maskedInfo": {
                 "phone": "138****8000",
-                "idCard": "202100********001"
+                "idCard": "110101********1234"
             },
             "age": 25
         },
@@ -703,11 +703,10 @@ Authorization: Bearer <token>
 
 #### patient 字段
 - `id`: 患者ID
+- `identifier`: 学号/工号/证件号（明文显示，用于身份识别）
 - `phonenumber`: 手机号
 - `realName`: 真实姓名
-- `studentId`: 学号（仅学生类型患者有值）
-- `identifier`: 学号/工号（明文显示，用于身份识别）
-- `idCard`: 18位身份证号（脱敏显示：前6后4，中间8个星号）
+- `idCard`: 18位身份证号（已脱敏显示：前6位+********+后4位）
 - `email`: 邮箱
 - `gender`: 性别（男/女/未知）
 - `birthDate`: 出生日期（YYYY-MM-DD格式）
@@ -733,10 +732,11 @@ Authorization: Bearer <token>
 - `photo_base64`: Base64编码的照片数据
 
 ### 注意事项
+### 注意事项
 - 若用户没有患者记录，`patient` 为 `null`
 - 若用户没有医生记录，`doctor` 为 `null`
-- 患者类型为非学生时，`studentId` 为 `null`
-
+- `idCard` 字段返回的是已脱敏的身份证号，前端无需再次脱敏
+- `maskedInfo.idCard` 与 `idCard` 值相同，均为已脱敏数据
 ---
 
 ## 5. 更新用户信息 Put: `/auth/profile`
