@@ -965,7 +965,7 @@ async def create_appointment(
                 status_code=404
             )
         
-        # 2. 验证患者是否存在且属于当前用户
+        # 2. 验证患者是否存在且属于当前用户或是当前用户的就诊人
         patient_res = await db.execute(
             select(Patient).where(Patient.patient_id == data.patientId)
         )
@@ -977,8 +977,36 @@ async def create_appointment(
                 status_code=404
             )
         
-        # 验证患者归属
-        if patient.user_id != current_user.user_id:
+        # 验证患者归属: 当前用户的患者记录或关联的就诊人
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.RESOURCE_NOT_FOUND_CODE,
+                msg="当前用户未绑定患者信息"
+            )
+        
+        # 检查是否是本人或关联的就诊人
+        is_self = (patient.patient_id == user_patient.patient_id)
+        is_related = False
+        
+        if not is_self:
+            # 检查是否在就诊人关系表中
+            relation_res = await db.execute(
+                select(PatientRelation).where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.related_patient_id == data.patientId
+                    )
+                )
+            )
+            if relation_res.scalar_one_or_none():
+                is_related = True
+        
+        if not is_self and not is_related:
             raise AuthHTTPException(
                 code=settings.INSUFFICIENT_AUTHORITY_CODE,
                 msg="无权为该患者预约",
@@ -1050,7 +1078,8 @@ async def create_appointment(
         new_order = RegistrationOrder(
             order_no=order_no,
             patient_id=data.patientId,
-            user_id=current_user.user_id,
+            user_id=patient.user_id,  # 就诊患者的user_id，可能为null
+            initiator_user_id=current_user.user_id,  # 发起人是当前用户
             doctor_id=schedule.doctor_id,
             schedule_id=data.scheduleId,
             slot_date=schedule.date,
@@ -1073,23 +1102,13 @@ async def create_appointment(
         await db.commit()
         await db.refresh(new_order)
         
-        # 8. 计算队列号码(当天同排班已预约数量)
-        queue_res = await db.execute(
-            select(func.count()).select_from(RegistrationOrder).where(
-                and_(
-                    RegistrationOrder.schedule_id == data.scheduleId,
-                    RegistrationOrder.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED])
-                )
-            )
-        )
-        queue_number = queue_res.scalar()
-        
+        # 8. 队列号码在就诊时动态分配，创建时不设置
         logger.info(f"创建预约成功: order_id={new_order.order_id}, order_no={order_no}, patient_id={data.patientId}")
         
         return ResponseModel(code=0, message=AppointmentResponse(
             id=new_order.order_id,
             orderNo=order_no,
-            queueNumber=queue_number,
+            queueNumber=None,
             needPay=True,
             payAmount=float(schedule.price) if schedule.price else 0.0,
             appointmentDate=str(schedule.date),
@@ -1209,7 +1228,7 @@ async def get_my_appointments(
             
             appointment_list.append(AppointmentListItem(
                 id=order.order_id,
-                orderNo=order.order_no or "",
+                orderNo=order.order_no if order.order_no else _generate_order_no(),
                 hospitalId=area.area_id,
                 hospitalName=area.name,
                 departmentId=dept.minor_dept_id,
@@ -1281,8 +1300,24 @@ async def cancel_appointment(
         
         order, schedule = row
         
-        # 2. 验证订单归属
-        if order.user_id != current_user.user_id:
+        # 2. 验证订单归属: 发起人或就诊人本人都可以取消
+        # 获取当前用户的患者记录
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+        
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.RESOURCE_NOT_FOUND_CODE,
+                msg="当前用户未绑定患者信息"
+            )
+        
+        # 检查是否是发起人或就诊人本人
+        is_initiator = (order.initiator_user_id == current_user.user_id)
+        is_patient = (order.patient_id == user_patient.patient_id)
+        
+        if not is_initiator and not is_patient:
             raise AuthHTTPException(
                 code=settings.INSUFFICIENT_AUTHORITY_CODE,
                 msg="无权操作该预约",
@@ -1380,6 +1415,135 @@ async def cancel_appointment(
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="取消预约失败",
+            status_code=500
+        )
+
+
+@router.get("/my-initiated-appointments", response_model=ResponseModel[AppointmentListResponse])
+async def get_my_initiated_appointments(
+    status: Optional[str] = "all",
+    page: int = 1,
+    pageSize: int = 10,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取我创建的预约列表 - 需要登录
+    
+    参数:
+    - status: 预约状态过滤 (all/pending/completed/cancelled)
+    - page: 页码
+    - pageSize: 每页条数
+    
+    返回:
+    - 当前用户作为发起人创建的所有订单(包括为他人代约的)
+    """
+    try:
+        # 构建查询条件: initiator_user_id = current_user.user_id
+        filters = [RegistrationOrder.initiator_user_id == current_user.user_id]
+        
+        if status and status != "all":
+            if status == "pending":
+                filters.append(RegistrationOrder.status == OrderStatus.PENDING)
+            elif status == "completed":
+                filters.append(RegistrationOrder.status == OrderStatus.CONFIRMED)
+            elif status == "cancelled":
+                filters.append(RegistrationOrder.status == OrderStatus.CANCELLED)
+        
+        # 查询总数
+        count_res = await db.execute(
+            select(func.count()).select_from(RegistrationOrder).where(and_(*filters))
+        )
+        total = count_res.scalar()
+        
+        # 分页查询
+        offset = (page - 1) * pageSize
+        result = await db.execute(
+            select(RegistrationOrder, Schedule, Doctor, Clinic, MinorDepartment, HospitalArea, Patient)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Clinic.minor_dept_id)
+            .join(HospitalArea, HospitalArea.area_id == Clinic.area_id)
+            .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+            .where(and_(*filters))
+            .order_by(RegistrationOrder.create_time.desc())
+            .offset(offset)
+            .limit(pageSize)
+        )
+        
+        rows = result.all()
+        
+        # 获取排班配置用于判断取消时间(只查询一次)
+        schedule_config = await get_schedule_config(db)
+        
+        # 按医生分组获取挂号配置(减少重复查询)
+        doctor_ids = list(set(order.doctor_id for order, *_ in rows))
+        doctor_configs = {}
+        for doctor_id in doctor_ids:
+            config = await get_registration_config(db, scope_type="DOCTOR", scope_id=doctor_id)
+            doctor_configs[doctor_id] = config
+        
+        appointment_list = []
+        for order, schedule, doctor, clinic, dept, area, patient in rows:
+            # 计算是否可取消
+            can_cancel = False
+            if order.status in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+                reg_config = doctor_configs.get(order.doctor_id, {})
+                cancel_hours_before = reg_config.get("cancelHoursBefore", 2) if reg_config else 2
+                
+                now = datetime.now()
+                appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
+                
+                if order.time_section == "上午":
+                    time_str = schedule_config.get("morningStartTime", "08:00") if schedule_config else "08:00"
+                elif order.time_section == "下午":
+                    time_str = schedule_config.get("afternoonStartTime", "13:00") if schedule_config else "13:00"
+                else:
+                    time_str = schedule_config.get("eveningStartTime", "18:00") if schedule_config else "18:00"
+                
+                hour, minute = parse_time_to_hour_minute(time_str)
+                cancel_deadline = appointment_datetime.replace(hour=hour, minute=minute) - timedelta(hours=cancel_hours_before)
+                can_cancel = now < cancel_deadline
+            
+            # 排队号码由就诊系统动态管理，预约阶段不提供
+            queue_number = None
+            
+            appointment_list.append(AppointmentListItem(
+                id=order.order_id,
+                orderNo=order.order_no if order.order_no else _generate_order_no(),
+                hospitalId=area.area_id,
+                hospitalName=area.name,
+                departmentId=dept.minor_dept_id,
+                departmentName=dept.name,
+                doctorName=doctor.name,
+                doctorTitle=doctor.title,
+                scheduleId=schedule.schedule_id,
+                patientName=patient.name,
+                patientId=patient.patient_id,
+                queueNumber=queue_number,
+                appointmentDate=str(order.slot_date),
+                appointmentTime=f"{order.time_section}",
+                status=order.status.value,
+                paymentStatus=order.payment_status.value,
+                price=float(order.price) if order.price else 0.0,
+                canCancel=can_cancel,
+                createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else ""
+            ))
+        
+        return ResponseModel(code=0, message=AppointmentListResponse(
+            total=total,
+            page=page,
+            pageSize=pageSize,
+            list=appointment_list
+        ))
+        
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"获取发起人订单列表时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取订单列表失败",
             status_code=500
         )
 
@@ -2621,7 +2785,7 @@ async def get_appointment_detail(
         # 4. 构建响应
         appointment_detail = {
             "id": order.order_id,
-            "orderNo": order.order_no or "",
+            "orderNo": order.order_no if order.order_no else _generate_order_no(),
             "hospitalId": area.area_id,
             "hospitalName": area.name,
             "hospitalAddress": area.destination,

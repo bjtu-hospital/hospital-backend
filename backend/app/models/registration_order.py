@@ -42,6 +42,7 @@ class RegistrationOrder(Base):
     
     patient_id = Column(BigInteger, ForeignKey("patient.patient_id"), nullable=False, comment="关联 patient.patient_id")
     user_id = Column(Integer, ForeignKey("user.user_id"), nullable=True, comment="关联 user.user_id，冗余字段")
+    initiator_user_id = Column(Integer, ForeignKey("user.user_id"), nullable=True, comment="订单发起者 user_id，谁替谁预约")
     doctor_id = Column(Integer, ForeignKey("doctor.doctor_id"), nullable=False, comment="关联 doctor.doctor_id")
     schedule_id = Column(BigInteger, ForeignKey("schedule.schedule_id"), nullable=True, comment="可选：关联具体排班")
 
@@ -94,6 +95,7 @@ class RegistrationOrder(Base):
 
     # 关系（便于 ORM 查询）
     patient = relationship("Patient")
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
+    initiator = relationship("User", foreign_keys=[initiator_user_id])
     doctor = relationship("Doctor")
     schedule = relationship("Schedule")
