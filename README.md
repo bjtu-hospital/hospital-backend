@@ -5664,7 +5664,7 @@ Authorization: Bearer <token>
 
 ### 3.1 创建预约挂号 Post: `/appointments`
 
-创建新的预约挂号订单。
+为就诊人创建预约挂号订单。当前用户可以为自己或关联的就诊人预约。
 
 #### Header:
 ```
@@ -5682,8 +5682,24 @@ Authorization: Bearer <token>
 
 字段说明：
 - `scheduleId` (必填): 排班ID
-- `patientId` (必填): 患者ID（必须是当前用户的就诊人）
+- `patientId` (必填): 患者ID（必须是当前用户本人或通过就诊人关系表关联的患者）
 - `symptoms` (可选): 症状描述
+
+#### 权限验证:
+系统会验证 `patientId` 是否属于当前用户：
+1. **本人预约**: patient.user_id == current_user.user_id
+2. **代为预约**: 通过 PatientRelation 表查询，当前用户可为其添加的就诊人预约
+
+若两者都不满足，返回"无权为该患者预约"错误。
+
+#### 订单字段说明:
+- `user_id`: 就诊患者的 user_id（可能为 null，如果患者未绑定账号）
+- `initiator_user_id`: 订单发起人的 user_id（当前登录用户）
+- `patient_id`: 就诊患者的 patient_id
+
+示例场景：
+- 用户A为自己预约: user_id=A, initiator_user_id=A, patient_id=A的患者记录
+- 用户A为家人B预约: user_id=B的user_id或null, initiator_user_id=A, patient_id=B
 
 #### 业务规则:
 1. 预约成功后立即锁定号源（remaining_slots - 1）
@@ -5698,7 +5714,7 @@ Authorization: Bearer <token>
     \"message\": {
         \"id\": 1001,
         \"orderNo\": \"2025112012345678\",
-        \"queueNumber\": 5,
+        \"queueNumber\": null,
         \"needPay\": true,
         \"payAmount\": 60.00,
         \"appointmentDate\": \"2025-11-20\",
@@ -5708,6 +5724,9 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+字段说明：
+- `queueNumber`: 排队号码（预约阶段返回 null，就诊时由就诊系统动态分配）
 
 #### 错误示例:
 ```json
@@ -5734,7 +5753,9 @@ Authorization: Bearer <token>
 
 ### 3.2 获取我的预约列表 Get: `/appointments`
 
-获取当前用户的所有预约记录，支持状态过滤和分页。
+获取当前用户作为**就诊患者**的所有预约记录（即 order.user_id = current_user.user_id 的订单），支持状态过滤和分页。
+
+**注意**: 此接口返回的是"我作为患者的预约"，不包括代他人预约的订单。如需查看代他人预约的订单，请使用 `GET /patient/my-initiated-appointments` 接口。
 
 #### Header:
 ```
@@ -5795,7 +5816,7 @@ GET /appointments?status=pending&page=1&pageSize=20
 字段说明：
 - `canCancel`: 是否可取消，根据配置动态计算（默认需在就诊前2小时）
 - `canReschedule`: 是否可改约（暂未实现）
-- `queueNumber`: 队列号（TODO: 实时计算）
+- `queueNumber`: 排队号码（预约阶段返回 null，就诊时由就诊系统动态分配）
 
 #### 取消规则计算:
 系统根据以下配置动态计算是否允许取消：
@@ -5809,9 +5830,44 @@ GET /appointments?status=pending&page=1&pageSize=20
 
 ---
 
-### 3.3 取消预约 Put: `/appointments/{appointmentId}/cancel`
+### 3.3 获取我创建的订单列表 Get: `/patient/my-initiated-appointments`
 
-取消指定的预约订单。
+获取当前用户作为**发起人**创建的所有订单（即 order.initiator_user_id = current_user.user_id 的订单），包括为他人代约的订单。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `status` (可选): 状态过滤，默认 \"all\"
+  - `all`: 全部
+  - `pending`: 待支付
+  - `completed`: 已完成
+  - `cancelled`: 已取消
+- `page` (可选): 页码，默认 1
+- `pageSize` (可选): 每页数量，默认 10
+
+#### 请求示例:
+```
+GET /patient/my-initiated-appointments
+GET /patient/my-initiated-appointments?status=pending&page=1&pageSize=20
+```
+
+#### 输出格式:
+与 `GET /appointments` 相同，返回订单列表，但查询条件不同：
+- `GET /appointments`: 查询 user_id = current_user.user_id（我作为患者的订单）
+- `GET /patient/my-initiated-appointments`: 查询 initiator_user_id = current_user.user_id（我创建的所有订单）
+
+应用场景：
+- 用户A为自己预约: 两个接口都能看到
+- 用户A为家人B预约: 只在"我创建的订单"中显示，不在"我的预约"中显示
+
+---
+
+### 3.4 取消预约 Put: `/appointments/{appointmentId}/cancel`
+
+取消指定的预约订单。**发起人或就诊患者本人都可以取消**。
 
 #### Header:
 ```
@@ -5825,6 +5881,13 @@ Authorization: Bearer <token>
 ```
 PUT /appointments/1001/cancel
 ```
+
+#### 权限验证:
+系统会验证当前用户是否有权取消该订单：
+1. **发起人**: order.initiator_user_id == current_user.user_id
+2. **就诊人本人**: order.patient_id 对应的 patient.user_id == current_user.user_id
+
+若两者都不满足，返回"无权取消该预约"错误。
 
 #### 取消规则:
 - 根据配置动态计算截止时间（默认就诊前2小时）
