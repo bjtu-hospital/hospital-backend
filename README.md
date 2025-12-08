@@ -6007,6 +6007,214 @@ PUT /appointments/1001/cancel
     }
 }
 ```
+### 3.4.1 获取可改约的排班列表 Get: `/appointments/{appointmentId}/reschedule-options`
+
+获取指定预约可改约的排班列表。系统会返回同医生、同诊室、不同日期/时间段的可用排班。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `appointmentId`: 预约订单ID
+
+#### 权限验证:
+系统会验证当前用户是否有权改约该订单：
+1. **发起人**: order.initiator_user_id == current_user.user_id
+2. **就诊人本人**: order.patient_id 对应的 patient.user_id == current_user.user_id
+
+#### 可改约规则:
+1. 仅可改约 PENDING/CONFIRMED 状态的订单
+2. 返回条件：同医生、同诊室、且还有剩余号源（remaining_slots > 0）的排班
+3. 不返回已过期日期的排班
+4. 结果按日期和时间段排序
+
+#### 请求示例:
+```
+GET /appointments/1001/reschedule-options
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "currentAppointment": {
+            "id": 1001,
+            "appointmentDate": "2025-12-08",
+            "appointmentTime": "上午",
+            "doctorName": "张三",
+            "doctorTitle": "主治医师",
+            "clinicName": "心内科门诊",
+            "slotType": "普通"
+        },
+        "rescheduleOptions": [
+            {
+                "scheduleId": 9560,
+                "date": "2025-12-09",
+                "timeSection": "下午",
+                "slotType": "普通",
+                "remainingSlots": 25,
+                "price": 60.00,
+                "weekday": "二"
+            },
+            {
+                "scheduleId": 9561,
+                "date": "2025-12-10",
+                "timeSection": "上午",
+                "slotType": "普通",
+                "remainingSlots": 20,
+                "price": 60.00,
+                "weekday": "三"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `currentAppointment`: 当前预约的基本信息
+- `rescheduleOptions`: 可改约排班列表，按日期升序排列
+- `weekday`: 周几（"一"至"日"）
+- `remainingSlots`: 该排班剩余号源数
+
+#### 常见错误:
+```json
+{
+    "code": 201,
+    "message": {
+        "error": "资源不存在",
+        "msg": "预约订单不存在"
+    }
+}
+```
+
+```json
+{
+    "code": 403,
+    "message": {
+        "error": "权限错误",
+        "msg": "无权改约该预约"
+    }
+}
+```
+
+---
+
+### 3.4.2 改约到其他排班 Put: `/appointments/{appointmentId}/reschedule`
+
+将预约改到同医生同诊室的其他排班上。
+
+#### Header:
+```
+Authorization: Bearer <token>
+```
+
+#### Path 参数:
+- `appointmentId`: 预约订单ID
+
+#### 请求体:
+```json
+{
+    "scheduleId": 9560,
+    "paymentMethod": "online"
+}
+```
+
+字段说明：
+- `scheduleId` (必填): 新的排班ID（必须通过 reschedule-options 接口获取）
+- `paymentMethod` (可选): 支付方式，如已支付则用于补差价支付
+
+#### 权限验证:
+同获取改约选项接口，仅发起人或就诊人本人可改约。
+
+#### 改约规则:
+1. 原订单必须是 PENDING 或 CONFIRMED 状态
+2. 新排班必须属于同医生、同诊室
+3. 新排班必须有可用号源
+4. 保留原订单的患者、症状等信息，仅更新排班和价格
+5. 如价格变化（可能因实时浮动），更新价格并返回 priceDifference
+
+#### 业务步骤:
+1. 释放原排班号源（remaining_slots + 1）
+2. 锁定新排班号源（remaining_slots - 1）
+3. 更新订单的 schedule_id、slot_date、time_section、price、update_time
+4. 如原订单已支付（payment_status = PAID）且新价格高于原价，需补款
+
+#### 请求示例:
+```
+PUT /appointments/1001/reschedule
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "success": true,
+        "id": 1001,
+        "orderNo": "2025112012345678",
+        "appointmentDate": "2025-12-09",
+        "appointmentTime": "下午",
+        "price": 60.00,
+        "priceDifference": 0.00,
+        "needPayment": false,
+        "paymentAmount": 0.00,
+        "status": "pending",
+        "updatedAt": "2025-12-08 11:30:00"
+    }
+}
+```
+
+字段说明：
+- `success`: 改约是否成功
+- `priceDifference`: 价格差异（新价格 - 原价格），>0 需补款，<0 需退款
+- `needPayment`: 是否需要补付款（当 priceDifference > 0 时为 true）
+- `paymentAmount`: 需补付的金额
+
+#### 常见错误:
+```json
+{
+    "code": 201,
+    "message": {
+        "error": "资源不存在",
+        "msg": "预约订单不存在"
+    }
+}
+```
+
+```json
+{
+    "code": 1001,
+    "message": {
+        "error": "业务规则错误",
+        "msg": "该排班号源已满"
+    }
+}
+```
+
+```json
+{
+    "code": 1001,
+    "message": {
+        "error": "业务规则错误",
+        "msg": "改约排班必须是同医生同诊室"
+    }
+}
+```
+
+```json
+{
+    "code": 1006,
+    "message": {
+        "error": "业务规则错误",
+        "msg": "当前订单状态不支持改约"
+    }
+}
+```
+
+---
 
 ---
 

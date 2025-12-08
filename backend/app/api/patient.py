@@ -22,7 +22,11 @@ from app.schemas.appointment import (
     AppointmentResponse,
     AppointmentListResponse,
     AppointmentListItem,
-    CancelAppointmentResponse
+    CancelAppointmentResponse,
+    RescheduleOption,
+    RescheduleOptionsResponse,
+    RescheduleRequest,
+    RescheduleResponse,
 )
 from app.schemas.waitlist import (
     WaitlistCreate,
@@ -955,6 +959,21 @@ def _generate_order_no() -> str:
     random_num = random.randint(10000000, 99999999)
     return f"{date_str}{random_num}"
 
+def _get_time_section_start(time_section: str, schedule_config: dict) -> str:
+    """根据时间段获取开始时间字符串"""
+    section = (time_section or "").strip()
+    if section in ["上午", "早上", "morning"]:
+        return schedule_config.get("morningStart", "08:00")
+    if section in ["下午", "中午", "afternoon"]:
+        return schedule_config.get("afternoonStart", "13:30")
+    return schedule_config.get("eveningStart", "18:00")
+
+def _build_schedule_start_datetime(schedule: Schedule, schedule_config: dict) -> datetime:
+    """构建排班的开始时间点"""
+    time_str = _get_time_section_start(schedule.time_section, schedule_config or {})
+    hour, minute = parse_time_to_hour_minute(time_str)
+    return datetime.combine(schedule.date, datetime.min.time()).replace(hour=hour, minute=minute)
+
 
 @router.post("/appointments", response_model=ResponseModel[AppointmentResponse])
 async def create_appointment(
@@ -1261,6 +1280,10 @@ async def get_my_appointments(
                 cancel_deadline = appointment_datetime.replace(hour=hour, minute=minute) - timedelta(hours=cancel_hours_before)
                 
                 can_cancel = now < cancel_deadline
+            can_reschedule = False
+            if order.status in [OrderStatus.PENDING, OrderStatus.CONFIRMED] and schedule:
+                start_dt = _build_schedule_start_datetime(schedule, schedule_config or {})
+                can_reschedule = start_dt > datetime.now()
             
             appointment_list.append(AppointmentListItem(
                 id=order.order_id,
@@ -1281,7 +1304,7 @@ async def get_my_appointments(
                 status=order.status.value,
                 paymentStatus=order.payment_status.value,
                 canCancel=can_cancel,
-                canReschedule=False,
+                canReschedule=can_reschedule,
                 createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else ""
             ))
         
@@ -1482,6 +1505,328 @@ async def cancel_appointment(
         )
 
 
+@router.get("/appointments/{appointmentId}/reschedule-options", response_model=ResponseModel[RescheduleOptionsResponse])
+async def get_reschedule_options(
+    appointmentId: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取可改约的排班列表（同医生、同诊室、同号源）"""
+    try:
+        order_res = await db.execute(
+            select(RegistrationOrder, Schedule, Doctor, Clinic, MinorDepartment, HospitalArea, Patient)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Clinic.minor_dept_id)
+            .join(HospitalArea, HospitalArea.area_id == Clinic.area_id)
+            .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+            .where(RegistrationOrder.order_id == appointmentId)
+        )
+        row = order_res.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="预约不存在",
+                status_code=404
+            )
+
+        order, current_schedule, doctor, clinic, dept, area, patient = row
+
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+
+        is_initiator = order.initiator_user_id == current_user.user_id
+        is_patient = user_patient and order.patient_id == user_patient.patient_id
+
+        if not is_initiator and not is_patient:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权查看改约选项",
+                status_code=403
+            )
+
+        if not current_schedule:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="原排班不存在，无法改约",
+                status_code=404
+            )
+
+        if order.status not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="当前状态不可改约",
+                status_code=400
+            )
+
+        schedule_config = await get_schedule_config(db)
+        now = datetime.now()
+
+        # 确保当前排班仍在开始前
+        if _build_schedule_start_datetime(current_schedule, schedule_config or {}) <= now:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="已过就诊时间，无法改约",
+                status_code=400
+            )
+
+        options_res = await db.execute(
+            select(Schedule, Clinic, MinorDepartment, HospitalArea)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Clinic.minor_dept_id)
+            .join(HospitalArea, HospitalArea.area_id == Clinic.area_id)
+            .where(
+                Schedule.doctor_id == order.doctor_id,
+                Schedule.clinic_id == current_schedule.clinic_id,
+                Schedule.slot_type == current_schedule.slot_type,
+                Schedule.remaining_slots > 0,
+                Schedule.schedule_id != current_schedule.schedule_id,
+                Schedule.date >= now.date()
+            )
+            .order_by(Schedule.date.asc(), Schedule.time_section.asc())
+        )
+
+        options_rows = options_res.all()
+        options: list[RescheduleOption] = []
+
+        for opt_schedule, opt_clinic, opt_dept, opt_area in options_rows:
+            start_dt = _build_schedule_start_datetime(opt_schedule, schedule_config or {})
+            if start_dt <= now:
+                continue
+            options.append(RescheduleOption(
+                scheduleId=opt_schedule.schedule_id,
+                date=str(opt_schedule.date),
+                timeSection=opt_schedule.time_section,
+                remainingSlots=opt_schedule.remaining_slots,
+                price=float(opt_schedule.price) if opt_schedule.price else 0.0,
+                hospitalId=opt_area.area_id if opt_area else None,
+                hospitalName=opt_area.name if opt_area else None,
+                departmentId=opt_dept.minor_dept_id if opt_dept else None,
+                departmentName=opt_dept.name if opt_dept else None,
+                clinicId=opt_clinic.clinic_id if opt_clinic else None,
+                clinicName=opt_clinic.name if opt_clinic else None,
+                slotType=str(opt_schedule.slot_type.value if hasattr(opt_schedule.slot_type, 'value') else opt_schedule.slot_type)
+            ))
+
+        return ResponseModel(code=0, message=RescheduleOptionsResponse(
+            appointmentId=order.order_id,
+            currentScheduleId=current_schedule.schedule_id if current_schedule else None,
+            currentDate=str(order.slot_date) if order.slot_date else None,
+            currentTimeSection=order.time_section,
+            options=options
+        ))
+
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"获取改约可选排班失败: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取改约可选排班失败",
+            status_code=500
+        )
+
+
+@router.put("/appointments/{appointmentId}/reschedule", response_model=ResponseModel[RescheduleResponse])
+async def reschedule_appointment(
+    appointmentId: int,
+    payload: RescheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """改约到同医生同诊室的其他排班"""
+    try:
+        order_res = await db.execute(
+            select(RegistrationOrder, Schedule, Patient, Clinic)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .where(RegistrationOrder.order_id == appointmentId)
+        )
+        row = order_res.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="预约不存在",
+                status_code=404
+            )
+
+        order, current_schedule, patient, clinic = row
+
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+
+        is_initiator = order.initiator_user_id == current_user.user_id
+        is_patient = user_patient and order.patient_id == user_patient.patient_id
+
+        if not is_initiator and not is_patient:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权改约该订单",
+                status_code=403
+            )
+
+        if not current_schedule:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="原排班不存在，无法改约",
+                status_code=404
+            )
+
+        if order.status not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="当前状态不可改约",
+                status_code=400
+            )
+
+        if order.payment_status not in [PaymentStatus.PENDING, PaymentStatus.PAID]:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="当前支付状态不可改约",
+                status_code=400
+            )
+
+        schedule_config = await get_schedule_config(db)
+        now = datetime.now()
+
+        if _build_schedule_start_datetime(current_schedule, schedule_config or {}) <= now:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="已过就诊时间，无法改约",
+                status_code=400
+            )
+
+        target_res = await db.execute(
+            select(Schedule, Clinic)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .where(Schedule.schedule_id == payload.scheduleId)
+        )
+        target_row = target_res.first()
+
+        if not target_row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="目标排班不存在",
+                status_code=404
+            )
+
+        target_schedule, target_clinic = target_row
+
+        if target_schedule.remaining_slots <= 0:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="目标排班号源不足",
+                status_code=400
+            )
+
+        if target_schedule.schedule_id == current_schedule.schedule_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="请选择不同的排班进行改约",
+                status_code=400
+            )
+
+        if target_schedule.doctor_id != order.doctor_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="仅支持同医生改约",
+                status_code=400
+            )
+
+        if target_schedule.clinic_id != current_schedule.clinic_id:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="仅支持同诊室同号源改约",
+                status_code=400
+            )
+
+        target_slot_type = target_schedule.slot_type.value if hasattr(target_schedule.slot_type, "value") else target_schedule.slot_type
+        current_slot_type = current_schedule.slot_type.value if hasattr(current_schedule.slot_type, "value") else current_schedule.slot_type
+
+        if target_slot_type != current_slot_type:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="仅支持同号源类型改约",
+                status_code=400
+            )
+
+        if _build_schedule_start_datetime(target_schedule, schedule_config or {}) <= now:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="目标排班已过开始时间，无法改约",
+                status_code=400
+            )
+
+        # 价格按患者身份折扣重新计算，保持与预约创建一致
+        discounts = await get_patient_identity_discounts(db)
+        discount_rate = 1.0
+        if patient and patient.patient_type:
+            patient_type = patient.patient_type.value if hasattr(patient.patient_type, "value") else patient.patient_type
+            discount_rate = discounts.get(patient_type, 1.0)
+
+        base_price = target_schedule.price if target_schedule.price else 0.0
+        final_price = calculate_final_price(base_price, discount_rate)
+        original_price = float(order.price) if order.price else 0.0
+        price_diff = float(final_price) - original_price
+
+        # 已支付订单仅允许同价改约
+        if order.payment_status == PaymentStatus.PAID and abs(price_diff) > 0.0001:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="已支付订单仅支持同价改约",
+                status_code=400
+            )
+
+        # 释放原排班号源，锁定新排班
+        current_schedule.remaining_slots += 1
+        target_schedule.remaining_slots -= 1
+
+        order.schedule_id = target_schedule.schedule_id
+        order.slot_date = target_schedule.date
+        order.time_section = target_schedule.time_section
+        order.slot_type = target_slot_type
+        order.doctor_id = target_schedule.doctor_id
+        order.price = final_price
+        order.update_time = datetime.now()
+
+        db.add(order)
+        db.add(current_schedule)
+        db.add(target_schedule)
+
+        await db.commit()
+        await db.refresh(order)
+
+        return ResponseModel(code=0, message=RescheduleResponse(
+            id=order.order_id,
+            appointmentDate=str(order.slot_date),
+            appointmentTime=f"{order.time_section}",
+            price=float(final_price) if final_price else 0.0,
+            priceDiff=round(price_diff, 2),
+            status=order.status.value,
+            paymentStatus=order.payment_status.value
+        ))
+
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"改约失败: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="改约失败",
+            status_code=500
+        )
+
+
 @router.get("/my-initiated-appointments", response_model=ResponseModel[AppointmentListResponse])
 async def get_my_initiated_appointments(
     status: Optional[str] = "all",
@@ -1567,6 +1912,10 @@ async def get_my_initiated_appointments(
                 hour, minute = parse_time_to_hour_minute(time_str)
                 cancel_deadline = appointment_datetime.replace(hour=hour, minute=minute) - timedelta(hours=cancel_hours_before)
                 can_cancel = now < cancel_deadline
+            can_reschedule = False
+            if order.status in [OrderStatus.PENDING, OrderStatus.CONFIRMED] and schedule:
+                start_dt = _build_schedule_start_datetime(schedule, schedule_config or {})
+                can_reschedule = start_dt > datetime.now()
             
             # 排队号码由就诊系统动态管理，预约阶段不提供
             queue_number = None
@@ -1590,6 +1939,7 @@ async def get_my_initiated_appointments(
                 paymentStatus=order.payment_status.value,
                 price=float(order.price) if order.price else 0.0,
                 canCancel=can_cancel,
+                canReschedule=can_reschedule,
                 createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else ""
             ))
         
