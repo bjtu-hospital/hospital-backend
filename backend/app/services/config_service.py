@@ -3,12 +3,51 @@
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 
 from app.models.system_config import SystemConfig
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_final_price(
+    base_price: Union[float, Decimal],
+    discount_rate: Union[float, Decimal] = 1.0
+) -> Decimal:
+    """
+    计算最终价格（应用折扣），并精确到小数点后2位
+    
+    参数:
+    - base_price: 基础价格 (float 或 Decimal)
+    - discount_rate: 折扣率 (0.0-1.0)，默认 1.0（无折扣）
+    
+    返回:
+    - Decimal: 精确到小数点后2位的最终价格
+    """
+    try:
+        # 转换为 Decimal 以避免浮点精度问题
+        if not isinstance(base_price, Decimal):
+            base_price = Decimal(str(base_price))
+        
+        if not isinstance(discount_rate, Decimal):
+            discount_rate = Decimal(str(discount_rate))
+        
+        # 计算最终价格
+        final_price = base_price * discount_rate
+        
+        # 精确到小数点后2位（四舍五入）
+        final_price = final_price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+        return final_price
+    except Exception as e:
+        logger.error(f"计算价格失败: base_price={base_price}, discount_rate={discount_rate}, error={e}")
+        # 如果转换失败，返回基础价格
+        if isinstance(base_price, Decimal):
+            return base_price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        return Decimal(str(base_price)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
 
 
 async def get_config_value(
@@ -174,6 +213,57 @@ async def get_department_head_config(
             return {"maxCount": default_max_count}
     
     return {"maxCount": default_max_count}
+
+
+async def get_patient_identity_discounts(
+    db: AsyncSession,
+    scope_type: str = "GLOBAL",
+    scope_id: Optional[int] = None
+) -> Dict[str, float]:
+    """
+    获取患者身份折扣配置
+    
+    返回格式:
+    {
+        "学生": 0.8,
+        "教师": 0.8,
+        "职工": 0.8,
+        "校外": 1.0
+    }
+    """
+    config = await get_config_value(
+        db,
+        config_key="patientIdentityDiscounts",
+        scope_type=scope_type,
+        scope_id=scope_id,
+        fallback_to_global=True
+    )
+    
+    # 默认折扣配置
+    default_discounts = {
+        "学生": 0.8,
+        "教师": 0.8,
+        "职工": 0.8,
+        "校外": 1.0
+    }
+    
+    if config and isinstance(config, dict):
+        # 验证折扣值合法性
+        try:
+            validated_config = {}
+            for key, value in config.items():
+                discount = float(value)
+                if 0 < discount <= 1.0:
+                    validated_config[key] = discount
+                else:
+                    logger.warning(f"折扣值无效: {key}={value}, 使用默认值")
+                    validated_config[key] = default_discounts.get(key, 1.0)
+            return validated_config
+        except (ValueError, TypeError) as e:
+            logger.warning(f"解析折扣配置失败: {e}, 使用默认值")
+            return default_discounts
+    
+    return default_discounts
 
 
 def parse_time_to_hour_minute(time_str: str) -> tuple:

@@ -18,7 +18,7 @@ from app.schemas.admin import AddSlotAuditListResponse, AddSlotAuditResponse, Ho
 from app.schemas.response import (
     ResponseModel, AuthErrorResponse, MajorDepartmentListResponse, MinorDepartmentListResponse, DoctorListResponse, DoctorAccountCreateResponse, DoctorTransferResponse
 )
-from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig
+from app.schemas.config import SystemConfigRequest, SystemConfigResponse, RegistrationConfig, ScheduleConfig, PatientIdentityDiscountsConfig
 from app.db.base import get_db, redis, User, Administrator, MajorDepartment, MinorDepartment, Doctor, Clinic, Schedule, ScheduleAudit, LeaveAudit, AddSlotAudit
 from app.models.hospital_area import HospitalArea
 from app.models.patient import Patient
@@ -52,7 +52,8 @@ from app.services.config_service import (
     get_registration_config,
     get_schedule_config,
     get_config_value,
-    get_department_head_config
+    get_department_head_config,
+    get_patient_identity_discounts
 )
 from app.services.absence_detection_service import (
     mark_absent_for_date,
@@ -74,7 +75,7 @@ from app.schemas.anti_scalper import (
 from app.models.feedback import Feedback
 from app.schemas.feedback import FeedbackStatus, FeedbackSimpleOut
 from pydantic import BaseModel
-
+from app.services.add_slot_service import execute_add_slot_and_register
 
 
 logger = logging.getLogger(__name__)
@@ -3879,8 +3880,7 @@ async def approve_add_slot_audit(
         if audit.status != 'pending':
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {audit.status}，无法重复审核", status_code=400)
 
-        # 执行加号处理逻辑（会在内部创建挂号并更新排班）
-        from app.services.add_slot_service import execute_add_slot_and_register
+
 
         order_id = await execute_add_slot_and_register(
             db=db,
@@ -4072,7 +4072,7 @@ async def get_system_config(
 ):
     """获取系统配置 - 仅管理员可操作
     
-    返回挂号配置(registration)和排班配置(schedule)的完整信息
+    返回挂号配置(registration)、排班配置(schedule)和患者身份折扣配置(patientIdentityDiscounts)的完整信息
     """
     try:
         if not current_user.is_admin:
@@ -4085,6 +4085,7 @@ async def get_system_config(
         # 使用配置服务获取配置
         registration_data = await get_registration_config(db)
         schedule_data = await get_schedule_config(db)
+        discounts_data = await get_patient_identity_discounts(db)
 
         logger.info(f"获取系统配置成功")
         
@@ -4092,7 +4093,8 @@ async def get_system_config(
             code=0,
             message=SystemConfigResponse(
                 registration=registration_data,
-                schedule=schedule_data
+                schedule=schedule_data,
+                patientIdentityDiscounts=discounts_data
             )
         )
     except AuthHTTPException:
@@ -4114,7 +4116,7 @@ async def update_system_config(
 ):
     """更新系统配置 - 仅管理员可操作
     
-    可选择性更新挂号配置(registration)和/或排班配置(schedule)
+    可选择性更新挂号配置(registration)、排班配置(schedule)和/或患者身份折扣配置(patientIdentityDiscounts)
     只需传递需要更新的字段即可
     """
     try:
@@ -4234,6 +4236,47 @@ async def update_system_config(
 
             logger.info(f"更新排班配置: {sch_dict}")
 
+        # 处理患者身份折扣配置更新
+        if config_data.patientIdentityDiscounts is not None:
+            discount_config = {
+                "学生": config_data.patientIdentityDiscounts.student,
+                "教师": config_data.patientIdentityDiscounts.teacher,
+                "职工": config_data.patientIdentityDiscounts.staff,
+                "校外": config_data.patientIdentityDiscounts.external
+            }
+
+            # 查询现有配置
+            discount_result = await db.execute(
+                select(SystemConfig).where(
+                    and_(
+                        SystemConfig.config_key == "patientIdentityDiscounts",
+                        SystemConfig.scope_type == "GLOBAL"
+                    )
+                )
+            )
+            discount_cfg = discount_result.scalar_one_or_none()
+
+            if discount_cfg:
+                # 更新现有配置
+                discount_cfg.config_value = discount_config
+                discount_cfg.update_time = datetime.now()
+                flag_modified(discount_cfg, "config_value")
+                db.add(discount_cfg)
+            else:
+                # 创建新配置
+                new_config = SystemConfig(
+                    config_key="patientIdentityDiscounts",
+                    scope_type="GLOBAL",
+                    scope_id=None,
+                    config_value=discount_config,
+                    data_type="JSON",
+                    description="患者身份折扣配置 (学生/教师/职工/校外)",
+                    is_active=True
+                )
+                db.add(new_config)
+
+            logger.info(f"更新患者身份折扣配置: {discount_config}")
+
         await db.commit()
         
         return ResponseModel(
@@ -4335,6 +4378,134 @@ async def update_global_prices(
         raise
     except Exception as e:
         logger.error(f"更新全局价格配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+# ==================== 患者身份折扣配置 API ====================
+
+@router.get("/patient-identity-discounts", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def get_patient_identity_discounts_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取患者身份折扣配置 - 仅管理员可操作"""
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        discounts = await get_patient_identity_discounts(db)
+        
+        logger.info("获取患者身份折扣配置成功")
+        return ResponseModel(
+            code=0,
+            message={
+                "学生": discounts.get("学生", 0.8),
+                "教师": discounts.get("教师", 0.8),
+                "职工": discounts.get("职工", 0.8),
+                "校外": discounts.get("校外", 1.0)
+            }
+        )
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取患者身份折扣配置时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.put("/patient-identity-discounts", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_patient_identity_discounts_config(
+    config_data: PatientIdentityDiscountsConfig,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """更新患者身份折扣配置 - 仅管理员可操作
+    
+    参数:
+    - student: 学生折扣率 (0.0-1.0)
+    - teacher: 教师折扣率 (0.0-1.0)
+    - staff: 职工折扣率 (0.0-1.0)
+    - external: 校外折扣率 (0.0-1.0)
+    
+    例如 0.8 表示 8折
+    """
+    try:
+        if not current_user.is_admin:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权限，仅管理员可操作",
+                status_code=403
+            )
+
+        # 构建配置字典
+        discount_config = {
+            "学生": config_data.student,
+            "教师": config_data.teacher,
+            "职工": config_data.staff,
+            "校外": config_data.external
+        }
+
+        # 查询现有配置
+        result = await db.execute(
+            select(SystemConfig).where(
+                and_(
+                    SystemConfig.config_key == "patientIdentityDiscounts",
+                    SystemConfig.scope_type == "GLOBAL"
+                )
+            )
+        )
+        config = result.scalar_one_or_none()
+
+        if config:
+            # 更新现有配置
+            config.config_value = discount_config
+            config.update_time = datetime.utcnow()
+            db.add(config)
+        else:
+            # 创建新配置
+            new_config = SystemConfig(
+                config_key="patientIdentityDiscounts",
+                scope_type="GLOBAL",
+                scope_id=None,
+                config_value=discount_config,
+                data_type="JSON",
+                description="患者身份折扣配置 (学生/教师/职工/校外)",
+                is_active=True,
+                create_time=datetime.utcnow(),
+                update_time=datetime.utcnow()
+            )
+            db.add(new_config)
+
+        await db.commit()
+        
+        logger.info(f"更新患者身份折扣配置成功: {discount_config}")
+        return ResponseModel(
+            code=0,
+            message={
+                "detail": "患者身份折扣配置更新成功",
+                "config": discount_config
+            }
+        )
+    except AuthHTTPException:
+        await db.rollback()
+        raise
+    except BusinessHTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"更新患者身份折扣配置时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
