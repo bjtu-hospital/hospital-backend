@@ -9,6 +9,7 @@ class OrderStatus(enum.Enum):
     PENDING = "pending"          # 待支付
     CONFIRMED = "confirmed"      # 已确认(已支付)
     CANCELLED = "cancelled"      # 已取消
+    TIMEOUT = "timeout"          # 已超时(未在规定时间内支付)
     COMPLETED = "completed"      # 已完成
     NO_SHOW = "no_show"         # 未到场
     WAITLIST = "waitlist"       # 候补中
@@ -63,6 +64,7 @@ class RegistrationOrder(Base):
         nullable=False,
         comment="支付状态"
     )
+    payment_method = Column(String(50), nullable=True, comment="支付方式: BANK(银行卡)/ALIPAY(支付宝)/WECHAT(微信)")
     payment_time = Column(DateTime, nullable=True, comment="支付完成时间")
     cancel_time = Column(DateTime, nullable=True, comment="取消时间")
     refund_time = Column(DateTime, nullable=True, comment="退款时间")

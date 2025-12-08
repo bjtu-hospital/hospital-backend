@@ -7,15 +7,18 @@ import asyncio
 import os
 import sys
 from redis.asyncio import Redis
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.api import auth,statistics
 from app.api import admin,doctor, patient, common
 from app.core.exception_handler import register_exception_handlers
 from app.core.log_middleware import LogMiddleware
 from app.core.config import settings
-from app.db.base import engine,Base,redis
+from app.db.base import engine,Base,redis,AsyncSessionLocal
 from app.core.cleantask import create_cleanup_task
 from app.services.absence_scheduler_service import start_absence_scheduler, stop_absence_scheduler
+from app.services.waitlist_service import WaitlistService
+from app.services.payment_timeout_service import PaymentTimeoutService
 
 # 确保 logs 文件夹存在
 os.makedirs("logs", exist_ok=True)
@@ -31,14 +34,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 全局变量存储清理任务
+# 全局变量存储清理任务和调度器
 cleanup_task = None
+scheduler = None
+
+
+async def persist_waitlist_job():
+    """定时任务：每5分钟同步 Redis 候补队列到数据库"""
+    try:
+        from app.db.base import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            count = await WaitlistService.persist_waitlist_to_db(db)
+            logger.info(f"候补队列同步完成: 更新 {count} 条记录")
+    except Exception as e:
+        logger.error(f"候补队列同步失败: {str(e)}")
+
+
+async def check_payment_timeout_job():
+    """定时任务：每分钟检查一次支付超时的订单"""
+    try:
+        async with AsyncSessionLocal() as db:
+            count = await PaymentTimeoutService.cancel_timeout_pending_orders(db)
+            if count > 0:
+                logger.info(f"支付超时检查: 处理 {count} 个超时订单")
+    except Exception as e:
+        logger.error(f"支付超时检查失败: {str(e)}")
 
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis, cleanup_task
+    global redis, cleanup_task, scheduler
 
     try:
         # 初始化 Redis
@@ -65,6 +91,15 @@ async def lifespan(app: FastAPI):
         # 启动缺勤检测定时任务
         start_absence_scheduler()
         logger.info("✓ 缺勤检测定时任务已启动")
+        
+        # 启动 APScheduler 并注册候补队列同步任务
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(persist_waitlist_job, "interval", minutes=5, id="persist_waitlist")
+        scheduler.add_job(check_payment_timeout_job, "interval", minutes=1, id="check_payment_timeout")
+        scheduler.start()
+        logger.info("✓ APScheduler 已启动")
+        logger.info("  - 候补队列同步任务每 5 分钟执行一次")
+        logger.info("  - 支付超时检查任务每 1 分钟执行一次")
 
         logger.info(" Application startup complete")
         yield  # 应用正常运行
@@ -77,6 +112,11 @@ async def lifespan(app: FastAPI):
         # 停止定时任务
         stop_absence_scheduler()
         logger.info("✓ 缺勤检测定时任务已停止")
+        
+        # 停止 APScheduler
+        if scheduler and scheduler.running:
+            scheduler.shutdown()
+            logger.info("✓ APScheduler 已停止")
         
         # 清理 Redis
         if redis:
