@@ -22,9 +22,12 @@ from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 from app.services.sms_service import SMSService
+from app.core.security import send_email
 import os
 import mimetypes
 import base64
+import re
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -945,6 +948,230 @@ async def register_admin(
         )
 
 
+@router.post("/email/send-verify-code", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def send_email_verify_code(
+    email: str = Body(..., embed=True),
+    current_user: UserSchema = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """发送邮箱验证码
+    
+    用户在绑定或更改邮箱时调用此接口。系统会：
+    1. 验证邮箱格式是否合法
+    2. 检查邮箱是否已被其他用户使用
+    3. 生成6位验证码并发送到指定邮箱
+    4. 在Redis保存验证码（有效期5分钟），防刷限制60秒
+    """
+    try:
+        # 邮箱格式校验
+        email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        if not re.match(email_regex, email):
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="邮箱格式不合法",
+                status_code=400
+            )
+        
+        # 检查邮箱是否已被其他用户使用
+        email_check = await db.execute(
+            select(User).where(
+                and_(
+                    User.email == email,
+                    User.user_id != current_user.user_id
+                )
+            )
+        )
+        if email_check.scalar_one_or_none():
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="该邮箱已被其他用户使用",
+                status_code=400
+            )
+        
+        # 防刷：60秒内只能发送一次
+        rate_key = f"email_verify_rate:{email}"
+        if await redis.get(rate_key):
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="发送过于频繁，请稍后再试",
+                status_code=429
+            )
+        await redis.set(rate_key, "1", ex=60)
+        
+        # 生成6位验证码
+        code = ''.join(str(random.randint(0, 9)) for _ in range(6))
+        
+        # 保存验证码到Redis（有效期5分钟）
+        code_data = {
+            "code": code,
+            "timestamp": time.time(),
+            "attempts": 0,
+            "user_id": current_user.user_id
+        }
+        await redis.set(
+            f"email_verify_code:{email}",
+            str(code_data),
+            ex=300  # 5分钟
+        )
+        
+        # 发送邮件
+        subject = "邮箱验证码"
+        body = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif;">
+                <p>您好，</p>
+                <p>感谢您使用我们的服务。您的邮箱验证码为：</p>
+                <h2 style="color: #007bff; letter-spacing: 5px;">{code}</h2>
+                <p>该验证码有效期为5分钟，请勿泄露给他人。</p>
+                <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                    如果这不是您的操作，请忽略此邮件。
+                </p>
+            </body>
+        </html>
+        """
+        
+        success = send_email(email, subject, body)
+        if not success:
+            # 邮件发送失败，清理验证码
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="邮件发送失败，请稍后重试",
+                status_code=500
+            )
+        
+        logger.info(f"用户 {current_user.user_id} 请求绑定邮箱 {email}，验证码已发送")
+        return ResponseModel(code=0, message={
+            "detail": "验证码已发送到你的邮箱，请在5分钟内验证",
+            "email_masked": email[:email.index('@')] + "***" + email[email.index('@'):]
+        })
+    except BusinessHTTPException:
+        raise
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"发送邮箱验证码异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_UPDATE_FAILED_CODE,
+            msg="发送验证码失败，请稍后重试",
+            status_code=500
+        )
+
+
+@router.post("/email/verify-code", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def verify_email_code(
+    email: str = Body(...),
+    code: str = Body(...),
+    current_user: UserSchema = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """验证邮箱验证码并绑定邮箱
+    
+    用户收到验证码后，调用此接口验证并完成邮箱绑定。
+    """
+    try:
+        # 从Redis获取验证码数据
+        raw = await redis.get(f"email_verify_code:{email}")
+        if not raw:
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码错误或已过期",
+                status_code=400
+            )
+        
+        # 解析验证码数据
+        try:
+            code_data = eval(raw)
+        except Exception:
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码状态异常，请重新获取",
+                status_code=400
+            )
+        
+        # 验证用户ID是否匹配
+        if int(code_data.get("user_id", -1)) != current_user.user_id:
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码与当前用户不匹配",
+                status_code=403
+            )
+        
+        # 尝试次数限制（3次）
+        attempts = int(code_data.get("attempts", 0))
+        if attempts >= 3:
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="尝试次数过多，请重新获取验证码",
+                status_code=400
+            )
+        
+        # 检查验证码是否过期（5分钟）
+        if time.time() - float(code_data.get("timestamp", 0)) > 300:
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码已过期，请重新获取",
+                status_code=400
+            )
+        
+        # 比对验证码
+        if str(code) != str(code_data.get("code")):
+            code_data["attempts"] = attempts + 1
+            await redis.set(
+                f"email_verify_code:{email}",
+                str(code_data),
+                ex=300
+            )
+            left = max(0, 3 - code_data["attempts"])
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg=f"验证码错误，还剩{left}次机会",
+                status_code=400
+            )
+        
+        # 验证通过，更新数据库中的邮箱
+        user_res = await db.execute(select(User).where(User.user_id == current_user.user_id))
+        user = user_res.scalar_one_or_none()
+        
+        if not user:
+            raise ResourceHTTPException(
+                code=settings.USER_GET_FAILED_CODE,
+                msg="用户不存在",
+                status_code=404
+            )
+        
+        user.email = email
+        await db.commit()
+        await db.refresh(user)
+        
+        # 清理验证码
+        await redis.delete(f"email_verify_code:{email}")
+        await redis.delete(f"email_verify_rate:{email}")
+        
+        logger.info(f"用户 {current_user.user_id} 邮箱绑定成功: {email}")
+        return ResponseModel(code=0, message={
+            "detail": "邮箱绑定成功",
+            "email": email
+        })
+    except BusinessHTTPException:
+        raise
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"验证邮箱验证码异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_UPDATE_FAILED_CODE,
+            msg="邮箱验证失败，请稍后重试",
+            status_code=500
+        )
+
+
 @router.post("/logout")
 async def logout(current_user: UserSchema = Depends(get_current_user)):
     """用户登出接口"""
@@ -973,7 +1200,6 @@ async def logout(current_user: UserSchema = Depends(get_current_user)):
 @router.put("/profile", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
 async def update_profile(
     realName: Optional[str] = Body(None),
-    email: Optional[str] = Body(None),
     gender: Optional[str] = Body(None),
     birthDate: Optional[str] = Body(None),
     current_user: UserSchema = Depends(get_current_user),
@@ -983,9 +1209,12 @@ async def update_profile(
     
     允许用户更新以下字段（可选）：
     - realName: 真实姓名
-    - email: 邮箱
     - gender: 性别（男/女/未知）
     - birthDate: 出生日期（YYYY-MM-DD格式）
+    
+    注意：邮箱绑定请使用专属接口
+    - POST /auth/email/send-verify-code - 发送验证码
+    - POST /auth/email/verify-code - 验证并绑定
     """
     try:
         # 查询患者记录
@@ -1002,29 +1231,6 @@ async def update_profile(
         # 更新姓名
         if realName is not None:
             patient.name = realName
-        
-        # 更新邮箱（更新 User 表）
-        if email is not None:
-            # 检查邮箱是否已被其他用户使用
-            email_check = await db.execute(
-                select(User).where(
-                    and_(
-                        User.email == email,
-                        User.user_id != current_user.user_id
-                    )
-                )
-            )
-            if email_check.scalar_one_or_none():
-                raise BusinessHTTPException(
-                    code=settings.DATA_UPDATE_FAILED_CODE,
-                    msg="该邮箱已被其他用户使用",
-                    status_code=400
-                )
-            
-            user_res = await db.execute(select(User).where(User.user_id == current_user.user_id))
-            user = user_res.scalar_one_or_none()
-            if user:
-                user.email = email
         
         # 更新性别
         if gender is not None:
@@ -1062,7 +1268,6 @@ async def update_profile(
             "detail": "个人信息更新成功",
             "updatedFields": {
                 "realName": patient.name if realName is not None else None,
-                "email": email if email is not None else None,
                 "gender": patient.gender if gender is not None else None,
                 "birthDate": patient.birth_date.strftime("%Y-%m-%d") if birthDate is not None and patient.birth_date else None
             }

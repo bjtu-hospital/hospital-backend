@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, update
+from sqlalchemy import select, and_, or_, func, update
 from typing import Optional
 from datetime import datetime, timedelta, date as date_type
 import logging
@@ -23,6 +23,14 @@ from app.schemas.appointment import (
     AppointmentListResponse,
     AppointmentListItem,
     CancelAppointmentResponse
+)
+from app.schemas.waitlist import (
+    WaitlistCreate,
+    WaitlistCreateResponse,
+    WaitlistItem,
+    WaitlistListResponse,
+    WaitlistConvertRequest,
+    WaitlistConvertResponse,
 )
 from app.schemas.health_record import (
     HealthRecordResponse,
@@ -54,8 +62,18 @@ from app.services.admin_helpers import (
 from app.services.config_service import (
     get_registration_config,
     get_schedule_config,
-    parse_time_to_hour_minute
+    parse_time_to_hour_minute,
+    get_patient_identity_discounts,
+    calculate_final_price
 )
+from app.schemas.payment import (
+    PaymentRequest,
+    PaymentResponse,
+    PaymentMethodEnum,
+    CancelPaymentRequest,
+    CancelPaymentResponse
+)
+from app.services.waitlist_service import WaitlistService
 import requests
 import urllib3
 import hashlib
@@ -1075,6 +1093,24 @@ async def create_appointment(
         # 6. 创建订单
         order_no = _generate_order_no()
         
+        # 从数据库获取身份折扣配置
+        discounts = await get_patient_identity_discounts(db)
+        
+        # 根据患者身份应用价格折扣
+        base_price = schedule.price if schedule.price else 0.0
+        discount_rate = 1.0  # 默认无折扣
+        
+        if patient.patient_type:
+            patient_type_value = patient.patient_type
+            if isinstance(patient.patient_type, PatientType):
+                patient_type_value = patient.patient_type.value
+            
+            # 从数据库配置中获取折扣率
+            discount_rate = discounts.get(patient_type_value, 1.0)
+        
+        # 计算最终价格，精确到小数点后2位
+        final_price = calculate_final_price(base_price, discount_rate)
+        
         new_order = RegistrationOrder(
             order_no=order_no,
             patient_id=data.patientId,
@@ -1085,7 +1121,7 @@ async def create_appointment(
             slot_date=schedule.date,
             time_section=schedule.time_section,
             slot_type=str(schedule.slot_type.value if hasattr(schedule.slot_type, 'value') else schedule.slot_type),
-            price=schedule.price,
+            price=final_price,  # 应用折扣后的价格（Decimal，精确到2位小数）
             symptoms=data.symptoms,
             status=OrderStatus.PENDING,  # 待支付
             payment_status=PaymentStatus.PENDING,  # 待支付
@@ -1110,7 +1146,7 @@ async def create_appointment(
             orderNo=order_no,
             queueNumber=None,
             needPay=True,
-            payAmount=float(schedule.price) if schedule.price else 0.0,
+            payAmount=float(final_price) if final_price else 0.0,
             appointmentDate=str(schedule.date),
             appointmentTime=f"{schedule.time_section}",
             status=new_order.status.value,
@@ -1393,6 +1429,33 @@ async def cancel_appointment(
         
         await db.commit()
         
+        # 8. 检查是否有候补，有的话自动转化第一个候补到预约（触发SMS通知）
+        # 核心逻辑：级联转换所有候补，直到没有候补或没有剩余号源为止
+        try:
+            converted_count = 0
+            max_attempts = 10  # 防止无限循环，最多尝试转换10个
+            
+            for attempt in range(max_attempts):
+                # 获取下一个候补
+                converted_order_id = await WaitlistService.notify_and_convert_first_in_queue(
+                    db, 
+                    order.schedule_id
+                )
+                
+                if not converted_order_id:
+                    # 没有候补了，跳出循环
+                    break
+                
+                converted_count += 1
+                logger.info(f"候补已转预约: order_id={converted_order_id}")
+                
+            if converted_count > 0:
+                logger.info(f"自动转化候补成功: 共转化{converted_count}个候补")
+            else:
+                logger.info(f"号源释放后无候补订单")
+        except Exception as e:
+            logger.error(f"自动转化候补失败: {str(e)}")
+        
         logger.info(f"取消预约成功: order_id={appointmentId}, refund={refund_amount}")
         
         return ResponseModel(code=0, message=CancelAppointmentResponse(
@@ -1544,6 +1607,680 @@ async def get_my_initiated_appointments(
         raise BusinessHTTPException(
             code=settings.DATA_GET_FAILED_CODE,
             msg="获取订单列表失败",
+            status_code=500
+        )
+
+
+# ====== 支付接口 ======
+
+
+@router.post("/appointments/{appointmentId}/pay", response_model=ResponseModel[PaymentResponse])
+async def pay_appointment(
+    appointmentId: int,
+    payload: PaymentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """支付预约订单 - 方案二：模拟支付
+    
+    支持支付方式: bank(银行卡)、alipay(支付宝)、wechat(微信)
+    支付成功后订单状态变更为 CONFIRMED
+    """
+    try:
+        # 1. 查询订单
+        order_res = await db.execute(
+            select(RegistrationOrder).where(RegistrationOrder.order_id == appointmentId)
+        )
+        order = order_res.scalar_one_or_none()
+        
+        if not order:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="订单不存在",
+                status_code=404
+            )
+        
+        # 2. 验证权限：发起人或就诊人
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+        
+        is_initiator = order.initiator_user_id == current_user.user_id
+        is_patient = user_patient and order.patient_id == user_patient.patient_id
+        
+        if not is_initiator and not is_patient:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权支付该订单",
+                status_code=403
+            )
+        
+        # 3. 检查订单状态
+        if order.payment_status != PaymentStatus.PENDING:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg=f"订单状态不允许支付（当前: {order.payment_status.value}）",
+                status_code=400
+            )
+        
+        if order.status != OrderStatus.PENDING:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg=f"订单状态错误（当前: {order.status.value}）",
+                status_code=400
+            )
+        
+        # 4. 验证金额有效性
+        if not order.price or order.price <= 0:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="订单金额无效",
+                status_code=400
+            )
+        
+        # 5. 模拟支付流程（开发/测试环境直接标记为已支付）
+        now = datetime.now()
+        order.payment_status = PaymentStatus.PAID
+        order.payment_time = now
+        order.payment_method = payload.method.value
+        order.status = OrderStatus.CONFIRMED  # 支付成功 → 订单确认
+        order.update_time = now
+        
+        db.add(order)
+        await db.commit()
+        await db.refresh(order)
+        
+        logger.info(f"支付成功: order_id={appointmentId}, method={payload.method.value}, amount={order.price}")
+        
+        return ResponseModel(code=0, message=PaymentResponse(
+            success=True,
+            orderId=order.order_id,
+            orderNo=order.order_no,
+            paymentStatus=order.payment_status.value,
+            paymentTime=order.payment_time.strftime("%Y-%m-%d %H:%M:%S") if order.payment_time else "",
+            method=payload.method.value,
+            amount=float(order.price) if order.price else 0.0
+        ))
+        
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"支付失败: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="支付失败",
+            status_code=500
+        )
+
+
+@router.post("/appointments/{appointmentId}/cancel-payment", response_model=ResponseModel[CancelPaymentResponse])
+async def cancel_payment(
+    appointmentId: int,
+    payload: Optional[CancelPaymentRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """取消已支付或待支付的订单（申请退款）
+    
+    规则：
+    - PENDING 状态可直接取消
+    - PAID 状态需检查是否超过预约时间
+    """
+    try:
+        # 1. 查询订单
+        order_res = await db.execute(
+            select(RegistrationOrder, Schedule).
+            outerjoin(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id).
+            where(RegistrationOrder.order_id == appointmentId)
+        )
+        row = order_res.first()
+        
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="订单不存在",
+                status_code=404
+            )
+        
+        order, schedule = row
+        
+        # 2. 验证权限
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+        
+        is_initiator = order.initiator_user_id == current_user.user_id
+        is_patient = user_patient and order.patient_id == user_patient.patient_id
+        
+        if not is_initiator and not is_patient:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权取消该订单",
+                status_code=403
+            )
+        
+        # 3. 检查订单状态
+        if order.status == OrderStatus.CANCELLED:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="订单已取消",
+                status_code=400
+            )
+        
+        if order.status == OrderStatus.COMPLETED or order.status == OrderStatus.NO_SHOW:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="已完成或未到场的订单不可取消",
+                status_code=400
+            )
+        
+        # 4. 如果已支付，检查是否超过取消时间
+        if order.payment_status == PaymentStatus.PAID:
+            # 获取挂号配置
+            reg_config = await get_registration_config(
+                db,
+                scope_type="DOCTOR",
+                scope_id=order.doctor_id
+            )
+            cancel_hours_before = reg_config.get("cancelHoursBefore", 2)
+            
+            # 获取排班配置
+            schedule_config = await get_schedule_config(db)
+            
+            now = datetime.now()
+            appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
+            
+            # 根据时间段获取开始时间
+            if order.time_section == "上午":
+                time_str = schedule_config.get("morningStart", "08:00")
+            elif order.time_section == "下午":
+                time_str = schedule_config.get("afternoonStart", "13:30")
+            else:
+                time_str = schedule_config.get("eveningStart", "18:00")
+            
+            hour, minute = parse_time_to_hour_minute(time_str)
+            cancel_deadline = appointment_datetime.replace(hour=hour, minute=minute) - timedelta(hours=cancel_hours_before)
+            
+            if now > cancel_deadline:
+                raise BusinessHTTPException(
+                    code=settings.REQ_ERROR_CODE,
+                    msg="已超过取消时间，需到医院办理退号",
+                    status_code=400
+                )
+        
+        # 5. 执行取消逻辑
+        now = datetime.now()
+        order.status = OrderStatus.CANCELLED
+        
+        # 如果已支付，标记为退款
+        if order.payment_status == PaymentStatus.PAID:
+            order.payment_status = PaymentStatus.REFUNDED
+            order.refund_time = now
+            order.refund_amount = order.price
+        else:
+            order.payment_status = PaymentStatus.CANCELLED
+        
+        order.cancel_time = now
+        order.update_time = now
+        
+        db.add(order)
+        
+        # 6. 如果关联了排班，释放号源
+        if order.schedule_id and schedule:
+            schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
+            db.add(schedule)
+        
+        await db.commit()
+        await db.refresh(order)
+        
+        # 7. 级联转化候补到预约（和 cancel_appointment 保持一致）
+        if order.schedule_id and schedule:
+            try:
+                converted_count = 0
+                max_attempts = 10  # 防止无限循环
+                
+                for attempt in range(max_attempts):
+                    converted_order_id = await WaitlistService.notify_and_convert_first_in_queue(
+                        db, 
+                        order.schedule_id
+                    )
+                    
+                    if not converted_order_id:
+                        break
+                    
+                    converted_count += 1
+                    logger.info(f"候补已转预约: order_id={converted_order_id}")
+                
+                if converted_count > 0:
+                    logger.info(f"订单支付取消后自动转化候补成功: 共转化{converted_count}个候补")
+            except Exception as e:
+                logger.warning(f"自动转化候补失败: {str(e)}")
+        
+        logger.info(f"订单取消成功: order_id={appointmentId}, status={order.payment_status.value}")
+        
+        return ResponseModel(code=0, message=CancelPaymentResponse(
+            success=True,
+            orderId=order.order_id,
+            status=order.status.value,
+            cancelTime=order.cancel_time.strftime("%Y-%m-%d %H:%M:%S") if order.cancel_time else ""
+        ))
+        
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"取消订单失败: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="取消订单失败",
+            status_code=500
+        )
+
+
+# ====== 候补挂号接口 ======
+
+
+@router.post("/waitlist", response_model=ResponseModel[WaitlistCreateResponse])
+async def join_waitlist(
+    data: WaitlistCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """加入候补队列 - 号源满时使用"""
+    try:
+        schedule_res = await db.execute(select(Schedule).where(Schedule.schedule_id == data.scheduleId))
+        schedule = schedule_res.scalar_one_or_none()
+        if not schedule:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="排班不存在",
+                status_code=404
+            )
+
+        patient_res = await db.execute(select(Patient).where(Patient.patient_id == data.patientId))
+        patient = patient_res.scalar_one_or_none()
+        if not patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者不存在",
+                status_code=404
+            )
+
+        user_patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        user_patient = user_patient_res.scalar_one_or_none()
+        if not user_patient:
+            raise ResourceHTTPException(
+                code=settings.RESOURCE_NOT_FOUND_CODE,
+                msg="当前用户未绑定患者信息"
+            )
+
+        is_self = patient.patient_id == user_patient.patient_id
+        is_related = False
+        if not is_self:
+            relation_res = await db.execute(
+                select(PatientRelation).where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.related_patient_id == data.patientId
+                    )
+                )
+            )
+            if relation_res.scalar_one_or_none():
+                is_related = True
+
+        if not is_self and not is_related:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权为该患者候补",
+                status_code=403
+            )
+
+        # 仅号源已满时允许候补
+        if schedule.remaining_slots is not None and schedule.remaining_slots > 0:
+            raise BusinessHTTPException(
+                code=1005,
+                msg="该时段有号源，无需候补",
+                status_code=400
+            )
+
+        # 防重复候补
+        dup_res = await db.execute(
+            select(RegistrationOrder).where(
+                and_(
+                    RegistrationOrder.patient_id == data.patientId,
+                    RegistrationOrder.schedule_id == data.scheduleId,
+                    RegistrationOrder.status == OrderStatus.WAITLIST
+                )
+            )
+        )
+        if dup_res.scalar_one_or_none():
+            raise BusinessHTTPException(
+                code=1006,
+                msg="已在候补队列中",
+                status_code=400
+            )
+
+        # 计算排位
+        max_pos_res = await db.execute(
+            select(func.max(RegistrationOrder.waitlist_position)).where(
+                and_(
+                    RegistrationOrder.schedule_id == data.scheduleId,
+                    RegistrationOrder.status == OrderStatus.WAITLIST
+                )
+            )
+        )
+        max_pos = max_pos_res.scalar() or 0
+        position = max_pos + 1
+
+        now = datetime.now()
+        order_no = _generate_order_no()
+
+        order = RegistrationOrder(
+            order_no=order_no,
+            patient_id=data.patientId,
+            user_id=patient.user_id,
+            initiator_user_id=current_user.user_id,
+            doctor_id=schedule.doctor_id,
+            schedule_id=data.scheduleId,
+            slot_date=schedule.date,
+            time_section=schedule.time_section,
+            slot_type=str(schedule.slot_type.value if hasattr(schedule.slot_type, "value") else schedule.slot_type),
+            price=schedule.price,
+            status=OrderStatus.WAITLIST,
+            payment_status=PaymentStatus.PENDING,
+            is_waitlist=True,
+            waitlist_position=position,
+            create_time=now,
+            update_time=now,
+        )
+        db.add(order)
+        await db.commit()
+        await db.refresh(order)
+
+        # 添加到 Redis 候补队列
+        try:
+            queue_position = await WaitlistService.add_to_queue(
+                data.scheduleId,
+                data.patientId,
+                order.order_id
+            )
+            estimated_time = f"{queue_position * 10}分钟" if queue_position else None
+        except Exception as e:
+            logger.warning(f"Redis 队列添加失败: {str(e)}")
+            estimated_time = f"{position * 10}分钟" if position else None
+
+        return ResponseModel(code=0, message=WaitlistCreateResponse(
+            id=order.order_id,
+            queueNumber=position,
+            estimatedTime=estimated_time,
+            createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else ""
+        ))
+
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"加入候补失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="加入候补失败",
+            status_code=500
+        )
+
+
+@router.get("/waitlist", response_model=ResponseModel[WaitlistListResponse])
+async def get_waitlist(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """获取当前用户的候补记录"""
+    try:
+        filters = [
+            RegistrationOrder.status == OrderStatus.WAITLIST,
+            RegistrationOrder.is_waitlist == True,  # noqa: E712
+            or_(
+                RegistrationOrder.initiator_user_id == current_user.user_id,
+                RegistrationOrder.user_id == current_user.user_id
+            )
+        ]
+
+        result = await db.execute(
+            select(RegistrationOrder, Schedule, Doctor, Clinic, MinorDepartment, HospitalArea, Patient)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id)
+            .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Clinic.minor_dept_id)
+            .join(HospitalArea, HospitalArea.area_id == Clinic.area_id)
+            .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+            .where(and_(*filters))
+            .order_by(RegistrationOrder.waitlist_position.asc(), RegistrationOrder.create_time.asc())
+        )
+
+        rows = result.all()
+        items = []
+        for order, schedule, doctor, clinic, dept, area, patient in rows:
+            # 判断是否有号源可转预约
+            can_convert = schedule.remaining_slots is not None and schedule.remaining_slots > 0
+            
+            items.append(WaitlistItem(
+                id=order.order_id,
+                scheduleId=schedule.schedule_id,
+                hospitalName=area.name if area else None,
+                departmentName=dept.name if dept else None,
+                doctorName=doctor.name if doctor else None,
+                doctorTitle=doctor.title if doctor else None,
+                appointmentDate=str(order.slot_date) if order.slot_date else None,
+                appointmentTime=order.time_section,
+                price=float(order.price) if order.price else (float(schedule.price) if schedule and schedule.price else None),
+                status=order.status.value,
+                queueNumber=order.waitlist_position,
+                patientName=patient.name if patient else None,
+                createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
+                canConvert=can_convert
+            ))
+
+        return ResponseModel(code=0, message=WaitlistListResponse(list=items))
+
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"获取候补列表失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="获取候补列表失败",
+            status_code=500
+        )
+
+
+@router.delete("/waitlist/{waitlistId}", response_model=ResponseModel[dict])
+async def cancel_waitlist(
+    waitlistId: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """取消候补 - 发起人或就诊人均可"""
+    try:
+        res = await db.execute(
+            select(RegistrationOrder, Schedule)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .where(RegistrationOrder.order_id == waitlistId)
+        )
+        row = res.first()
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="候补记录不存在",
+                status_code=404
+            )
+
+        order, schedule = row
+
+        if order.status != OrderStatus.WAITLIST:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="当前状态不可取消",
+                status_code=400
+            )
+
+        user_patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        user_patient = user_patient_res.scalar_one_or_none()
+        is_initiator = order.initiator_user_id == current_user.user_id
+        is_patient = user_patient and order.patient_id == user_patient.patient_id
+        if not is_initiator and not is_patient:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权取消该候补",
+                status_code=403
+            )
+
+        now = datetime.now()
+        order.status = OrderStatus.CANCELLED
+        order.payment_status = PaymentStatus.CANCELLED
+        order.is_waitlist = False
+        order.waitlist_position = None
+        order.update_time = now
+
+        db.add(order)
+        await db.commit()
+        
+        # 从 Redis 队列中移除
+        try:
+            await WaitlistService.remove_from_queue(order.schedule_id, order.patient_id)
+        except Exception as e:
+            logger.warning(f"从 Redis 队列移除失败: {str(e)}")
+
+        return ResponseModel(code=0, message={"success": True})
+
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"取消候补失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="取消候补失败",
+            status_code=500
+        )
+
+
+@router.post("/waitlist/{waitlistId}/convert", response_model=ResponseModel[WaitlistConvertResponse])
+async def convert_waitlist(
+    waitlistId: int,
+    payload: WaitlistConvertRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """候补转预约 - 需要号源"""
+    try:
+        res = await db.execute(
+            select(RegistrationOrder, Schedule, Doctor, Patient)
+            .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id)
+            .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+            .where(RegistrationOrder.order_id == waitlistId)
+        )
+        row = res.first()
+
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="候补记录不存在",
+                status_code=404
+            )
+
+        order, schedule, doctor, patient = row
+
+        user_patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        user_patient = user_patient_res.scalar_one_or_none()
+        is_initiator = order.initiator_user_id == current_user.user_id
+        is_patient = user_patient and order.patient_id == user_patient.patient_id
+        if not is_initiator and not is_patient:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权操作该候补记录",
+                status_code=403
+            )
+
+        if order.status != OrderStatus.WAITLIST:
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="当前状态不可转预约",
+                status_code=400
+            )
+
+        if schedule.remaining_slots is not None and schedule.remaining_slots <= 0:
+            raise BusinessHTTPException(
+                code=1008,
+                msg="候补转预约失败，号源不足",
+                status_code=400
+            )
+
+        # 从数据库获取身份折扣配置
+        discounts = await get_patient_identity_discounts(db)
+        
+        # 计算最终价格（应用身份折扣）
+        base_price = order.price if order.price else (schedule.price if schedule else 0.0)
+        discount_rate = 1.0  # 默认无折扣
+        
+        if patient.patient_type:
+            patient_type_value = patient.patient_type
+            if isinstance(patient.patient_type, PatientType):
+                patient_type_value = patient.patient_type.value
+            
+            # 从数据库配置中获取折扣率
+            discount_rate = discounts.get(patient_type_value, 1.0)
+        
+        # 计算最终价格，精确到小数点后2位
+        final_price = calculate_final_price(base_price, discount_rate)
+
+        now = datetime.now()
+        order.status = OrderStatus.PENDING
+        order.payment_status = PaymentStatus.PENDING
+        order.is_waitlist = False
+        order.waitlist_position = None
+        order.order_no = order.order_no or _generate_order_no()
+        order.price = final_price  # 设置折扣后的价格（精确到2位小数）
+        order.update_time = now
+
+        if schedule.remaining_slots is not None:
+            schedule.remaining_slots -= 1
+
+        db.add(order)
+        db.add(schedule)
+        await db.commit()
+        await db.refresh(order)
+
+        expires_at = (now + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+        return ResponseModel(code=0, message=WaitlistConvertResponse(
+            id=order.order_id,
+            appointmentDate=str(order.slot_date) if order.slot_date else None,
+            appointmentTime=order.time_section,
+            queueNumber=None,
+            doctorName=doctor.name if doctor else None,
+            price=float(final_price) if final_price else 0.0,
+            status=order.status.value,
+            paymentStatus=order.payment_status.value,
+            createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
+            expiresAt=expires_at
+        ))
+
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"候补转预约失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="候补转预约失败",
             status_code=500
         )
 

@@ -300,8 +300,11 @@ docker run -d --name hospital-backend -p 8000:8000 --env-file backend/.env bjtu-
     - POST `/auth/patient/login`：患者手机号登录，返回 token
     - POST `/auth/staff/login`：员工（工号）登录，返回 token
     - POST `/auth/register`：注册（患者/员工注册流程视具体实现）
+    - POST `/auth/email/send-verify-code`：发送邮箱验证码（绑定/改绑邮箱）
+    - POST `/auth/email/verify-code`：验证邮箱验证码并绑定邮箱
     - POST `/auth/logout`：注销（删除 Redis 中 token 映射）
     - GET `/auth/me`：获取当前用户信息
+    - PUT `/auth/profile`：更新个人信息（不含邮箱，邮箱绑定请走验证码流程）
     - 其它用户管理接口（部分在 `auth.py` 中实现，管理员可管理用户）
 
 - 管理员（admin）相关（路径前缀视 `main.py` 注册，通常单独路由，例如 `/admin` 或直接根下）
@@ -387,11 +390,11 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 # API 接口详细说明
 
-## 一、认证 API 接口 `/auth`
+# 一、认证 API 接口 `/auth`
 
-## 0. 短信验证码接口
+## 1. 短信验证码接口
 
-### 0.1 发送验证码 Post: `/auth/sms/send-code`
+### 1.1 发送验证码 Post: `/auth/sms/send-code`
 
 **用途**: 向指定手机号发送6位数字验证码，用于注册前的手机号验证
 
@@ -435,7 +438,7 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
-### 0.2 校验验证码 Post: `/auth/sms/verify-code`
+### 1.2 校验验证码 Post: `/auth/sms/verify-code`
 
 **用途**: 校验用户输入的验证码是否正确，验证通过后可进行注册
 
@@ -492,7 +495,91 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
-## 1. 注册接口 Post: `/auth/register`
+## 2. 邮箱验证码接口
+
+### 2.1 发送邮箱验证码 Post: `/auth/email/send-verify-code`
+
+**用途**: 绑定/更改邮箱时发送 6 位验证码并写入 Redis（有效期 5 分钟）
+
+**请求头**
+```
+Authorization: Bearer <token>
+```
+
+**请求示例**
+```json
+{
+    "email": "user@example.com"
+}
+```
+
+**验证与限流**
+- 邮箱格式校验：`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`
+- 唯一性校验：邮箱不可被其他用户占用
+- 防刷：同一邮箱 60 秒内只能发送一次
+- 存储：Redis `email_verify_code:{email}`（TTL 300s），包含 code/timestamp/attempts/user_id
+
+**成功响应**
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "验证码已发送到你的邮箱，请在5分钟内验证",
+        "email_masked": "use***@example.com"
+    }
+}
+```
+
+**常见错误**
+- 400 邮箱格式不合法 / 邮箱已被其他用户使用
+- 429 发送过于频繁，请稍后再试
+- 500 邮件发送失败，请稍后重试（SMTP 配置或网络问题）
+
+---
+
+### 2.2 验证邮箱并绑定 Post: `/auth/email/verify-code`
+
+**用途**: 校验邮箱验证码并将邮箱写入用户表
+
+**请求头**
+```
+Authorization: Bearer <token>
+```
+
+**请求示例**
+```json
+{
+    "email": "user@example.com",
+    "code": "123456"
+}
+```
+
+**校验规则**
+- 验证码有效期 5 分钟
+- 同一验证码最多 3 次错误尝试
+- 验证码必须属于当前登录用户（user_id 绑定）
+- 成功后清理 `email_verify_code:{email}` 与 `email_verify_rate:{email}`
+
+**成功响应**
+```json
+{
+    "code": 0,
+    "message": {
+        "detail": "邮箱绑定成功",
+        "email": "user@example.com"
+    }
+}
+```
+
+**常见错误**
+- 400 验证码错误或已过期 / 尝试次数过多
+- 403 验证码与当前用户不匹配
+- 404 用户不存在
+- 500 邮箱验证失败，请稍后重试
+
+---
+
+## 3. 注册接口 Post: `/auth/register`
 
 **前置要求**: 必须先完成短信验证码校验（调用 `/auth/sms/verify-code` 成功）
 
@@ -572,12 +659,12 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-## 2. 登录接口
+## 4. 登录接口
 
-### 患者登录 Post: `/auth/patient/login`
+### 4.1 患者登录 Post: `/auth/patient/login`
 使用手机号登录
 
-### 员工登录 Post: `/auth/staff/login`
+### 4.2 员工登录 Post: `/auth/staff/login`
 使用工号（identifier）登录
 
 ### Swagger OAuth2 登录 Post: `/auth/swagger-login`
@@ -603,9 +690,9 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-## 3. 用户管理接口
+## 5. 用户管理接口
 
-### 获取所有用户 Get: `/auth/users`
+### 5.1 获取所有用户 Get: `/auth/users`
 仅管理员可用
 
 #### 响应示例:
@@ -624,10 +711,10 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-### 获取单个用户 Get: `/auth/users/{user_id}`
+### 5.2 获取单个用户 Get: `/auth/users/{user_id}`
 管理员可查所有用户，普通用户只能查看自己
 
-### 更新用户信息 Put: `/auth/users/{user_id}/updateProfile`
+### 5.3 更新用户信息 Put: `/auth/users/{user_id}/updateProfile`
 管理员可改所有，普通用户只能改自己
 
 #### 请求示例：
@@ -639,10 +726,10 @@ curl -X POST http://127.0.0.1:8000/doctors \
 }
 ```
 
-### 删除用户 Delete: `/auth/users/{user_id}`
+### 5.4 删除用户 Delete: `/auth/users/{user_id}`
 仅管理员可用，且不能删除其他管理员
 
-### 获取当前用户 Get: `/auth/me`
+### 5.5 获取当前用户 Get: `/auth/me`
 
 #### 响应示例:
 ```json
@@ -656,22 +743,22 @@ curl -X POST http://127.0.0.1:8000/doctors \
 
 ---
 
-## 4. 获取用户信息（多角色） Get: `/auth/user-info`
+### 5.6. 获取用户信息（多角色） Get: `/auth/user-info`
 
-### 用途
+#### 用途
 多角色通用用户信息接口,返回当前登录用户的患者信息和医生信息（如果有）
 
-### 请求头
+#### 请求头
 ```
 Authorization: Bearer <token>
 ```
 
-### 响应结构
+#### 响应结构
 返回结构包含患者与医生信息（按角色返回可用字段）：
 - `patient`: 按 USER-API 约定返回患者个人信息字段（若用户有患者记录）
 - `doctor`: 若当前用户绑定医生记录则返回医生资料，否则为 `null`
 
-### 成功响应示例
+#### 成功响应示例
 ```json
 {
     "code": 0,
@@ -711,7 +798,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 字段说明
+#### 字段说明
 
 #### patient 字段
 - `id`: 患者ID
@@ -751,37 +838,39 @@ Authorization: Bearer <token>
 - `maskedInfo.idCard` 与 `idCard` 值相同，均为已脱敏数据
 ---
 
-## 5. 更新用户信息 Put: `/auth/profile`
+### 5.7. 更新用户信息 Put: `/auth/profile`
 
-### 用途
+#### 用途
 更新当前登录用户的个人信息
 
-### 请求头
+#### 请求头
 ```
 Authorization: Bearer <token>
 ```
 
-### 请求参数
+#### 请求参数
 所有参数均为可选，只需传递需要更新的字段
 
 ```json
 {
     "realName": "李四",
-    "email": "lisi@bjtu.edu.cn",
     "gender": "女",
     "birthDate": "1995-06-15"
 }
 ```
 
-### 参数说明
+#### 参数说明
 - `realName` (string, optional): 真实姓名，更新患者表的 `name` 字段
-- `email` (string, optional): 邮箱，更新用户表的 `email` 字段（会检查唯一性）
 - `gender` (string, optional): 性别，支持以下值：
   - 中文: "男" / "女" / "未知"
   - 英文: "MALE" / "FEMALE" / "UNKNOWN"（不区分大小写）
 - `birthDate` (string, optional): 出生日期，格式为 `YYYY-MM-DD`
 
-### 成功响应示例
+> **邮箱绑定说明**：邮箱改绑/绑定请使用验证码流程：
+> - 发送验证码：POST `/auth/email/send-verify-code`
+> - 验证并绑定：POST `/auth/email/verify-code`
+
+#### 成功响应示例
 ```json
 {
     "code": 0,
@@ -789,7 +878,6 @@ Authorization: Bearer <token>
         "detail": "个人信息更新成功",
         "updatedFields": {
             "realName": "李四",
-            "email": "lisi@bjtu.edu.cn",
             "gender": "女",
             "birthDate": "1995-06-15"
         }
@@ -797,7 +885,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 错误响应示例
+#### 错误响应示例
 
 #### 患者记录不存在
 ```json
@@ -806,17 +894,6 @@ Authorization: Bearer <token>
     "message": {
         "error": "资源错误",
         "msg": "患者记录不存在，请先完成注册"
-    }
-}
-```
-
-#### 邮箱已被占用
-```json
-{
-    "code": 106,
-    "message": {
-        "error": "业务规则校验失败",
-        "msg": "该邮箱已被其他用户使用"
     }
 }
 ```
@@ -845,11 +922,10 @@ Authorization: Bearer <token>
 
 ### 业务规则
 1. **患者记录检查**: 用户必须有对应的患者记录才能更新信息
-2. **邮箱唯一性**: 更新邮箱时会检查是否被其他用户使用
-3. **性别验证**: 支持中英文输入，不区分大小写
-4. **日期格式**: 出生日期必须严格遵循 `YYYY-MM-DD` 格式
-5. **部分更新**: 仅更新提供的字段，未提供的字段保持不变
-6. **事务安全**: 所有更新在一个事务中完成，确保数据一致性
+2. **性别验证**: 支持中英文输入，不区分大小写
+3. **日期格式**: 出生日期必须严格遵循 `YYYY-MM-DD` 格式
+4. **部分更新**: 仅更新提供的字段，未提供的字段保持不变
+5. **事务安全**: 所有更新在一个事务中完成，确保数据一致性
 
 ---
 
@@ -5931,6 +6007,192 @@ PUT /appointments/1001/cancel
     }
 }
 ```
+
+---
+
+### 3.5 加入候补队列 Post: `/patient/waitlist`
+
+当号源已满时，加入候补队列等待自动转预约。
+
+#### Header
+```
+Authorization: Bearer <token>
+```
+
+#### Body
+```json
+{
+    "scheduleId": 123,
+    "patientId": 5
+}
+```
+
+#### 业务规则
+1. 仅当排班剩余号源为 0 时允许候补（remaining_slots <= 0）。
+2. 权限校验：当前用户必须是患者本人或其就诊人关系（PatientRelation）中的关联患者。
+3. 防重复：同一患者同一排班在 WAITLIST 状态不可重复加入。
+4. 排位计算：按现有最大 waitlist_position + 1；同时写入 Redis 候补队列。
+
+#### 成功响应
+```json
+{
+    "code": 0,
+    "message": {
+        "id": 10001,
+        "queueNumber": 3,
+        "estimatedTime": "30分钟",
+        "createdAt": "2025-12-08 10:00:00"
+    }
+}
+```
+
+#### 常见错误
+- 404 排班不存在 / 患者不存在 / 当前用户未绑定患者
+- 400 该时段有号源，无需候补 / 已在候补队列中
+- 403 无权为该患者候补
+- 500 加入候补失败
+
+---
+
+### 3.6 获取我的候补列表 Get: `/patient/waitlist`
+
+查询当前用户作为发起人或患者的候补记录，按排位升序返回。
+
+#### Header
+```
+Authorization: Bearer <token>
+```
+
+#### 返回字段
+- `id`: 候补订单ID
+- `scheduleId`: 排班ID
+- `hospitalName` / `departmentName` / `doctorName` / `doctorTitle`
+- `appointmentDate` / `appointmentTime`
+- `price`: 挂号价格
+- `status`: 订单状态（waitlist）
+- `queueNumber`: 候补排位
+- `patientName`: 就诊人姓名
+- `createdAt`: 创建时间
+- `canConvert`: 是否当前有号源可转预约（remaining_slots > 0）
+
+#### 成功响应
+```json
+{
+    "code": 0,
+    "message": {
+        "list": [
+            {
+                "id": 10001,
+                "scheduleId": 123,
+                "hospitalName": "主院区",
+                "departmentName": "心内科",
+                "doctorName": "张三",
+                "doctorTitle": "主治医师",
+                "appointmentDate": "2025-12-09",
+                "appointmentTime": "上午",
+                "price": 60.0,
+                "status": "waitlist",
+                "queueNumber": 3,
+                "patientName": "李四",
+                "createdAt": "2025-12-08 10:00:00",
+                "canConvert": true
+            }
+        ]
+    }
+}
+```
+
+#### 常见错误
+- 500 获取候补列表失败
+
+---
+
+### 3.7 取消候补 Delete: `/patient/waitlist/{waitlistId}`
+
+取消候补记录；发起人或就诊人均可操作。
+
+#### Path 参数
+- `waitlistId`: 候补订单ID
+
+#### Header
+```
+Authorization: Bearer <token>
+```
+
+#### 业务规则
+1. 仅 WAITLIST 状态可取消。
+2. 权限：发起人 initiator_user_id 或就诊人本人才能取消。
+3. 成功后更新状态为 `cancelled`，清理 Redis 候补队列。
+
+#### 成功响应
+```json
+{
+    "code": 0,
+    "message": {"success": true}
+}
+```
+
+#### 常见错误
+- 404 候补记录不存在
+- 400 当前状态不可取消
+- 403 无权取消该候补
+- 500 取消候补失败
+
+---
+
+### 3.8 候补转预约 Post: `/patient/waitlist/{waitlistId}/convert`
+
+当出现空余号源时，将候补订单转为预约（待支付）。
+
+#### Path 参数
+- `waitlistId`: 候补订单ID
+
+#### Header
+```
+Authorization: Bearer <token>
+```
+
+#### Body
+```json
+{
+    "paymentMethod": "online"
+}
+```
+
+#### 业务规则
+1. 仅 WAITLIST 状态可转，且排班 remaining_slots > 0。
+2. 权限：发起人或就诊人本人才能转预约。
+3. 价格：基于排班价格应用患者身份折扣，设置到订单 price。
+4. 状态更新：
+   - status -> `pending`
+   - payment_status -> `pending`
+   - is_waitlist -> False，清除排位
+   - 剩余号源 remaining_slots - 1
+5. 支付超时：返回 `expiresAt`（默认 30 分钟后）供前端倒计时。
+
+#### 成功响应
+```json
+{
+    "code": 0,
+    "message": {
+        "id": 10001,
+        "appointmentDate": "2025-12-09",
+        "appointmentTime": "上午",
+        "doctorName": "张三",
+        "price": 48.0,
+        "status": "pending",
+        "paymentStatus": "pending",
+        "createdAt": "2025-12-08 10:00:00",
+        "expiresAt": "2025-12-08 10:30:00"
+    }
+}
+```
+
+#### 常见错误
+- 404 候补记录不存在
+- 400 当前状态不可转预约 / 号源不足 / 防重入校验失败
+- 403 无权操作该候补记录
+- 500 候补转预约失败
 
 ---
 
