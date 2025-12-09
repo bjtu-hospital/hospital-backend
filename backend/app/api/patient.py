@@ -1144,6 +1144,7 @@ async def create_appointment(
             symptoms=data.symptoms,
             status=OrderStatus.PENDING,  # 待支付
             payment_status=PaymentStatus.PENDING,  # 待支付
+            source_type="normal",  # 普通预约
             create_time=datetime.now(),
             update_time=datetime.now()
         )
@@ -1305,6 +1306,7 @@ async def get_my_appointments(
                 paymentStatus=order.payment_status.value,
                 canCancel=can_cancel,
                 canReschedule=can_reschedule,
+                sourceType=order.source_type if hasattr(order, 'source_type') and order.source_type else "normal",
                 createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else ""
             ))
         
@@ -1940,6 +1942,7 @@ async def get_my_initiated_appointments(
                 price=float(order.price) if order.price else 0.0,
                 canCancel=can_cancel,
                 canReschedule=can_reschedule,
+                sourceType=order.source_type if hasattr(order, 'source_type') and order.source_type else "normal",
                 createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else ""
             ))
         
@@ -2345,6 +2348,7 @@ async def join_waitlist(
             payment_status=PaymentStatus.PENDING,
             is_waitlist=True,
             waitlist_position=position,
+            source_type="waitlist",  # 候补订单直接标记为waitlist
             create_time=now,
             update_time=now,
         )
@@ -2597,6 +2601,7 @@ async def convert_waitlist(
         order.waitlist_position = None
         order.order_no = order.order_no or _generate_order_no()
         order.price = final_price  # 设置折扣后的价格（精确到2位小数）
+        # source_type保持为waitlist，不需要修改
         order.update_time = now
 
         if schedule.remaining_slots is not None:
@@ -2618,6 +2623,7 @@ async def convert_waitlist(
             price=float(final_price) if final_price else 0.0,
             status=order.status.value,
             paymentStatus=order.payment_status.value,
+            sourceType=order.source_type if order.source_type else "waitlist",
             createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
             expiresAt=expires_at
         ))
@@ -3894,6 +3900,7 @@ async def get_appointment_detail(
             "price": float(order.price) if order.price else 0.0,
             "status": order.status.value,
             "paymentStatus": order.payment_status.value,
+            "sourceType": order.source_type if hasattr(order, 'source_type') and order.source_type else "normal",
             "canCancel": can_cancel,
             "createdAt": order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
             "paidAt": order.payment_time.strftime("%Y-%m-%d %H:%M:%S") if order.payment_time else None,

@@ -297,6 +297,7 @@ class WaitlistService:
             order.payment_status = PaymentStatus.PENDING
             order.is_waitlist = False
             order.waitlist_position = None
+            order.source_type = "waitlist"  # 标记为候补转预约
             order.update_time = now
             
             db.add(order)

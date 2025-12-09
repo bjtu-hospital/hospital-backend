@@ -76,6 +76,9 @@ class RegistrationOrder(Base):
     # 候补相关字段（为后续扩展保留）
     is_waitlist = Column(Boolean, default=False, comment="是否为候补挂号")
     waitlist_position = Column(Integer, nullable=True, comment="候补队列中的位置（1 表示队首）")
+    
+    # 预约来源标识字段
+    source_type = Column(String(20), nullable=False, default="normal", comment="预约来源: normal(普通预约)/waitlist(候补转预约)")
 
     # 接诊队列相关字段
     pass_count = Column(Integer, default=0, nullable=False, comment="过号次数，用于队列排序")

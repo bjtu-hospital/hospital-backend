@@ -49,6 +49,7 @@ class AppointmentListItem(BaseModel):
     paymentStatus: str
     canCancel: bool
     canReschedule: bool = False  # 暂不支持改约
+    sourceType: str = "normal"  # 预约来源: normal(普通预约)/waitlist(候补转预约)
     createdAt: str
 
 

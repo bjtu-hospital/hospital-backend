@@ -63,5 +63,6 @@ class WaitlistConvertResponse(BaseModel):
     price: Optional[float]
     status: str
     paymentStatus: str
+    sourceType: str = Field("waitlist", description="预约来源: normal(普通预约) 或 waitlist(候补转预约)")
     createdAt: str
     expiresAt: Optional[str] = None
