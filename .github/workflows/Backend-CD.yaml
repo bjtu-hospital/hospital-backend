@@ -40,6 +40,6 @@ jobs:
 
       - name: 创建backend-image镜像的容器
         working-directory: ./backend
-        run: docker run --name backend-container --network backend-network -p 8000:8000 -e REDIS_HOST=my-redis backend-image
+        run: docker run --name backend-container --network backend-network -p 8000:8000 -e REDIS_HOST=backend-redis backend-image
 
 
