@@ -1,0 +1,44 @@
+name: backend-CD
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-backend:
+    runs-on: self-hosted
+    steps:
+      - name: 基础信息
+        run: |
+          echo "仓库名称: ${{ github.repository }}"
+          echo "触发工作流用户: ${{ github.actor }}"
+          echo "当前的路径: $(pwd)"
+          echo "工作路径: ${{ github.workspace }}"
+
+      - name: 检出代码
+        uses: actions/checkout@v5
+      
+      - name: 查看当前路径为文件
+        working-directory: ./backend
+        run: ls
+
+      - name: 复制环境变量到 ${{ github.repository }}"
+        working-directory: ./backend
+        run: |
+          cat "$BACKENV" > ./.env 
+
+      - name: 检查并清除原来容器(镜像保留)
+        working-directory: ./backend
+        run: |
+          docker stop backend-container 2>/dev/null || true
+          docker rm backend-container 2>/dev/null || true
+      
+      - name: 创建docker镜像
+        working-directory: ./backend
+        run: docker build -t backend-image . 
+
+      - name: 创建backend-image镜像的容器
+        working-directory: ./backend
+        run: docker run -d --name backend-container --network backend-network -p 8000:8000 -e REDIS_HOST=backend-redis backend-image
+
+
