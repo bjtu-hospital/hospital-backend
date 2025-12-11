@@ -17,7 +17,10 @@ from app.models.patient import Patient
 from app.models.doctor import Doctor
 from app.models.administrator import Administrator
 from app.services.pdf_service import MedicalRecordPDFGenerator, ensure_pdf_directory
+from app.models.feedback import Feedback, FeedbackType, FeedbackStatus
+from app.schemas.feedback import FeedbackCreate, FeedbackSimpleOut, FeedbackDetailOut, FeedbackSubmitOut
 
+import uuid
 import os
 from datetime import datetime
 import uuid
@@ -54,6 +57,126 @@ def generate_unique_filename(original_filename: str) -> str:
 	safe_name = "".join(c for c in original_name if c.isalnum() or c in (' ', '-', '_'))[:30]
 	return f"{timestamp}_{unique_id}_{safe_name}{ext}"
 
+# 意见反馈类型映射
+FEEDBACK_TYPE_TEXT = {
+	"bug": "功能异常",
+	"suggestion": "功能建议",
+	"complaint": "服务投诉",
+	"praise": "表扬建议"
+}
+
+# 提交反馈
+@router.post("/feedback", response_model=ResponseModel)
+async def submit_feedback(
+	data: FeedbackCreate,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	try:
+		# 生成唯一ID
+		now = datetime.now()
+		submit_date = now.strftime("%Y-%m-%d")
+		feedback = Feedback(
+			user_id=current_user.user_id,
+			type=data.type.value,
+			content=data.content,
+			contact_phone=data.contactPhone,
+			contact_email=data.contactEmail,
+			status=FeedbackStatus.PENDING.value,
+			submit_date=submit_date,
+			created_at=now
+		)
+		db.add(feedback)
+		await db.commit()
+		await db.refresh(feedback)
+		return ResponseModel(
+			code=0,
+			message=FeedbackSubmitOut(
+				feedback_id=feedback.feedback_id,
+				type=feedback.type,
+				typeText=FEEDBACK_TYPE_TEXT.get(feedback.type, feedback.type),
+				content=feedback.content,
+				status=feedback.status,
+				submitDate=feedback.submit_date,
+				createdAt=feedback.created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+			)
+		)
+	except Exception as e:
+		logger.error(f"提交反馈失败: {e}", exc_info=True)
+		raise BusinessHTTPException(
+			code=settings.UNKNOWN_ERROR_CODE,
+			msg=f"提交反馈失败: {str(e)}",
+			status_code=500
+		)
+
+# 获取历史反馈列表（按user_id）
+@router.get("/feedback", response_model=ResponseModel)
+async def get_feedback_list(
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	try:
+		q = await db.execute(
+			select(Feedback).where(Feedback.user_id == current_user.user_id).order_by(Feedback.created_at.desc())
+		)
+		feedbacks = q.scalars().all()
+		result = [FeedbackSimpleOut(
+			feedback_id=f.feedback_id,
+			type=f.type,
+			content=f.content[:30],
+			submitDate=f.submit_date,
+			status=f.status
+		) for f in feedbacks]
+		return ResponseModel(code=0, message=result)
+	except Exception as e:
+		logger.error(f"获取反馈列表失败: {e}", exc_info=True)
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取反馈列表失败: {str(e)}",
+			status_code=500
+		)
+
+# 获取反馈详情
+@router.get("/feedback/{feedback_id}", response_model=ResponseModel)
+async def get_feedback_detail(
+	feedback_id: str,
+	db: AsyncSession = Depends(get_db),
+	current_user: UserSchema = Depends(get_current_user)
+):
+	try:
+		q = await db.execute(
+			select(Feedback).where(Feedback.feedback_id == feedback_id, Feedback.user_id == current_user.user_id)
+		)
+		f = q.scalar_one_or_none()
+		if not f:
+			raise ResourceHTTPException(
+				code=settings.DATA_GET_FAILED_CODE,
+				msg="反馈记录不存在或无权访问",
+				status_code=404
+			)
+		return ResponseModel(
+			code=0,
+			message=FeedbackDetailOut(
+				feedback_id=f.feedback_id,
+				type=f.type,
+				typeText=FEEDBACK_TYPE_TEXT.get(f.type, f.type),
+				content=f.content,
+				contactPhone=f.contact_phone,
+				contactEmail=f.contact_email,
+				status=f.status,
+				submitDate=f.submit_date,
+				createdAt=f.created_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+			)
+		)
+	except ResourceHTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"获取反馈详情失败: {e}", exc_info=True)
+		raise BusinessHTTPException(
+			code=settings.DATA_GET_FAILED_CODE,
+			msg=f"获取反馈详情失败: {str(e)}",
+			status_code=500
+		)
 
 @router.post("/upload", response_model=ResponseModel)
 async def upload_image(file: UploadFile = File(...)):

@@ -9,6 +9,7 @@ class OrderStatus(enum.Enum):
     PENDING = "pending"          # 待支付
     CONFIRMED = "confirmed"      # 已确认(已支付)
     CANCELLED = "cancelled"      # 已取消
+    TIMEOUT = "timeout"          # 已超时(未在规定时间内支付)
     COMPLETED = "completed"      # 已完成
     NO_SHOW = "no_show"         # 未到场
     WAITLIST = "waitlist"       # 候补中
@@ -42,6 +43,7 @@ class RegistrationOrder(Base):
     
     patient_id = Column(BigInteger, ForeignKey("patient.patient_id"), nullable=False, comment="关联 patient.patient_id")
     user_id = Column(Integer, ForeignKey("user.user_id"), nullable=True, comment="关联 user.user_id，冗余字段")
+    initiator_user_id = Column(Integer, ForeignKey("user.user_id"), nullable=True, comment="订单发起者 user_id，谁替谁预约")
     doctor_id = Column(Integer, ForeignKey("doctor.doctor_id"), nullable=False, comment="关联 doctor.doctor_id")
     schedule_id = Column(BigInteger, ForeignKey("schedule.schedule_id"), nullable=True, comment="可选：关联具体排班")
 
@@ -62,6 +64,7 @@ class RegistrationOrder(Base):
         nullable=False,
         comment="支付状态"
     )
+    payment_method = Column(String(50), nullable=True, comment="支付方式: BANK(银行卡)/ALIPAY(支付宝)/WECHAT(微信)")
     payment_time = Column(DateTime, nullable=True, comment="支付完成时间")
     cancel_time = Column(DateTime, nullable=True, comment="取消时间")
     refund_time = Column(DateTime, nullable=True, comment="退款时间")
@@ -73,6 +76,9 @@ class RegistrationOrder(Base):
     # 候补相关字段（为后续扩展保留）
     is_waitlist = Column(Boolean, default=False, comment="是否为候补挂号")
     waitlist_position = Column(Integer, nullable=True, comment="候补队列中的位置（1 表示队首）")
+    
+    # 预约来源标识字段
+    source_type = Column(String(20), nullable=False, default="normal", comment="预约来源: normal(普通预约)/waitlist(候补转预约)")
 
     # 接诊队列相关字段
     pass_count = Column(Integer, default=0, nullable=False, comment="过号次数，用于队列排序")
@@ -94,6 +100,7 @@ class RegistrationOrder(Base):
 
     # 关系（便于 ORM 查询）
     patient = relationship("Patient")
-    user = relationship("User")
+    user = relationship("User", foreign_keys=[user_id])
+    initiator = relationship("User", foreign_keys=[initiator_user_id])
     doctor = relationship("Doctor")
     schedule = relationship("Schedule")

@@ -75,12 +75,31 @@ class ScheduleConfig(BaseModel):
         }
 
 
-# ============ 系统配置整体 Schema ============
+# ============ 患者身份折扣配置 Schema ============
+
+class PatientIdentityDiscountsConfig(BaseModel):
+    """患者身份折扣配置"""
+    student: float = Field(0.8, ge=0.0, le=1.0, description="学生折扣率 (0.0-1.0)")
+    teacher: float = Field(0.8, ge=0.0, le=1.0, description="教师折扣率 (0.0-1.0)")
+    staff: float = Field(0.8, ge=0.0, le=1.0, description="职工折扣率 (0.0-1.0)")
+    external: float = Field(1.0, ge=0.0, le=1.0, description="校外折扣率 (0.0-1.0)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "student": 0.8,
+                "teacher": 0.8,
+                "staff": 0.8,
+                "external": 1.0
+            }
+        }
+
 
 class SystemConfigRequest(BaseModel):
     """系统配置更新请求"""
     registration: Optional[RegistrationConfig] = None
     schedule: Optional[ScheduleConfig] = None
+    patientIdentityDiscounts: Optional[PatientIdentityDiscountsConfig] = None
 
     class Config:
         json_schema_extra = {
@@ -93,6 +112,12 @@ class SystemConfigRequest(BaseModel):
                 "schedule": {
                     "maxFutureDays": 60,
                     "morningStart": "08:00"
+                },
+                "patientIdentityDiscounts": {
+                    "student": 0.8,
+                    "teacher": 0.8,
+                    "staff": 0.8,
+                    "external": 1.0
                 }
             }
         }
@@ -102,6 +127,7 @@ class SystemConfigResponse(BaseModel):
     """系统配置获取响应"""
     registration: dict
     schedule: dict
+    patientIdentityDiscounts: dict
 
     class Config:
         json_schema_extra = {
@@ -123,6 +149,12 @@ class SystemConfigResponse(BaseModel):
                     "eveningEnd": "21:00",
                     "consultationDuration": 15,
                     "intervalTime": 5
+                },
+                "patientIdentityDiscounts": {
+                    "学生": 0.8,
+                    "教师": 0.8,
+                    "职工": 0.8,
+                    "校外": 1.0
                 }
             }
         }

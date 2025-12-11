@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Body, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
-from app.db.base import get_db
+from app.db.base import get_db, User
 import logging
 from app.api.auth import get_current_user
 from app.schemas.user import user as UserSchema
@@ -2233,12 +2233,22 @@ async def exact_search_patient(
 				if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
 					age -= 1
 			
+			# 身份证脱敏（前6后4）
+			idcard_masked = None
+			id_card_val = getattr(patient, "id_card", None)
+			if id_card_val and len(id_card_val) >= 10:
+				idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+			elif id_card_val:
+				idcard_masked = id_card_val
+			
 			result_patients = [{
 				"patient_id": f"P{patient.patient_id}",
 				"name": patient.name,
 				"gender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
 				"age": age,
-				"phone": user.phonenumber
+				"phone": user.phonenumber,
+				"identifier": patient.identifier,
+				"idCard": idcard_masked
 			}]
 			return ResponseModel(code=0, message={"patients": result_patients})
 		
@@ -2261,12 +2271,22 @@ async def exact_search_patient(
 					if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
 						age -= 1
 				
+				# 身份证脱敏（前6后4）
+				idcard_masked = None
+				id_card_val = getattr(patient, "id_card", None)
+				if id_card_val and len(id_card_val) >= 10:
+					idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+				elif id_card_val:
+					idcard_masked = id_card_val
+				
 				result_patients.append({
 					"patient_id": f"P{patient.patient_id}",
 					"name": patient.name,
 					"gender": patient.gender.value if hasattr(patient.gender, 'value') else str(patient.gender),
 					"age": age,
-					"phone": user.phonenumber
+					"phone": user.phonenumber,
+					"identifier": patient.identifier,
+					"idCard": idcard_masked
 				})
 			return ResponseModel(code=0, message={"patients": result_patients})
 		
@@ -2274,6 +2294,8 @@ async def exact_search_patient(
 		return ResponseModel(code=0, message={"patients": []})
 		
 	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
 		raise
 	except Exception as e:
 		import traceback
@@ -2667,6 +2689,8 @@ async def get_leave_history(
 
 	except AuthHTTPException:
 		raise
+	except BusinessHTTPException:
+		raise
 	except Exception as e:
 		import logging
 		logging.getLogger(__name__).error(f"获取请假历史失败: {e}")
@@ -2735,24 +2759,32 @@ async def get_patient_detail(
 				age -= 1
 		
 		# 手机号脱敏（保留前3位和后4位）
+		# 患者可能未绑定用户账号(user_id为None)，此时无手机号
 		phone_masked = None
-		if patient.user and patient.user.phonenumber:
-			phone = str(patient.user.phonenumber)
-			if len(phone) >= 11:  # 标准手机号11位
-				phone_masked = phone[:3] + "****" + phone[-4:]
-			elif len(phone) >= 7:  # 至少7位才脱敏
-				phone_masked = phone[:3] + "****" + phone[-4:]
-			else:
-				# 太短的号码用星号代替
-				phone_masked = "*" * len(phone)
+		if patient.user_id:
+			# 查询关联的用户信息获取手机号
+			user_res = await db.execute(
+				select(User).where(User.user_id == patient.user_id)
+			)
+			user = user_res.scalar_one_or_none()
+			if user and user.phonenumber:
+				phone = str(user.phonenumber)
+				if len(phone) >= 11:  # 标准手机号11位
+					phone_masked = phone[:3] + "****" + phone[-4:]
+				elif len(phone) >= 7:  # 至少7位才脱敏
+					phone_masked = phone[:3] + "****" + phone[-4:]
+				else:
+					# 太短的号码用星号代替
+					phone_masked = "*" * len(phone)
+		# 如果患者未绑定用户账号，phone_masked 保持为 None
 		
-		# 身份证号脱敏（保留前6位和后4位） - 使用 student_id 作为身份证号
+		# 身份证脱敏（保留前6位和后4位）
 		idcard_masked = None
-		if patient.student_id and len(patient.student_id) >= 10:
-			idcard = patient.student_id
-			idcard_masked = idcard[:6] + "********" + idcard[-4:]
-		elif patient.student_id:
-			idcard_masked = patient.student_id
+		id_card_val = getattr(patient, 'id_card', None)
+		if id_card_val and len(id_card_val) >= 10:
+			idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+		elif id_card_val:
+			idcard_masked = id_card_val
 		
 		# 构建基本信息
 		basic_info = {
@@ -2761,6 +2793,7 @@ async def get_patient_detail(
 			"age": age,
 			"height": None,  # 数据库暂无身高字段，返回 null
 			"phone": phone_masked,
+			"identifier": patient.identifier,  # 学号/工号
 			"idCard": idcard_masked,
 			"address": "北京市海淀区学院路37号北京交通大学"  # 默认地址
 		}
@@ -2834,6 +2867,8 @@ async def get_patient_detail(
 		})
 		
 	except AuthHTTPException:
+		raise
+	except BusinessHTTPException:
 		raise
 	except ResourceHTTPException:
 		raise

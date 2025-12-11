@@ -8,6 +8,8 @@ from app.db.base import redis
 from app.core.exception_handler import BusinessHTTPException, ResourceHTTPException
 from app.core.config import settings
 from datetime import datetime
+from app.services.config_service import get_patient_identity_discounts, calculate_final_price
+from app.models.patient import PatientType
 
 
 async def execute_add_slot_and_register(
@@ -44,7 +46,25 @@ async def execute_add_slot_and_register(
     if res.scalar_one_or_none():
         raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="患者在该排班已有有效挂号", status_code=400)
 
-    # 4. 创建挂号记录，直接设为 CONFIRMED（已支付）
+    # 4. 获取身份折扣配置并计算最终价格
+    discounts = await get_patient_identity_discounts(db)
+    
+    # 根据患者身份应用价格折扣
+    base_price = schedule.price if schedule.price else 0.0
+    discount_rate = 1.0  # 默认无折扣
+    
+    if patient.patient_type:
+        patient_type_value = patient.patient_type
+        if isinstance(patient.patient_type, PatientType):
+            patient_type_value = patient.patient_type.value
+        
+        # 从数据库配置中获取折扣率
+        discount_rate = discounts.get(patient_type_value, 1.0)
+    
+    # 计算最终价格，精确到小数点后2位
+    final_price = calculate_final_price(base_price, discount_rate)
+    
+    # 5. 创建挂号记录，直接设为 CONFIRMED（已支付）
     reg = RegistrationOrder(
         patient_id=patient.patient_id,
         user_id=patient.user_id,
@@ -53,13 +73,14 @@ async def execute_add_slot_and_register(
         slot_type=slot_type,
         slot_date=schedule.date,
         time_section=schedule.time_section,
+        price=final_price,  # 应用折扣后的价格
         status=OrderStatus.CONFIRMED,  # 加号直接进入正式队列
         priority=-1,  # 加号患者优先级更高，排在队列前面（priority越小越优先）
         notes=f"加号申请 (由用户 {applicant_user_id} 发起)",
     )
 
     # 记录价格信息于 notes
-    reg.notes = (reg.notes or "") + f" | price={float(schedule.price)}"
+    reg.notes = (reg.notes or "") + f" | price={float(final_price)}"
 
     db.add(reg)
 

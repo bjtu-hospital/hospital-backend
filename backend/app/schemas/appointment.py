@@ -2,7 +2,7 @@
 预约挂号相关的 Pydantic schemas
 """
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, date
 
 
@@ -49,6 +49,7 @@ class AppointmentListItem(BaseModel):
     paymentStatus: str
     canCancel: bool
     canReschedule: bool = False  # 暂不支持改约
+    sourceType: str = "normal"  # 预约来源: normal(普通预约)/waitlist(候补转预约)
     createdAt: str
 
 
@@ -64,3 +65,44 @@ class CancelAppointmentResponse(BaseModel):
     """取消预约响应"""
     success: bool
     refundAmount: Optional[float] = None
+
+
+class RescheduleOption(BaseModel):
+    """可改约的排班选项"""
+    scheduleId: int
+    date: str
+    timeSection: str
+    remainingSlots: int
+    price: float
+    hospitalId: Optional[int] = None
+    hospitalName: Optional[str] = None
+    departmentId: Optional[int] = None
+    departmentName: Optional[str] = None
+    clinicId: Optional[int] = None
+    clinicName: Optional[str] = None
+    slotType: Optional[str] = None
+
+
+class RescheduleOptionsResponse(BaseModel):
+    """改约可选排班响应"""
+    appointmentId: int
+    currentScheduleId: Optional[int]
+    currentDate: Optional[str]
+    currentTimeSection: Optional[str]
+    options: List[RescheduleOption]
+
+
+class RescheduleRequest(BaseModel):
+    """改约请求体"""
+    scheduleId: int = Field(..., description="目标排班ID")
+
+
+class RescheduleResponse(BaseModel):
+    """改约结果"""
+    id: int
+    appointmentDate: str
+    appointmentTime: str
+    price: float
+    priceDiff: float
+    status: str
+    paymentStatus: str

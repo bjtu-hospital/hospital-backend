@@ -16,18 +16,49 @@ from app.models.doctor import Doctor
 from app.models.minor_department import MinorDepartment
 from app.models.user import UserType
 from app.models.patient import Patient, PatientType, Gender
+from app.models.patient_relation import PatientRelation
 from app.services.risk_detection_service import risk_detection_service
 from app.models.user_ban import UserBan
 from app.core.config import settings
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
+from app.services.sms_service import SMSService
+from app.core.security import send_email
 import os
 import mimetypes
 import base64
+import re
+import random
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer("/auth/swagger-login", auto_error=False)
+
+
+@router.post("/sms/send-code", summary="发送手机号验证码", tags=["Auth"]) 
+async def send_sms_code(phone: str = Body(..., embed=True)):
+    """发送验证码到指定手机号，受限流与TTL控制"""
+    try:
+        result = await SMSService.send_code(phone)
+        return ResponseModel(code=0, message=result)
+    except BusinessHTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"发送短信验证码异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="短信发送失败", status_code=500)
+
+
+@router.post("/sms/verify-code", summary="校验手机号验证码", tags=["Auth"]) 
+async def verify_sms_code(phone: str = Body(..., embed=True), code: str = Body(..., embed=True)):
+    """校验验证码，成功后在Redis写入 verified 标记，窗口期内可注册"""
+    try:
+        result = await SMSService.verify_code(phone, code)
+        return ResponseModel(code=0, message=result)
+    except BusinessHTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"校验短信验证码异常: {e}")
+        raise BusinessHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="验证码校验失败", status_code=500)
 
 async def get_current_user_optional(
     token: Optional[str] = Depends(oauth2_scheme),
@@ -84,7 +115,7 @@ async def swagger_login(request: Request, form_data: OAuth2PasswordRequestForm =
         if user.is_deleted:
             raise HTTPException(status_code=401, detail="用户不存在或已被删除")
         if not user.is_verified:
-            raise HTTPException(status_code=401, detail="邮箱未验证，请先完成邮箱验证")
+            raise HTTPException(status_code=401, detail="账号未验证，请先完成验证")
         
         # 检查用户是否被封禁
         ban_result = await db.execute(
@@ -150,6 +181,14 @@ async def patient_login(login_data: PatientLogin, request: Request, db: AsyncSes
             status_code=401
         )
     
+    # 检查用户是否已验证
+    if not user.is_verified:
+        raise AuthHTTPException(
+            code=settings.LOGIN_FAILED_CODE,
+            msg="账号未验证，请先完成手机号验证",
+            status_code=401
+        )
+    
     # 检查用户是否被封禁
     ban_result = await db.execute(
         select(UserBan).where(
@@ -211,6 +250,14 @@ async def staff_login(login_data: StaffLogin, request: Request, db: AsyncSession
         raise AuthHTTPException(
             code=settings.LOGIN_FAILED_CODE,
             msg="用户不存在或密码错误",
+            status_code=401
+        )
+    
+    # 检查用户是否已验证
+    if not user.is_verified:
+        raise AuthHTTPException(
+            code=settings.LOGIN_FAILED_CODE,
+            msg="账号未验证，请联系管理员",
             status_code=401
         )
     
@@ -386,55 +433,127 @@ async def get_me(current_user: UserSchema = Depends(get_current_user)):
         )
 
 
-@router.post("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+@router.get("/user-info", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
 async def get_user_info(current_user: UserSchema = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """获取医生端用户信息（若当前登录用户绑定医生记录则返回医生资料）"""
+    """多角色通用用户信息接口
+
+    返回结构包含患者与医生信息（按角色返回可用字段）：
+    - patient: 按 USER-API 约定返回患者个人信息字段
+    - doctor: 若当前用户绑定医生记录则返回医生资料，否则为 None
+    """
     try:
+        # 查询医生信息（如有）
         doctor_res = await db.execute(select(Doctor).where(Doctor.user_id == current_user.user_id))
         doctor = doctor_res.scalar_one_or_none()
-        if not doctor:
-            return ResponseModel(code=0, message={"doctor": None})
-        dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
-        dept = dept_res.scalar_one_or_none()
-        # 读取并编码医生照片（如果存在）
+        dept = None
         photo_base64 = None
         photo_mime = None
-        if doctor.photo_path:
-            base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
-            rel_path = doctor.photo_path.lstrip("/")
-            if rel_path.startswith("app/"):
-                rel_path = rel_path[4:]
-            fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
-            if os.path.exists(fs_path) and os.path.isfile(fs_path):
-                mime_type, _ = mimetypes.guess_type(fs_path)
-                if not mime_type:
-                    mime_type = "application/octet-stream"
-                try:
-                    with open(fs_path, "rb") as f:
-                        bdata = f.read()
-                        photo_base64 = base64.b64encode(bdata).decode("utf-8")
-                        photo_mime = mime_type
-                except Exception:
-                    photo_base64 = None
-                    photo_mime = None
-        return ResponseModel(code=0, message={
-            "doctor": {
+        if doctor:
+            dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
+            dept = dept_res.scalar_one_or_none()
+            # 读取并编码医生照片（如果存在）
+            if doctor.photo_path:
+                base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+                rel_path = doctor.photo_path.lstrip("/")
+                if rel_path.startswith("app/"):
+                    rel_path = rel_path[4:]
+                fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+                if os.path.exists(fs_path) and os.path.isfile(fs_path):
+                    mime_type, _ = mimetypes.guess_type(fs_path)
+                    if not mime_type:
+                        mime_type = "application/octet-stream"
+                    try:
+                        with open(fs_path, "rb") as f:
+                            bdata = f.read()
+                            photo_base64 = base64.b64encode(bdata).decode("utf-8")
+                            photo_mime = mime_type
+                    except Exception:
+                        photo_base64 = None
+                        photo_mime = None
+
+        # 查询患者信息（如有）
+        patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        patient = patient_res.scalar_one_or_none()
+
+        # 计算年龄
+        age = None
+        if patient and patient.birth_date:
+            from datetime import date as date_type
+            today = date_type.today()
+            age = today.year - patient.birth_date.year
+            if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
+                age -= 1
+
+        # 敏感信息脱敏
+        phone_masked = None
+        if getattr(current_user, "phonenumber", None):
+            phone = str(current_user.phonenumber)
+            if len(phone) >= 11:
+                phone_masked = phone[:3] + "****" + phone[-4:]
+            elif len(phone) >= 7:
+                phone_masked = phone[:3] + "****" + phone[-4:]
+            else:
+                phone_masked = "*" * len(phone)
+
+        # 身份证脱敏
+        idcard_masked = None
+        id_card_val = getattr(patient, "id_card", None) if patient else None
+        if id_card_val and len(id_card_val) >= 10:
+            idcard_masked = id_card_val[:6] + "********" + id_card_val[-4:]
+        elif id_card_val:
+            idcard_masked = id_card_val
+        
+        # 学号/工号
+        identifier_val = getattr(patient, "identifier", None) if patient else None
+
+        # 构建患者信息（遵循 USER-API 字段命名）
+        patient_info = None
+        if patient:
+            patient_info = {
+                "id": str(patient.patient_id),
+                "identifier": identifier_val,  # 学号/工号/证件号
+                "phonenumber": current_user.phonenumber,
+                "realName": patient.name,
+                "idCard": idcard_masked,  # 身份证号（已脱敏）
+                "email": getattr(current_user, "email", None),
+                "gender": (patient.gender.value if patient.gender else "未知"),
+                "birthDate": (patient.birth_date.strftime("%Y-%m-%d") if patient.birth_date else None),
+                "patientType": (patient.patient_type if isinstance(patient.patient_type, str) else getattr(patient.patient_type, "value", None)),
+                "avatar": None,
+                "verified": bool(getattr(patient, "is_verified", False)),
+                "createdAt": (patient.create_time.strftime("%Y-%m-%d %H:%M:%S") if getattr(patient, "create_time", None) else None),
+                "updatedAt": None,
+                # 额外可选：返回脱敏后的手机号与证件信息，便于前端直接展示
+                "maskedInfo": {
+                    "phone": phone_masked,
+                    "idCard": idcard_masked
+                },
+                "age": age
+            }
+
+        # 构建医生信息（保持原有字段）
+        doctor_info = None
+        if doctor:
+            doctor_info = {
                 "id": doctor.doctor_id,
                 "name": doctor.name,
                 "department": dept.name if dept else None,
                 "department_id": doctor.dept_id,
                 "hospital": "主院区",
                 "title": doctor.title,
-                # 标记该医生是否为科室长，便于前端权限/展示判断
                 "is_department_head": bool(getattr(doctor, "is_department_head", False)),
                 "photo_mime": photo_mime,
                 "photo_base64": photo_base64
             }
+
+        return ResponseModel(code=0, message={
+            "patient": patient_info,
+            "doctor": doctor_info
         })
     except AuthHTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取医生用户信息异常: {e}")
+        logger.error(f"获取用户信息异常: {e}")
         raise BusinessHTTPException(code=settings.USER_GET_FAILED_CODE, msg="获取用户信息失败", status_code=500)
 
 
@@ -536,14 +655,26 @@ async def register_patient(
     password: str = Body(...),
     name: str = Body(...),
     email: Optional[str] = Body(None),
-    patient_type: Optional[str] = Body(None),
     gender: Optional[str] = Body(None),
     birth_date: Optional[str] = Body(None),
-    student_id: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db)
 ):
-    """患者注册接口"""
+    """患者注册接口
+    
+    新注册患者默认为校外人员（EXTERNAL），身份认证由认证模块单独处理。
+    """
     try:
+        # 校验手机号是否通过短信验证（窗口期内）
+        try:
+            verified = await redis.get(f"sms:verified:{phonenumber}")
+        except Exception:
+            verified = None
+        if not verified:
+            raise BusinessHTTPException(
+                code=settings.REGISTER_FAILED_CODE,
+                msg="手机号未验证或验证已过期，请先完成验证码验证",
+                status_code=400
+            )
         # 检查手机号是否已被注册
         result = await db.execute(select(User).where(User.phonenumber == phonenumber))
         if result.scalar_one_or_none():
@@ -560,11 +691,18 @@ async def register_patient(
             email=email,
             is_admin=False,
             # 新注册的患者默认不是管理员，user_type 暂设为 EXTERNAL
-            user_type=UserType.EXTERNAL
+            user_type=UserType.EXTERNAL,
+            is_verified=True
         )
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
+
+        # 一次性消费 verified 标记
+        try:
+            await redis.delete(f"sms:verified:{phonenumber}")
+        except Exception:
+            pass
 
         # 生成并返回 token
         token = create_access_token({"sub": str(new_user.user_id)})
@@ -573,22 +711,10 @@ async def register_patient(
         await redis.set(f"token:{token}", str(new_user.user_id), ex=settings.TOKEN_EXPIRE_TIME * 60)
         await redis.set(f"user_token:{new_user.user_id}", token, ex=settings.TOKEN_EXPIRE_TIME * 60)
 
-        # 若提供了患者详细信息，则同时创建 Patient 记录
+        # 必须创建 Patient 记录（无论是否提供可选信息）
+        # 注册必然产生一条患者记录，确保 user_id 总是被正确设置
         try:
-            create_patient = any([patient_type, gender, birth_date, student_id])
-            if create_patient:
-                # 解析 patient_type
-                p_type = None
-                if patient_type:
-                    pt = str(patient_type).strip()
-                    # 支持中文/英文输入（如 '学生' 或 'STUDENT'）
-                    if pt in ("学生", "STUDENT", "student", "Student"):
-                        p_type = PatientType.STUDENT
-                    elif pt in ("教师", "TEACHER", "teacher", "Teacher"):
-                        p_type = PatientType.TEACHER
-                    elif pt in ("职工", "STAFF", "staff", "Staff"):
-                        p_type = PatientType.STAFF
-                # 解析 gender
+            # 解析 gender
                 g = None
                 if gender:
                     gg = str(gender).strip()
@@ -608,24 +734,49 @@ async def register_patient(
                     except Exception:
                         bdate = None
 
-                # 为避免 Enum 存储值/名称与数据库已有 ENUM 定义不一致，直接写入枚举的 value（中文描述）
-                # 插入数据库时传入 Enum 成员（SQLAlchemy 会处理到数据库的表示），
-                # 避免直接写入枚举的 value 导致与数据库列定义不一致的问题。
-                # 将解析结果存入数据库时使用枚举的 value（存储为数据库定义的字符串），
-                # 以兼容数据库中 ENUM 的定义（数据库中使用中文值：'男','女','未知' 等）。
+                # 创建 Patient 记录，默认身份为 EXTERNAL（校外人员）
+                # 身份认证由认证模块单独处理
                 patient = Patient(
                     user_id=new_user.user_id,
                     name=name,
                     gender=(g.value if g else Gender.UNKNOWN.value),
                     birth_date=bdate,
-                    patient_type=(p_type.value if p_type else PatientType.STUDENT.value),
-                    student_id=student_id,
-                    is_verified=False,
+                    patient_type=PatientType.EXTERNAL.value,  # 默认为校外人员
+                    identifier=None,  # 注册时不设置，由认证模块处理
+                    is_verified=True,
                     create_time=date.today()
                 )
                 db.add(patient)
                 await db.commit()
                 await db.refresh(patient)
+
+                # 创建“本人”就诊关系，并将默认就诊人设置为本人（写入 Redis）
+                try:
+                    # 避免重复创建
+                    rel_exist_res = await db.execute(
+                        select(PatientRelation).where(
+                            and_(
+                                PatientRelation.user_patient_id == patient.patient_id,
+                                PatientRelation.related_patient_id == patient.patient_id
+                            )
+                        )
+                    )
+                    rel_exist = rel_exist_res.scalar_one_or_none()
+                    if not rel_exist:
+                        self_rel = PatientRelation(
+                            user_patient_id=patient.patient_id,
+                            related_patient_id=patient.patient_id,
+                            relation_type="本人",
+                            is_default=False,
+                            remark=None
+                        )
+                        db.add(self_rel)
+                        await db.commit()
+
+                    # 以 Redis 为权威设置默认就诊人
+                    await redis.set(f"user_default_patient:{patient.patient_id}", str(patient.patient_id))
+                except Exception:
+                    logger.exception("注册时创建本人关系或设置默认就诊人失败（已忽略以不影响注册）")
         except Exception:
             # 如果创建 Patient 失败，不影响用户注册，记录错误并回滚本次子事务以清理 Session 状态
             logger.exception("创建 Patient 记录失败，已回滚 Patient 子记录，但用户已创建")
@@ -634,6 +785,56 @@ async def register_patient(
             except Exception:
                 # 忽略回滚期间的错误，至少记录日志
                 logger.exception("回滚 Patient 子记录时发生异常")
+
+        # 兜底：若前面未创建 Patient，也保证至少创建本人 Patient 与关系，并设置默认
+        try:
+            ensure_res = await db.execute(select(Patient).where(Patient.user_id == new_user.user_id))
+            ensured_patient = ensure_res.scalar_one_or_none()
+            if not ensured_patient:
+                ensured_patient = Patient(
+                    user_id=new_user.user_id,
+                    name=name,
+                    gender=Gender.UNKNOWN.value,
+                    birth_date=None,
+                    patient_type=PatientType.EXTERNAL.value,  # 默认为校外人员
+                    identifier=None,  # 注册时不设置，由认证模块处理
+                    is_verified=True,
+                    create_time=date.today()
+                )
+                db.add(ensured_patient)
+                await db.commit()
+                await db.refresh(ensured_patient)
+
+            # 创建本人关系（若不存在）
+            rel_exist_res2 = await db.execute(
+                select(PatientRelation).where(
+                    and_(
+                        PatientRelation.user_patient_id == ensured_patient.patient_id,
+                        PatientRelation.related_patient_id == ensured_patient.patient_id
+                    )
+                )
+            )
+            if not rel_exist_res2.scalar_one_or_none():
+                self_rel2 = PatientRelation(
+                    user_patient_id=ensured_patient.patient_id,
+                    related_patient_id=ensured_patient.patient_id,
+                    relation_type="本人",
+                    is_default=False,
+                    remark=None
+                )
+                db.add(self_rel2)
+                await db.commit()
+
+            # 默认就诊人写入 Redis（若原本未设置）
+            try:
+                cache_key = f"user_default_patient:{ensured_patient.patient_id}"
+                cached = await redis.get(cache_key)
+                if not cached:
+                    await redis.set(cache_key, str(ensured_patient.patient_id))
+            except Exception:
+                logger.warning("注册兜底阶段写入默认就诊人缓存失败（忽略）")
+        except Exception:
+            logger.exception("注册兜底阶段创建 Patient/本人关系失败（忽略继续返回 token）")
 
         return ResponseModel(code=0, message=token)
     except AuthHTTPException:
@@ -747,6 +948,230 @@ async def register_admin(
         )
 
 
+@router.post("/email/send-verify-code", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def send_email_verify_code(
+    email: str = Body(..., embed=True),
+    current_user: UserSchema = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """发送邮箱验证码
+    
+    用户在绑定或更改邮箱时调用此接口。系统会：
+    1. 验证邮箱格式是否合法
+    2. 检查邮箱是否已被其他用户使用
+    3. 生成6位验证码并发送到指定邮箱
+    4. 在Redis保存验证码（有效期5分钟），防刷限制60秒
+    """
+    try:
+        # 邮箱格式校验
+        email_regex = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        if not re.match(email_regex, email):
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="邮箱格式不合法",
+                status_code=400
+            )
+        
+        # 检查邮箱是否已被其他用户使用
+        email_check = await db.execute(
+            select(User).where(
+                and_(
+                    User.email == email,
+                    User.user_id != current_user.user_id
+                )
+            )
+        )
+        if email_check.scalar_one_or_none():
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="该邮箱已被其他用户使用",
+                status_code=400
+            )
+        
+        # 防刷：60秒内只能发送一次
+        rate_key = f"email_verify_rate:{email}"
+        if await redis.get(rate_key):
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="发送过于频繁，请稍后再试",
+                status_code=429
+            )
+        await redis.set(rate_key, "1", ex=60)
+        
+        # 生成6位验证码
+        code = ''.join(str(random.randint(0, 9)) for _ in range(6))
+        
+        # 保存验证码到Redis（有效期5分钟）
+        code_data = {
+            "code": code,
+            "timestamp": time.time(),
+            "attempts": 0,
+            "user_id": current_user.user_id
+        }
+        await redis.set(
+            f"email_verify_code:{email}",
+            str(code_data),
+            ex=300  # 5分钟
+        )
+        
+        # 发送邮件
+        subject = "邮箱验证码"
+        body = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif;">
+                <p>您好，</p>
+                <p>感谢您使用我们的服务。您的邮箱验证码为：</p>
+                <h2 style="color: #007bff; letter-spacing: 5px;">{code}</h2>
+                <p>该验证码有效期为5分钟，请勿泄露给他人。</p>
+                <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                    如果这不是您的操作，请忽略此邮件。
+                </p>
+            </body>
+        </html>
+        """
+        
+        success = send_email(email, subject, body)
+        if not success:
+            # 邮件发送失败，清理验证码
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="邮件发送失败，请稍后重试",
+                status_code=500
+            )
+        
+        logger.info(f"用户 {current_user.user_id} 请求绑定邮箱 {email}，验证码已发送")
+        return ResponseModel(code=0, message={
+            "detail": "验证码已发送到你的邮箱，请在5分钟内验证",
+            "email_masked": email[:email.index('@')] + "***" + email[email.index('@'):]
+        })
+    except BusinessHTTPException:
+        raise
+    except AuthHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"发送邮箱验证码异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_UPDATE_FAILED_CODE,
+            msg="发送验证码失败，请稍后重试",
+            status_code=500
+        )
+
+
+@router.post("/email/verify-code", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def verify_email_code(
+    email: str = Body(...),
+    code: str = Body(...),
+    current_user: UserSchema = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """验证邮箱验证码并绑定邮箱
+    
+    用户收到验证码后，调用此接口验证并完成邮箱绑定。
+    """
+    try:
+        # 从Redis获取验证码数据
+        raw = await redis.get(f"email_verify_code:{email}")
+        if not raw:
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码错误或已过期",
+                status_code=400
+            )
+        
+        # 解析验证码数据
+        try:
+            code_data = eval(raw)
+        except Exception:
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码状态异常，请重新获取",
+                status_code=400
+            )
+        
+        # 验证用户ID是否匹配
+        if int(code_data.get("user_id", -1)) != current_user.user_id:
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码与当前用户不匹配",
+                status_code=403
+            )
+        
+        # 尝试次数限制（3次）
+        attempts = int(code_data.get("attempts", 0))
+        if attempts >= 3:
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="尝试次数过多，请重新获取验证码",
+                status_code=400
+            )
+        
+        # 检查验证码是否过期（5分钟）
+        if time.time() - float(code_data.get("timestamp", 0)) > 300:
+            await redis.delete(f"email_verify_code:{email}")
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg="验证码已过期，请重新获取",
+                status_code=400
+            )
+        
+        # 比对验证码
+        if str(code) != str(code_data.get("code")):
+            code_data["attempts"] = attempts + 1
+            await redis.set(
+                f"email_verify_code:{email}",
+                str(code_data),
+                ex=300
+            )
+            left = max(0, 3 - code_data["attempts"])
+            raise BusinessHTTPException(
+                code=settings.DATA_UPDATE_FAILED_CODE,
+                msg=f"验证码错误，还剩{left}次机会",
+                status_code=400
+            )
+        
+        # 验证通过，更新数据库中的邮箱
+        user_res = await db.execute(select(User).where(User.user_id == current_user.user_id))
+        user = user_res.scalar_one_or_none()
+        
+        if not user:
+            raise ResourceHTTPException(
+                code=settings.USER_GET_FAILED_CODE,
+                msg="用户不存在",
+                status_code=404
+            )
+        
+        user.email = email
+        await db.commit()
+        await db.refresh(user)
+        
+        # 清理验证码
+        await redis.delete(f"email_verify_code:{email}")
+        await redis.delete(f"email_verify_rate:{email}")
+        
+        logger.info(f"用户 {current_user.user_id} 邮箱绑定成功: {email}")
+        return ResponseModel(code=0, message={
+            "detail": "邮箱绑定成功",
+            "email": email
+        })
+    except BusinessHTTPException:
+        raise
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"验证邮箱验证码异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_UPDATE_FAILED_CODE,
+            msg="邮箱验证失败，请稍后重试",
+            status_code=500
+        )
+
+
 @router.post("/logout")
 async def logout(current_user: UserSchema = Depends(get_current_user)):
     """用户登出接口"""
@@ -768,6 +1193,97 @@ async def logout(current_user: UserSchema = Depends(get_current_user)):
         raise BusinessHTTPException(
             code=settings.DATA_DELETE_FAILED_CODE,
             msg="登出失败，请稍后重试",
+            status_code=500
+        )
+
+
+@router.put("/profile", response_model=ResponseModel[Union[dict, AuthErrorResponse]])
+async def update_profile(
+    realName: Optional[str] = Body(None),
+    gender: Optional[str] = Body(None),
+    birthDate: Optional[str] = Body(None),
+    current_user: UserSchema = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """更新当前登录用户的个人信息
+    
+    允许用户更新以下字段（可选）：
+    - realName: 真实姓名
+    - gender: 性别（男/女/未知）
+    - birthDate: 出生日期（YYYY-MM-DD格式）
+    
+    注意：邮箱绑定请使用专属接口
+    - POST /auth/email/send-verify-code - 发送验证码
+    - POST /auth/email/verify-code - 验证并绑定
+    """
+    try:
+        # 查询患者记录
+        patient_res = await db.execute(select(Patient).where(Patient.user_id == current_user.user_id))
+        patient = patient_res.scalar_one_or_none()
+        
+        if not patient:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者记录不存在，请先完成注册",
+                status_code=404
+            )
+        
+        # 更新姓名
+        if realName is not None:
+            patient.name = realName
+        
+        # 更新性别
+        if gender is not None:
+            g = str(gender).strip()
+            if g in ("男", "MALE", "male", "Male"):
+                patient.gender = Gender.MALE.value
+            elif g in ("女", "FEMALE", "female", "Female"):
+                patient.gender = Gender.FEMALE.value
+            elif g in ("未知", "UNKNOWN", "unknown", "Unknown"):
+                patient.gender = Gender.UNKNOWN.value
+            else:
+                raise BusinessHTTPException(
+                    code=settings.DATA_UPDATE_FAILED_CODE,
+                    msg="性别参数无效，请使用：男/女/未知",
+                    status_code=400
+                )
+        
+        # 更新出生日期
+        if birthDate is not None:
+            try:
+                from datetime import datetime as _dt
+                bdate = _dt.strptime(birthDate, "%Y-%m-%d").date()
+                patient.birth_date = bdate
+            except ValueError:
+                raise BusinessHTTPException(
+                    code=settings.DATA_UPDATE_FAILED_CODE,
+                    msg="出生日期格式错误，请使用 YYYY-MM-DD 格式",
+                    status_code=400
+                )
+        
+        await db.commit()
+        await db.refresh(patient)
+        
+        return ResponseModel(code=0, message={
+            "detail": "个人信息更新成功",
+            "updatedFields": {
+                "realName": patient.name if realName is not None else None,
+                "gender": patient.gender if gender is not None else None,
+                "birthDate": patient.birth_date.strftime("%Y-%m-%d") if birthDate is not None and patient.birth_date else None
+            }
+        })
+    except AuthHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"更新用户信息时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_UPDATE_FAILED_CODE,
+            msg="更新用户信息失败，请稍后重试",
             status_code=500
         )
 
