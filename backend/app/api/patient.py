@@ -2330,6 +2330,24 @@ async def join_waitlist(
         max_pos = max_pos_res.scalar() or 0
         position = max_pos + 1
 
+        # 从数据库获取身份折扣配置
+        discounts = await get_patient_identity_discounts(db)
+        
+        # 根据患者身份应用价格折扣
+        base_price = schedule.price if schedule.price else 0.0
+        discount_rate = 1.0  # 默认无折扣
+        
+        if patient.patient_type:
+            patient_type_value = patient.patient_type
+            if isinstance(patient.patient_type, PatientType):
+                patient_type_value = patient.patient_type.value
+            
+            # 从数据库配置中获取折扣率
+            discount_rate = discounts.get(patient_type_value, 1.0)
+        
+        # 计算最终价格，精确到小数点后2位
+        final_price = calculate_final_price(base_price, discount_rate)
+
         now = datetime.now()
         order_no = _generate_order_no()
 
@@ -2343,7 +2361,7 @@ async def join_waitlist(
             slot_date=schedule.date,
             time_section=schedule.time_section,
             slot_type=str(schedule.slot_type.value if hasattr(schedule.slot_type, "value") else schedule.slot_type),
-            price=schedule.price,
+            price=final_price,  # 使用折扣后的价格
             status=OrderStatus.WAITLIST,
             payment_status=PaymentStatus.PENDING,
             is_waitlist=True,
