@@ -1806,6 +1806,31 @@ async def reschedule_appointment(
         await db.commit()
         await db.refresh(order)
 
+        # 改约成功后：对原排班进行候补级联转换（释放了一个号源）
+        # 与取消预约/取消支付的逻辑保持一致：循环转换直到没有候补或没有可用号源
+        try:
+            converted_count = 0
+            max_attempts = 10  # 防止无限循环，最多尝试转换10个
+
+            for attempt in range(max_attempts):
+                converted_order_id = await WaitlistService.notify_and_convert_first_in_queue(
+                    db,
+                    current_schedule.schedule_id
+                )
+
+                if not converted_order_id:
+                    break
+
+                converted_count += 1
+                logger.info(f"候补已转预约(改约触发): order_id={converted_order_id}")
+
+            if converted_count > 0:
+                logger.info(f"改约释放号源后自动转化候补成功: 共转化{converted_count}个候补")
+            else:
+                logger.info("改约释放号源后无候补订单")
+        except Exception as e:
+            logger.error(f"改约后自动转化候补失败: {str(e)}")
+
         return ResponseModel(code=0, message=RescheduleResponse(
             id=order.order_id,
             appointmentDate=str(order.slot_date),
