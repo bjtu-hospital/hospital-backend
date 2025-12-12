@@ -1,10 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from datetime import date as date_type, timedelta
 import logging
+import mimetypes
+import aiofiles
 
 from app.core.config import settings
 from app.core.exception_handler import BusinessHTTPException, ResourceHTTPException, AuthHTTPException
@@ -644,3 +646,94 @@ async def download_medical_record_pdf(
 			status_code=500
 		)
 
+
+# ====== 前端Icon图片获取接口（公开） ======
+@router.get("/icon", response_model=None)
+async def get_icon_image(path: str):
+	"""根据相对路径返回前端icon图片数据（公开接口，无需登录）
+	
+	用于前端获取 /static/icon 目录下的图标文件。
+	
+	参数:
+	- path: 相对于 /static/icon 的路径，例如: "tabbar/home.png" 或 "payment-icon/alipay.png"
+	
+	返回:
+	- 图片二进制数据流（StreamingResponse）
+	
+	示例:
+	- GET /common/icon?path=tabbar/home.png
+	- GET /common/icon?path=BJTU-images/logo.png
+	"""
+	try:
+		# 路径解析：基于 static/icon 目录
+		base_dir = os.path.dirname(os.path.dirname(__file__))  # app 目录
+		icon_base = os.path.join(base_dir, "static", "icon")
+		
+		# 清理路径：移除开头的斜杠
+		rel_path = path.lstrip("/")
+		
+		# 归一化路径，防止路径遍历攻击
+		fs_path = os.path.normpath(os.path.join(icon_base, rel_path))
+		
+		# 安全检查：确保文件路径在 icon 目录内
+		if not fs_path.startswith(os.path.normpath(icon_base)):
+			logger.warning(f"检测到目录遍历尝试: {fs_path}")
+			raise ResourceHTTPException(
+				code=settings.DATA_GET_FAILED_CODE,
+				msg="提供的文件路径不安全或无效",
+				status_code=400
+			)
+		
+		# 检查文件是否存在
+		if not os.path.exists(fs_path):
+			raise ResourceHTTPException(
+				code=settings.DATA_GET_FAILED_CODE,
+				msg=f"图标文件不存在: {path}",
+				status_code=404
+			)
+		
+		# 确保不是目录
+		if os.path.isdir(fs_path):
+			raise ResourceHTTPException(
+				code=settings.DATA_GET_FAILED_CODE,
+				msg="路径指向目录而非文件",
+				status_code=400
+			)
+		
+		# 猜测 MIME Type
+		mime_type, _ = mimetypes.guess_type(fs_path)
+		if not mime_type:
+			# 默认图片类型
+			mime_type = "image/png"
+		
+		# 异步文件迭代器
+		async def async_file_iterator(file_path: str, chunk_size: int = 8192):
+			"""异步读取文件块的生成器"""
+			try:
+				async with aiofiles.open(file_path, "rb") as f:
+					while True:
+						chunk = await f.read(chunk_size)
+						if not chunk:
+							break
+						yield chunk
+			except Exception as e:
+				logger.error(f"异步读取图标文件失败: {file_path}, 异常: {str(e)}")
+		
+		logger.info(f"返回icon图标: {path}")
+		return StreamingResponse(
+			async_file_iterator(fs_path), 
+			media_type=mime_type,
+			headers={
+				"Cache-Control": "public, max-age=86400"  # 缓存1天
+			}
+		)
+	
+	except ResourceHTTPException:
+		raise
+	except Exception as e:
+		logger.error(f"获取icon图标时发生异常: {str(e)}")
+		raise BusinessHTTPException(
+			code=settings.REQ_ERROR_CODE,
+			msg=f"获取图标失败: {str(e)}",
+			status_code=500
+		)
