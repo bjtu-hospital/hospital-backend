@@ -7134,3 +7134,96 @@ Authorization: Bearer <token>
 
 ---
 
+### 8) GET `/common/icon`
+
+**描述**: 获取前端 icon 图片文件（用于 tabbar 图标、支付方式图标等静态图片资源）
+
+**权限**: 公开访问（无需登录）
+
+**请求参数**:
+- `path` (必填): 图片相对路径（相对于 `/static/icon/` 目录）
+
+**支持的图片格式**:
+- `jpg`, `jpeg`, `png`, `gif`, `bmp`, `webp`, `svg`, `ico`
+
+**请求示例**:
+```
+GET /common/icon?path=tabbar/home.png
+GET /common/icon?path=payment-icon/alipay.png
+GET /common/icon?path=department/cardiology.svg
+```
+
+**响应**:
+- **成功**: 返回图片二进制流（`StreamingResponse`），Content-Type 根据文件扩展名自动设置
+- **失败**: 返回JSON错误信息
+
+**响应头（成功时）**:
+```
+Content-Type: image/png  (根据文件类型自动设置)
+Cache-Control: public, max-age=86400  (浏览器缓存1天)
+```
+
+**错误响应示例**:
+```json
+{
+    "code": 99,
+    "message": {
+        "error": "请求参数错误",
+        "msg": "文件不存在"
+    }
+}
+```
+
+**安全特性**:
+1. **路径验证**: 自动标准化路径，防止目录穿越攻击（如 `../` 等）
+2. **目录限制**: 仅允许访问 `/static/icon/` 目录下的文件
+3. **格式限制**: 仅支持上述列出的图片格式
+4. **文件检查**: 返回前验证文件是否真实存在
+
+**前端调用示例**:
+```javascript
+// 直接在 img 标签中使用
+<img src="/common/icon?path=tabbar/home.png" alt="首页" />
+
+// 或通过 fetch 获取
+fetch('/common/icon?path=payment-icon/alipay.png')
+    .then(response => response.blob())
+    .then(blob => {
+        const imageUrl = URL.createObjectURL(blob);
+        document.getElementById('icon').src = imageUrl;
+    });
+```
+
+**PowerShell 测试示例**:
+```powershell
+# 下载图标文件
+Invoke-WebRequest -Uri "http://localhost:8000/common/icon?path=tabbar/home.png" `
+    -OutFile "home_icon.png"
+
+# 查看文件信息
+Get-Item "home_icon.png"
+```
+
+**目录结构示例**:
+```
+backend/app/static/icon/
+├── tabbar/
+│   ├── home.png
+│   ├── appointment.png
+│   └── profile.png
+├── payment-icon/
+│   ├── alipay.png
+│   ├── wechat.png
+│   └── card.png
+└── department/
+    ├── cardiology.svg
+    └── orthopedics.svg
+```
+
+**注意事项**:
+1. **缓存策略**: 浏览器会缓存图片1天（86400秒），更新图标后可能需要强制刷新或修改 `path` 参数
+2. **性能优化**: 使用异步文件流（`aiofiles`）传输，适合处理大量并发请求
+3. **部署配置**: 确保容器/服务对 `/static/icon/` 目录有读权限
+
+---
+
