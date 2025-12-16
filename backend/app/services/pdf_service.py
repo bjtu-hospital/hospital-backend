@@ -36,8 +36,8 @@ class MedicalRecordPDFGenerator:
         
         # 获取静态字体目录路径
         service_dir = Path(__file__).parent  # app/services
-        backend_dir = service_dir.parent.parent  # backend
-        fonts_dir = backend_dir / "static" / "fonts"
+        app_dir = service_dir.parent  # app
+        fonts_dir = app_dir / "static" / "fonts"
         
         logger.info(f"尝试从静态资源加载字体: {fonts_dir}")
         
