@@ -27,11 +27,12 @@ jobs:
         run: |
           cat "$BACKENV" > ./.env 
 
-      - name: 检查并清除原来容器(镜像保留)
+      - name: 检查并清除原来容器(镜像也删除)
         working-directory: ./backend
         run: |
           docker stop backend-container 2>/dev/null || true
           docker rm backend-container 2>/dev/null || true
+          docker rmi backend-image:latest 2>/dev/null || true
       
       - name: 创建docker镜像
         working-directory: ./backend
