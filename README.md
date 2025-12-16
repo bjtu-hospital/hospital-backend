@@ -5277,7 +5277,6 @@ GET /doctors?dept_id=1&name=王&page=1&page_size=20
             {
                 \"doctor_id\": 1,
                 \"user_id\": 10,
-                \"is_registered\": true,
                 \"dept_id\": 1,
                 \"name\": \"张三\",
                 \"title\": \"主治医师\",
@@ -5294,12 +5293,151 @@ GET /doctors?dept_id=1&name=王&page=1&page_size=20
 }
 ```
 
+---
+
+### 1.6 获取医生详情 Get: `/doctors/{doctor_id}`
+
+根据医生ID获取医生的完整信息，包括基本信息、科室、价格配置等。
+
+#### Path 参数:
+- `doctor_id`: 医生ID
+
+#### 请求示例:
+```
+GET /doctors/1
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "doctor_id": 1,
+        "user_id": 10,
+        "name": "张三",
+        "title": "主治医师",
+        "specialty": "心血管疾病",
+        "introduction": "从事心血管疾病临床工作20余年，擅长冠心病、高血压等疾病的诊治...",
+        "photo_path": "/static/image/doctor_1.jpg",
+        "original_photo_url": null,
+        "department_id": 1,
+        "department_name": "心内科",
+        "area_id": 1,
+        "area_name": "东院区",
+        "is_department_head": 1,
+        "default_price_normal": 80.00,
+        "default_price_expert": null,
+        "default_price_special": 888.00
+    }
+}
+```
+
 字段说明：
-- `is_registered`: 医生是否已有系统账号（is_active=true 且 is_deleted=false）
+- `is_department_head`: 是否为科室长（1=是，0=否）
+- `area_id` / `area_name`: 医生所在院区信息
+- `department_id` / `department_name`: 医生所属科室信息
+- `photo_path`: 医生照片路径（可通过 `/doctors/{doctor_id}/photo` 接口获取）
+- 价格配置字段说明同医生列表接口
 
 ---
 
-### 1.6 获取科室排班 Get: `/departments/{dept_id}/schedules`
+### 1.7 获取医生照片 Get: `/doctors/{doctor_id}/photo`
+
+获取医生照片的二进制数据，用于前端展示医生头像。
+
+#### Path 参数:
+- `doctor_id`: 医生ID
+
+#### 请求示例:
+```
+GET /doctors/1/photo
+```
+
+#### 响应:
+- **成功**: 返回图片二进制流，Content-Type 根据文件类型自动设置（如 `image/jpeg`, `image/png`）
+- **失败**: 返回JSON错误信息
+
+#### 错误示例:
+```json
+{
+    "code": 106,
+    "message": {
+        "error": "数据获取失败",
+        "msg": "该医生暂无本地照片"
+    }
+}
+```
+
+#### 使用说明:
+- 可直接在 `<img>` 标签的 `src` 属性中使用此接口URL
+- 如医生未上传照片，接口将返回404错误
+- 支持的图片格式：jpg, jpeg, png, gif, webp
+
+---
+
+### 1.8 全局搜索 Get: `/search/global`
+
+根据关键词搜索医生和科室，支持模糊匹配和分页。
+
+#### Query 参数:
+- `keyword` (必填): 搜索关键词，支持搜索医生姓名和科室名称
+- `page` (可选): 页码，默认 1
+- `page_size` (可选): 每页数量，默认 50
+
+#### 请求示例:
+```
+GET /search/global?keyword=心
+GET /search/global?keyword=张&page=1&page_size=20
+```
+
+#### 输出:
+```json
+{
+    "code": 0,
+    "message": {
+        "keyword": "心",
+        "total": 15,
+        "page": 1,
+        "page_size": 50,
+        "doctor_count": 8,
+        "department_count": 7,
+        "results": [
+            {
+                "type": "doctor",
+                "doctor_id": 1,
+                "name": "张三",
+                "title": "主治医师",
+                "specialty": "心血管疾病",
+                "introduction": "从事心血管疾病临床工作多年...",
+                "photo_path": null,
+                "original_photo_url": null,
+                "dept_id": 1,
+                "default_price_normal": 80.00,
+                "default_price_expert": null,
+                "default_price_special": 888.00
+            },
+            {
+                "type": "department",
+                "minor_dept_id": 1,
+                "major_dept_id": 1,
+                "name": "心内科",
+                "description": "心脏内科相关疾病诊疗"
+            }
+        ]
+    }
+}
+```
+
+字段说明：
+- `type`: 结果类型，`"doctor"`（医生）或 `"department"`（科室）
+- `doctor_count`: 匹配的医生总数
+- `department_count`: 匹配的科室总数
+- `total`: 总结果数（医生数 + 科室数）
+- `results`: 搜索结果数组，混合包含医生和科室信息
+
+---
+
+### 1.9 获取科室排班 Get: `/departments/{dept_id}/schedules`
 
 获取指定小科室在日期范围内的所有排班。
 
@@ -5350,7 +5488,7 @@ GET /departments/1/schedules?start_date=2025-11-20&end_date=2025-11-30
 
 ---
 
-### 1.7 获取医生排班 Get: `/doctors/{doctor_id}/schedules`
+### 1.10 获取医生排班 Get: `/doctors/{doctor_id}/schedules`
 
 获取指定医生在日期范围内的所有排班。
 
@@ -5370,7 +5508,7 @@ GET /doctors/1/schedules?start_date=2025-11-20&end_date=2025-11-30
 
 ---
 
-### 1.8 获取门诊排班 Get: `/clinics/{clinic_id}/schedules`
+### 1.11 获取门诊排班 Get: `/clinics/{clinic_id}/schedules`
 
 获取指定门诊在日期范围内的所有排班。
 
@@ -5390,7 +5528,7 @@ GET /clinics/1/schedules?start_date=2025-11-20&end_date=2025-11-30
 
 ---
 
-### 1.9 获取医生排班列表（综合查询）Get: `/hospitals/schedules`
+### 1.12 获取医生排班列表（综合查询）Get: `/hospitals/schedules`
 
 根据院区、科室、日期查询排班，支持未来7天默认查询。
 

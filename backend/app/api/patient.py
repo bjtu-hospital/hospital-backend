@@ -557,7 +557,6 @@ async def get_doctors(
             doctor_list.append({
                 "doctor_id": doctor.doctor_id,
                 "user_id": doctor.user_id,
-                "is_registered": is_registered,
                 "dept_id": doctor.dept_id,
                 "name": doctor.name,
                 "title": doctor.title,
@@ -586,6 +585,324 @@ async def get_doctors(
         logger.error(f"获取医生列表时发生异常: {str(e)}")
         raise BusinessHTTPException(
             code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/doctors/{doctor_id}", response_model=ResponseModel)
+async def get_doctor_detail(
+    doctor_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取医生详情 - 公开接口,无需登录,根据医生ID精准查询
+    
+    参数:
+    - doctor_id: 医生ID
+    
+    返回:
+    - 医生的完整信息,包含基本信息、科室、价格、注册状态等
+    """
+    try:
+        # 查询医生及其关联信息
+        result = await db.execute(
+            select(Doctor, MinorDepartment, Clinic, HospitalArea)
+            .join(MinorDepartment, MinorDepartment.minor_dept_id == Doctor.dept_id)
+            .join(Clinic, Clinic.minor_dept_id == MinorDepartment.minor_dept_id)
+            .join(HospitalArea, HospitalArea.area_id == Clinic.area_id)
+            .where(Doctor.doctor_id == doctor_id)
+            .distinct()
+        )
+        row = result.first()
+        
+        if not row:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生不存在",
+                status_code=404
+            )
+        
+        doctor, minor_dept, clinic, area = row
+        
+        # 判断是否已注册账号
+        is_registered = False
+        if doctor.user_id:
+            user_res = await db.execute(
+                select(User).where(User.user_id == doctor.user_id)
+            )
+            user = user_res.scalar_one_or_none()
+            if user and getattr(user, "is_active", False) and not getattr(user, "is_deleted", False):
+                is_registered = True
+        
+        # 获取医生价格配置
+        prices = await bulk_get_doctor_prices(db, [doctor])
+        price_info = prices.get(doctor.doctor_id, {
+            "default_price_normal": None,
+            "default_price_expert": None,
+            "default_price_special": None
+        })
+        
+        return ResponseModel(code=0, message={
+            "doctor_id": doctor.doctor_id,
+            "user_id": doctor.user_id,
+            "name": doctor.name,
+            "title": doctor.title,
+            "specialty": doctor.specialty,
+            "introduction": doctor.introduction,
+            "photo_path": doctor.photo_path,
+            "original_photo_url": doctor.original_photo_url,
+            "department_id": minor_dept.minor_dept_id if minor_dept else None,
+            "department_name": minor_dept.name if minor_dept else None,
+            "area_id": area.area_id if area else None,
+            "area_name": area.name if area else None,
+            "is_department_head": doctor.is_department_head,
+            "default_price_normal": price_info["default_price_normal"],
+            "default_price_expert": price_info["default_price_expert"],
+            "default_price_special": price_info["default_price_special"]
+        })
+        
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"获取医生详情时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="内部服务异常",
+            status_code=500
+        )
+
+
+@router.get("/search/global", response_model=ResponseModel)
+async def global_search(
+    keyword: str,
+    page: int = 1,
+    page_size: int = 50,
+    db: AsyncSession = Depends(get_db)
+):
+    """全局搜索接口 - 公开接口,无需登录,支持按关键词搜索医生、科室
+    
+    参数:
+    - keyword: 搜索关键词(必填),支持搜索医生姓名、科室名称
+    - page: 页码,默认1
+    - page_size: 每页数量,默认50
+    
+    返回:
+    - doctors: 匹配的医生列表
+    - departments: 匹配的科室列表
+    - total: 总匹配数
+    """
+    try:
+        if not keyword or keyword.strip() == "":
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="搜索关键词不能为空",
+                status_code=400
+            )
+        
+        keyword = keyword.strip()
+        offset = (page - 1) * page_size
+        
+        # 搜索医生
+        doctor_result = await db.execute(
+            select(Doctor)
+            .where(Doctor.name.like(f"%{keyword}%"))
+            .offset(offset)
+            .limit(page_size)
+        )
+        doctors = doctor_result.scalars().all()
+        
+        # 搜索科室
+        dept_result = await db.execute(
+            select(MinorDepartment)
+            .where(MinorDepartment.name.like(f"%{keyword}%"))
+            .offset(offset)
+            .limit(page_size)
+        )
+        departments = dept_result.scalars().all()
+        
+        # 查询医生总数
+        doctor_count = await db.scalar(
+            select(func.count()).select_from(Doctor)
+            .where(Doctor.name.like(f"%{keyword}%"))
+        )
+        
+        # 查询科室总数
+        dept_count = await db.scalar(
+            select(func.count()).select_from(MinorDepartment)
+            .where(MinorDepartment.name.like(f"%{keyword}%"))
+        )
+        
+        # 预取医生关联的user信息
+        doctor_ids = [d.doctor_id for d in doctors]
+        user_ids = [d.user_id for d in doctors if d.user_id]
+        users_map = {}
+        if user_ids:
+            res_users = await db.execute(select(User).where(User.user_id.in_(user_ids)))
+            users = res_users.scalars().all()
+            users_map = {u.user_id: u for u in users}
+        
+        # 批量获取医生价格
+        prices_map = await bulk_get_doctor_prices(db, doctors)
+        
+        # 构建医生列表
+        doctor_list = []
+        for doctor in doctors:
+            is_registered = False
+            if doctor.user_id:
+                u = users_map.get(doctor.user_id)
+                if u and getattr(u, "is_active", False) and not getattr(u, "is_deleted", False):
+                    is_registered = True
+            
+            prices = prices_map.get(doctor.doctor_id, {
+                "default_price_normal": None,
+                "default_price_expert": None,
+                "default_price_special": None
+            })
+            
+            doctor_list.append({
+                "type": "doctor",
+                "doctor_id": doctor.doctor_id,
+                "name": doctor.name,
+                "title": doctor.title,
+                "specialty": doctor.specialty,
+                "introduction": doctor.introduction,
+                "photo_path": doctor.photo_path,
+                "original_photo_url": doctor.original_photo_url,
+                "dept_id": doctor.dept_id,
+                "default_price_normal": prices["default_price_normal"],
+                "default_price_expert": prices["default_price_expert"],
+                "default_price_special": prices["default_price_special"]
+            })
+        
+        # 构建科室列表
+        dept_list = []
+        for dept in departments:
+            dept_list.append({
+                "type": "department",
+                "minor_dept_id": dept.minor_dept_id,
+                "major_dept_id": dept.major_dept_id,
+                "name": dept.name,
+                "description": dept.description
+            })
+        
+        # 合并结果
+        results = doctor_list + dept_list
+        total = doctor_count + dept_count
+        
+        return ResponseModel(
+            code=0,
+            message={
+                "keyword": keyword,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "results": results,
+                "doctor_count": doctor_count,
+                "department_count": dept_count
+            }
+        )
+        
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"全局搜索发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.DATA_GET_FAILED_CODE,
+            msg="搜索失败",
+            status_code=500
+        )
+
+
+@router.get("/doctors/{doctor_id}/photo")
+async def get_doctor_photo(
+    doctor_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取医生照片二进制数据 - 公开接口,无需登录
+    
+    参数:
+    - doctor_id: 医生ID
+    
+    返回:
+    - 医生照片的二进制数据,MIME类型根据文件后缀自动判断
+    - 如果医生不存在或照片不存在,返回404错误
+    """
+    try:
+        # 查询医生
+        result = await db.execute(select(Doctor).where(Doctor.doctor_id == doctor_id))
+        db_doctor = result.scalar_one_or_none()
+        
+        if not db_doctor:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生不存在",
+                status_code=404
+            )
+        
+        # 检查是否有本地照片路径
+        if not db_doctor.photo_path:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="该医生暂无本地照片",
+                status_code=404
+            )
+        
+        # 解析本地文件系统路径(相对 app 目录)
+        base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
+        rel_path = db_doctor.photo_path.lstrip("/")  # 移除开头的斜杠
+        
+        # 如果路径以 app/ 开头,去掉这个前缀
+        if rel_path.startswith("app/"):
+            rel_path = rel_path[4:]
+        
+        # 归一化路径并拼接
+        fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
+        
+        # 安全检查:确保路径在基础目录内,防止目录遍历攻击
+        if not fs_path.startswith(os.path.normpath(base_dir)):
+            logger.warning(f"检测到目录遍历尝试: {fs_path}")
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生照片文件不存在",
+                status_code=404
+            )
+        
+        # 检查文件是否存在且是文件(不是目录)
+        if not os.path.exists(fs_path) or os.path.isdir(fs_path):
+            logger.warning(f"医生照片文件不存在: {fs_path}")
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="医生照片文件不存在",
+                status_code=404
+            )
+        
+        # 判断MIME类型
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(fs_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+        
+        # 定义流式读取函数
+        def file_iterator(path: str, chunk_size: int = 8192):
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+        
+        # 返回流式响应
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(file_iterator(fs_path), media_type=mime_type)
+        
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取医生照片数据时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
             msg="内部服务异常",
             status_code=500
         )
