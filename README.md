@@ -7077,7 +7077,10 @@ Authorization: Bearer <token>
 - 颜色系统：深蓝色主色调 (#1e3a8a)，红色强调色 (#c41e3a)
 - 诊断内容特殊样式：浅蓝背景 + 深蓝左边框
 - 医院印章：圆形红色边框 + 半透明文字
-- 支持中文字体（Microsoft YaHei / SimHei）
+- 中文字体支持：
+  - 优先使用静态资源字体（`backend/app/static/fonts/`）：思源黑体（OTF）、文泉驿微米黑（TTC）
+  - 当静态字体不可用时，自动回退至系统字体（Windows: Microsoft YaHei / SimHei / SimSun）
+  - 支持 TTF、OTF、TTC 等多种字体格式
 
 **前端调用示例**:
 ```javascript
@@ -7111,6 +7114,10 @@ async function downloadMedicalRecord(visitId) {
 1. **PDF文件清理**: PDF文件存储在 `backend/app/static/pdf/medical_records/`，设置7天过期时间，需配合定时任务清理过期文件
 2. **静态文件访问**: 所有 `/static/` 路径的文件可直接通过HTTP访问，PDF下载无需额外认证（生成时已验证权限）
 3. **性能优化**: PDF生成为同步操作，大量请求时考虑使用任务队列。Logo图片已嵌入PDF，单个文件约462KB
+4. **字体依赖**: 
+   - **首选方案**：将字体文件（TTF/OTF/TTC）放置于 `backend/app/static/fonts/` 目录，系统会自动加载
+   - **回退方案**：若静态字体缺失，自动使用系统字体（Windows: MSYH/SimHei/SimSun），确保在无字体环境中也能正常生成PDF
+   - **推荐字体**：思源黑体（SourceHanSans）、文泉驿微米黑（wqy-microhei）等开源中文字体
 
 ---
 

@@ -11,6 +11,9 @@ from reportlab.lib.colors import HexColor
 from datetime import datetime
 import os
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MedicalRecordPDFGenerator:
@@ -26,88 +29,116 @@ class MedicalRecordPDFGenerator:
     COLOR_BG_DIAGNOSIS = HexColor('#f0f4ff') # 诊断背景色
     
     def __init__(self):
-        """初始化PDF生成器，注册中文字体（跨平台支持）"""
-        import platform
-        import logging
-        
-        logger = logging.getLogger(__name__)
+        """初始化PDF生成器，注册中文字体（使用静态资源字体）"""
         self.chinese_font = None
         self.chinese_font_bold = None
+        self.font_registered = False
         
-        try:
-            system = platform.system()
-            font_registered = False
-            
-            if system == "Darwin":  # macOS
-                # macOS 字体路径优先级
-                mac_fonts = [
-                    ("/System/Library/Fonts/PingFang.ttc", "PingFang"),  # 苹方（推荐）
-                    ("/System/Library/Fonts/STHeiti Light.ttc", "STHeiti"),  # 华文黑体
-                    ("/Library/Fonts/Arial Unicode.ttf", "ArialUnicode"),  # Arial Unicode
-                ]
+        # 获取静态字体目录路径
+        service_dir = Path(__file__).parent  # app/services
+        backend_dir = service_dir.parent.parent  # backend
+        fonts_dir = backend_dir / "static" / "fonts"
+        
+        logger.info(f"尝试从静态资源加载字体: {fonts_dir}")
+        
+        # 优先级顺序的字体配置（支持 OTF/TTF/TTC 格式）
+        fonts_to_try = [
+            # 第一选择：思源黑体 OTF（推荐）
+            (fonts_dir / "SourceHanSans-Regular.otf", "SourceHanSans", "思源黑体-Regular (OTF)"),
+            (fonts_dir / "SourceHanSans-Bold.otf", "SourceHanSans-Bold", "思源黑体-Bold (OTF)"),
+            # 兼容：思源黑体 TTF
+            (fonts_dir / "SourceHanSans-Regular.ttf", "SourceHanSans", "思源黑体-Regular (TTF)"),
+            (fonts_dir / "SourceHanSans-Bold.ttf", "SourceHanSans-Bold", "思源黑体-Bold (TTF)"),
+            # 第二选择：文泉驿正黑体 TTC
+            (fonts_dir / "wqy-microhei.ttc", "WQYMicroHei", "文泉驿微米黑"),
+            (fonts_dir / "WenQuanYi_12pt.ttc", "WenQuanYi", "文泉驿正黑体"),
+        ]
+        
+        # 尝试加载静态资源字体
+        for font_path, font_name, font_display_name in fonts_to_try:
+            if font_path.exists():
+                try:
+                    pdfmetrics.registerFont(TTFont(font_name, str(font_path)))
+                    self.chinese_font = font_name
+                    self.chinese_font_bold = font_name
+                    self.font_registered = True
+                    logger.info(f"✓ 成功注册静态资源字体: {font_display_name} ({font_path})")
+                    break
+                except Exception as e:
+                    logger.warning(f"✗ 注册字体 {font_display_name} 失败: {e}")
+                    continue
+        
+        # 如果静态资源字体加载失败，尝试回退到系统字体（仅作备选）
+        if not self.font_registered:
+            logger.warning(f"未找到静态资源字体，尝试回退到系统字体...")
+            try:
+                import platform
+                system = platform.system()
                 
-                for font_path, font_name in mac_fonts:
-                    if os.path.exists(font_path):
-                        try:
-                            pdfmetrics.registerFont(TTFont(font_name, font_path))
-                            self.chinese_font = font_name
-                            self.chinese_font_bold = font_name
-                            font_registered = True
-                            logger.info(f"成功注册 macOS 字体: {font_name} ({font_path})")
-                            break
-                        except Exception as e:
-                            logger.warning(f"注册字体 {font_name} 失败: {e}")
-                            continue
-                            
-            elif system == "Windows":  # Windows
-                # Windows 字体路径
-                win_fonts = [
-                    ("C:/Windows/Fonts/msyh.ttc", "MSYH"),  # 微软雅黑
-                    ("C:/Windows/Fonts/simhei.ttf", "SimHei"),  # 黑体
-                    ("C:/Windows/Fonts/simsun.ttc", "SimSun"),  # 宋体
-                ]
+                if system == "Darwin":  # macOS
+                    mac_fonts = [
+                        ("/System/Library/Fonts/PingFang.ttc", "PingFang"),
+                        ("/System/Library/Fonts/STHeiti Light.ttc", "STHeiti"),
+                        ("/Library/Fonts/Arial Unicode.ttf", "ArialUnicode"),
+                    ]
+                    for font_path, font_name in mac_fonts:
+                        if os.path.exists(font_path):
+                            try:
+                                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                                self.chinese_font = font_name
+                                self.chinese_font_bold = font_name
+                                self.font_registered = True
+                                logger.info(f"✓ 使用系统字体 (macOS): {font_name}")
+                                break
+                            except Exception as e:
+                                logger.warning(f"注册字体 {font_name} 失败: {e}")
                 
-                for font_path, font_name in win_fonts:
-                    if os.path.exists(font_path):
-                        try:
-                            pdfmetrics.registerFont(TTFont(font_name, font_path))
-                            self.chinese_font = font_name
-                            self.chinese_font_bold = font_name
-                            font_registered = True
-                            logger.info(f"成功注册 Windows 字体: {font_name} ({font_path})")
-                            break
-                        except Exception as e:
-                            logger.warning(f"注册字体 {font_name} 失败: {e}")
-                            continue
-                            
-            elif system == "Linux":  # Linux
-                # Linux 字体路径（常见位置）
-                linux_fonts = [
-                    ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "WQY"),
-                    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "NotoSans"),
-                ]
+                elif system == "Windows":
+                    win_fonts = [
+                        ("C:/Windows/Fonts/msyh.ttc", "MSYH"),
+                        ("C:/Windows/Fonts/simhei.ttf", "SimHei"),
+                        ("C:/Windows/Fonts/simsun.ttc", "SimSun"),
+                    ]
+                    for font_path, font_name in win_fonts:
+                        if os.path.exists(font_path):
+                            try:
+                                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                                self.chinese_font = font_name
+                                self.chinese_font_bold = font_name
+                                self.font_registered = True
+                                logger.info(f"✓ 使用系统字体 (Windows): {font_name}")
+                                break
+                            except Exception as e:
+                                logger.warning(f"注册字体 {font_name} 失败: {e}")
                 
-                for font_path, font_name in linux_fonts:
-                    if os.path.exists(font_path):
-                        try:
-                            pdfmetrics.registerFont(TTFont(font_name, font_path))
-                            self.chinese_font = font_name
-                            self.chinese_font_bold = font_name
-                            font_registered = True
-                            logger.info(f"成功注册 Linux 字体: {font_name} ({font_path})")
-                            break
-                        except Exception as e:
-                            logger.warning(f"注册字体 {font_name} 失败: {e}")
-                            continue
-            
-            # 如果所有字体都注册失败，使用 Helvetica（不支持中文，会显示方块）
-            if not font_registered:
-                logger.error(f"未能在 {system} 系统上找到中文字体，PDF将无法正确显示中文")
-                self.chinese_font = 'Helvetica'
-                self.chinese_font_bold = 'Helvetica-Bold'
-                
-        except Exception as e:
-            logger.error(f"字体注册异常: {e}", exc_info=True)
+                elif system == "Linux":
+                    linux_fonts = [
+                        ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", "WQY"),
+                        ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "NotoSans"),
+                    ]
+                    for font_path, font_name in linux_fonts:
+                        if os.path.exists(font_path):
+                            try:
+                                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                                self.chinese_font = font_name
+                                self.chinese_font_bold = font_name
+                                self.font_registered = True
+                                logger.info(f"✓ 使用系统字体 (Linux): {font_name}")
+                                break
+                            except Exception as e:
+                                logger.warning(f"注册字体 {font_name} 失败: {e}")
+            except Exception as e:
+                logger.error(f"系统字体加载异常: {e}", exc_info=True)
+        
+        # 如果都失败，使用 Helvetica（会显示方块）
+        if not self.font_registered:
+            logger.error(
+                f"✗ 字体加载完全失败！\n"
+                f"  • 静态资源路径: {fonts_dir}\n"
+                f"  • 请运行 'python scripts/download_fonts.py' 下载字体文件\n"
+                f"  • 或手动下载思源黑体放入上述目录\n"
+                f"  • 已降级到 Helvetica（中文会显示为方块）"
+            )
             self.chinese_font = 'Helvetica'
             self.chinese_font_bold = 'Helvetica-Bold'
     
