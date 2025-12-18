@@ -229,6 +229,7 @@ WECHAT_TEMPLATE_CANCEL_SUCCESS=RFZQNIC-vGQC_mkDcqAneBgEbozeik6zHMBrfiNfUgs
 
 **微信模板字段说明**：
 - **预约成功**（APPOINTMENT_SUCCESS）：就诊人、就诊时间、预约地点、预约医师、预约状态
+- 发送时机：自 2025-12-18 起，仅在支付成功后推送（不在创建订单时推送）。服务端入口为支付接口，见 [backend/app/api/patient.py](backend/app/api/patient.py) 的 `/appointments/{appointmentId}/pay` 处理逻辑。
 - **候补成功**（WAITLIST_SUCCESS）：就诊人、就诊时间、候补地点、候补医师、候补状态
 - **就诊提醒**（VISIT_REMINDER）：就诊人、就诊时间、就诊地点、温馨提示
 - **改约成功**（RESCHEDULE_SUCCESS）：预约人、原预约时间、现预约时间、活动名称、修改原因

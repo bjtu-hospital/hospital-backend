@@ -3,7 +3,8 @@
 
 定期检查即将就诊的预约订单，提前发送就诊提醒微信订阅消息
 """
-from datetime import datetime, timedelta, date as date_type
+from datetime import timedelta, date as date_type
+from app.core.datetime_utils import get_now_naive
 from typing import Optional
 import logging
 from sqlalchemy import select, and_
@@ -177,9 +178,8 @@ async def send_appointment_reminder(db: AsyncSession, target_date: date_type = N
         - 手动API：客户端请求时，限制为前一天才能提醒
     """
     if target_date is None:
-        target_date = (datetime.now() + timedelta(days=1)).date()
-    
-    logger.info(f"[就诊提醒] 开始执行 - {datetime.now()}, 目标日期: {target_date}")
+        target_date = (get_now_naive() + timedelta(days=1)).date()
+    logger.info(f"[就诊提醒] 开始执行 - {get_now_naive()}, 目标日期: {target_date}")
     
     try:
         # 查询指定日期需要就诊的已支付已确认订单
