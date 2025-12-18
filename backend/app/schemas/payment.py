@@ -18,26 +18,18 @@ class PaymentRequest(BaseModel):
     method: PaymentMethodEnum = Field(..., description="支付方式: bank/alipay/wechat")
     remark: Optional[str] = Field(None, description="支付备注（可选）")
     wxCode: Optional[str] = Field(None, description="wx.login() 获取的临时 code，用于刷新/绑定 openid")
-    subscribeAuthResult: Optional[dict[str, str]] = Field(
-        None, description="订阅授权结果，key 为模板ID，value 为授权状态(accept/reject/ban)"
+    subscribeAuthResult: Optional[dict] = Field(
+        None, 
+        description=(
+            "订阅授权结果，key 为模板ID，value 为授权状态(accept/reject/ban)。"
+            "支付时建议同时授权：预约成功通知(RFZQNIC-vGQC_mkDcqAneHMamQUhmWIn82L2FwsiC5A) 和 "
+            "就诊提醒(RFZQNIC-vGQC_mkDcqAneFF3OluydoAJXHEjh1pY64k)，前者立即发送，后者由定时任务在就诊前24小时发送"
+        )
     )
     subscribeScene: Optional[str] = Field(
         None, description="业务场景标识，默认 appointment_paid，用于落库授权记录"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "method": "alipay",
-                "remark": "在线支付",
-                "wxCode": "071AbcDefG1w3qxyzTuv123456",
-                "subscribeAuthResult": {
-                    "WECHAT_TEMPLATE_APPOINTMENT_SUCCESS": "accept",
-                    "WECHAT_TEMPLATE_REMINDER": "accept"
-                },
-                "subscribeScene": "appointment_paid"
-            }
-        }
 
 
 class PaymentResponse(BaseModel):
