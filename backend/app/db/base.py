@@ -50,6 +50,9 @@ from app.models.user_ban import UserBan # noqa
 from app.models.risk_log import RiskLog # noqa
 from app.models.user_risk_summary import UserRiskSummary # noqa
 from app.models.attendance_record import AttendanceRecord # noqa
+from app.models.wechat_subscribe_auth import WechatSubscribeAuth # noqa
+from app.models.wechat_message_log import WechatMessageLog # noqa
+from app.models.feedback import Feedback # noqa
 
 #异步获取事务函数
 async def get_db():
