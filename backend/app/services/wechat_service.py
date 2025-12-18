@@ -17,6 +17,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.datetime_utils import get_now_naive
 from app.core.exception_handler import BusinessHTTPException
 from app.db.base import redis
 from app.models.user import User
@@ -32,20 +33,36 @@ class WechatService:
     def __init__(self) -> None:
         self.app_id = settings.WECHAT_APP_ID
         self.app_secret = settings.WECHAT_APP_SECRET
-        self.access_token_ttl = max(300, settings.WECHAT_ACCESS_TOKEN_EXPIRE - 300)  # 提前 5 分钟过期
+        # 防守性设计：提前 10 分钟让缓存过期（而不是依赖微信的精确过期时间）
+        # 微信返回的 expires_in 通常是 7200 秒，我们设为 6600 秒（110 分钟）来确保缓存在微信端过期前失效
+        self.access_token_ttl = 6600  # 110 分钟，比微信默认的 7200 秒短 10 分钟
         # 干跑模式：不触达微信，仅记录日志与落库
         self.dry_run = bool(getattr(settings, "WECHAT_DRY_RUN", False))
 
     # ========== 基础能力 ========== #
     async def get_access_token(self) -> Optional[str]:
-        """获取并缓存全局 access_token。失败时返回 None，不抛出异常以保护业务链路。"""
+        """获取并缓存全局 access_token。失败时返回 None，不抛出异常以保护业务链路。
+        
+        设计说明：
+        - 缓存 TTL 设为 6600 秒（110 分钟），防止使用微信端已失效的 token
+        - 如果 Redis 获取失败，则自动向微信请求新 token
+        - 网络错误或微信返回错误时，返回 None 并记录日志
+        """
         if self.dry_run:
             return "mock_access_token"
+        
         cache_key = f"wx:access_token:{self.app_id}"
-        cached = await redis.get(cache_key)
-        if cached:
-            return cached
-
+        
+        # 第一步：尝试从 Redis 读取缓存
+        try:
+            cached = await redis.get(cache_key)
+            if cached:
+                logger.debug("从 Redis 读取 access_token（缓存仍有效）")
+                return cached
+        except Exception as exc:
+            logger.warning("从 Redis 读取 access_token 失败，将向微信重新请求: %s", exc)
+        
+        # 第二步：缓存不存在或已失效，向微信请求新 token
         url = "https://api.weixin.qq.com/cgi-bin/token"
         params = {
             "grant_type": "client_credential",
@@ -57,18 +74,39 @@ class WechatService:
                 resp = await client.get(url, params=params)
             data = resp.json()
         except Exception as exc:  # 网络/解析错误
-            logger.error("获取微信 access_token 失败: %s", exc)
+            logger.error("获取微信 access_token 失败（网络错误）: %s", exc)
             return None
 
-        if data.get("errcode") not in (None, 0):
-            logger.error("获取微信 access_token 失败: errcode=%s, errmsg=%s", data.get("errcode"), data.get("errmsg"))
+        # 检查微信返回是否成功
+        errcode = data.get("errcode")
+        if errcode not in (None, 0):
+            logger.error(
+                "获取微信 access_token 失败: errcode=%s, errmsg=%s",
+                errcode,
+                data.get("errmsg"),
+            )
             return None
 
         access_token = data.get("access_token")
-        expires_in = int(data.get("expires_in", settings.WECHAT_ACCESS_TOKEN_EXPIRE))
-        ttl = max(60, min(expires_in, self.access_token_ttl))
-        if access_token:
+        if not access_token:
+            logger.error("微信返回了 token，但 access_token 字段为空")
+            return None
+        
+        # 使用微信返回的 expires_in（通常 7200），但缓存 TTL 设为 6600（提前 10 分钟失效）
+        expires_in = int(data.get("expires_in", 7200))
+        ttl = self.access_token_ttl  # 固定 110 分钟，或可用 min(expires_in - 600, self.access_token_ttl)
+        
+        # 第三步：缓存新 token
+        try:
             await redis.set(cache_key, access_token, ex=ttl)
+            logger.info(
+                "成功获取新 access_token（缓存 TTL=%s 秒，微信 expires_in=%s 秒）",
+                ttl,
+                expires_in,
+            )
+        except Exception as exc:
+            logger.warning("缓存 access_token 到 Redis 失败，但 token 有效可用: %s", exc)
+        
         return access_token
 
     async def code_to_openid(self, code: str) -> Optional[Dict[str, Any]]:
@@ -116,7 +154,7 @@ class WechatService:
             raise BusinessHTTPException(code=settings.USER_GET_FAILED_CODE, msg="用户不存在")
 
         user.wechat_openid = openid
-        user.wechat_bind_time = datetime.now()
+        user.wechat_bind_time = get_now_naive()
         if session_key:
             user.wechat_session_key = self._encrypt_session_key(session_key)
         if unionid:
@@ -150,7 +188,7 @@ class WechatService:
                     .values(
                         auth_status=status,
                         scene=scene,
-                        updated_at=datetime.now(),
+                        updated_at=get_now_naive(),
                     )
                 )
             else:
@@ -250,9 +288,11 @@ class WechatService:
                 status="success",
                 request_data=payload,
                 response_data={"dry_run": True, "note": "skipped real request"},
-                sent_at=datetime.now(),
+                sent_at=get_now_naive(),
             )
             return
+        
+        # 第一次尝试：使用缓存的 token
         access_token = await self.get_access_token()
         if not access_token:
             logger.error("发送订阅消息失败：无法获取 access_token")
@@ -269,7 +309,6 @@ class WechatService:
             )
             return
 
-        url = f"https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token={access_token}"
         payload = {
             "touser": openid,
             "template_id": template_id,
@@ -278,12 +317,78 @@ class WechatService:
         if page:
             payload["page"] = page
 
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.post(url, json=payload)
-            resp_data = resp.json()
-        except Exception as exc:
-            logger.error("订阅消息发送失败（请求错误）: %s", exc)
+        # 尝试发送消息（最多2次：第1次用缓存token，若40001则刷新后第2次）
+        for attempt in range(2):
+            url = f"https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token={access_token}"
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.post(url, json=payload)
+                resp_data = resp.json()
+            except Exception as exc:
+                logger.error("订阅消息发送失败（请求错误）: %s", exc)
+                await self.log_message(
+                    db,
+                    user_id,
+                    openid,
+                    template_id,
+                    scene,
+                    order_id,
+                    status="failed",
+                    request_data=payload,
+                    response_data={"exception": str(exc)},
+                )
+                return
+
+            errcode = resp_data.get("errcode", -1)
+            errmsg = resp_data.get("errmsg")
+            
+            # 成功
+            if errcode == 0:
+                await self.log_message(
+                    db,
+                    user_id,
+                    openid,
+                    template_id,
+                    scene,
+                    order_id,
+                    status="success",
+                    request_data=payload,
+                    response_data=resp_data,
+                    error_code=None,
+                    error_message=None,
+                    sent_at=get_now_naive(),
+                )
+                return
+            
+            # 40001: Token 无效或过期，需要刷新
+            if errcode == 40001 and attempt == 0:
+                logger.warning("Access Token 失效（errcode=40001），准备清除缓存并重新获取")
+                # 清除缓存，强制重新获取
+                cache_key = f"wx:access_token:{self.app_id}"
+                await redis.delete(cache_key)
+                access_token = await self.get_access_token()
+                if not access_token:
+                    logger.error("重新获取 access_token 失败，放弃重试")
+                    await self.log_message(
+                        db,
+                        user_id,
+                        openid,
+                        template_id,
+                        scene,
+                        order_id,
+                        status="failed",
+                        request_data=payload,
+                        response_data={"err": "refresh_token_failed", "original_errcode": 40001},
+                        error_code=40001,
+                        error_message="Token 无效且无法刷新",
+                        sent_at=get_now_naive(),
+                    )
+                    return
+                # 继续循环，用新 token 重试
+                continue
+            
+            # 其他错误，直接记录并返回
+            logger.error(f"订阅消息发送失败: errcode={errcode}, errmsg={errmsg}")
             await self.log_message(
                 db,
                 user_id,
@@ -293,28 +398,12 @@ class WechatService:
                 order_id,
                 status="failed",
                 request_data=payload,
-                response_data={"exception": str(exc)},
+                response_data=resp_data,
+                error_code=errcode,
+                error_message=errmsg,
+                sent_at=get_now_naive(),
             )
             return
-
-        errcode = resp_data.get("errcode", -1)
-        errmsg = resp_data.get("errmsg")
-        status = "success" if errcode == 0 else "failed"
-
-        await self.log_message(
-            db,
-            user_id,
-            openid,
-            template_id,
-            scene,
-            order_id,
-            status=status,
-            request_data=payload,
-            response_data=resp_data,
-            error_code=None if errcode == 0 else errcode,
-            error_message=None if errcode == 0 else errmsg,
-            sent_at=datetime.now(),
-        )
 
     # ========== 工具方法 ========== #
     def _encrypt_session_key(self, session_key: str) -> str:

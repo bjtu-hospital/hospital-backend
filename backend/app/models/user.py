@@ -58,10 +58,10 @@ class User(Base):
     # 微信小程序相关字段
     wechat_openid = Column(
         String(128), 
-        unique=True, 
+        unique=False,  # 允许多个用户绑定同一个 openid（例如同一个微信号登录不同小程序账号）
         index=True, 
         nullable=True,
-        comment="微信小程序 openid，用于小程序免密登录"
+        comment="微信小程序 openid，用于小程序免密登录（非唯一）"
     )
     
     wechat_session_key = Column(
@@ -72,9 +72,9 @@ class User(Base):
     
     wechat_unionid = Column(
         String(128),
-        unique=True,
+        unique=False,  # 允许多个用户绑定同一个 unionid
         nullable=True,
-        comment="微信 UnionID（如果小程序绑定了开放平台）"
+        comment="微信 UnionID（如果小程序绑定了开放平台，非唯一）"
     )
     
     wechat_bind_time = Column(

@@ -99,6 +99,10 @@ docker run -d --name hospital-backend -p 8000:8000 --env-file backend/.env bjtu-
 - 启动报错：Redis 连接失败 → 请检查 `.env` 中的 `REDIS_HOST`/`REDIS_PORT` 是否正确，Redis 服务是否启动。
 - 启动报错：数据库连接/迁移错误 → 请确保 `DATABASE_URL` 正确且数据库可达；可先用 CLI 测试连接。
 - 登录后访问受保护接口返回 Token 无效 → 检查请求头 `Authorization: Bearer <token>` 是否正确；检查 Redis 中是否存在 `token:{token}` 与 `user_token:{user_id}`（可能被清理或过期）。
+- **微信通知发送失败（errcode 40001）**：Access Token 已过期，系统会自动清除缓存并重新获取新 Token 后重试。检查 `.env` 中的 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET` 是否正确；查看 `wechat_message_log` 表中是否有失败记录。
+- **微信通知时间与实际时间相差 8 小时**：数据库时区设置不正确，应设置为 UTC+8（北京时间）。执行 `SET GLOBAL time_zone = '+08:00'` 或修改 MySQL 配置文件并重启数据库。
+- **微信号绑定失败（违反唯一约束）**：同一微信号已被其他用户绑定，系统已支持多用户共用一个 openid。移除数据库中的唯一约束即可（参考 `scripts/migrate_wechat_openid_unique_removal_20251218.sql`）。
+- 登录后访问受保护接口返回 Token 无效 → 检查请求头 `Authorization: Bearer <token>` 是否正确；检查 Redis 中是否存在 `token:{token}` 与 `user_token:{user_id}`（可能被清理或过期）。
 
 ---
 
@@ -197,6 +201,7 @@ pip install -r requirements.txt
 - SECRET_KEY：JWT 签名密钥
 - TOKEN_EXPIRE_TIME：token 到期时间（分钟）
 - 邮件发送相关：EMAIL_FROM、SMTP_SERVER、SMTP_PORT、SMTP_USER、SMTP_PASSWORD、YUN_URL（用于邮箱验证链接）
+- **微信小程序配置（可选）**：WECHAT_APP_ID、WECHAT_APP_SECRET、WECHAT_TEMPLATE_*（5个订阅消息模板ID）
 
 示例：
 
@@ -213,7 +218,21 @@ SMTP_PORT=587
 SMTP_USER=smtp_user
 SMTP_PASSWORD=smtp_password
 YUN_URL=https://yun.example.com/verify?token=
+WECHAT_APP_ID=wx0793d626774f9ab7
+WECHAT_APP_SECRET=your-wechat-app-secret
+WECHAT_TEMPLATE_APPOINTMENT_SUCCESS=RFZQNIC-vGQC_mkDcqAneHMamQUhmWIn82L2FwsiC5A
+WECHAT_TEMPLATE_WAITLIST_SUCCESS=Z9do65Ix2ZWmooA-1rfUsatqUyMv99ESnk-spq7ikn4
+WECHAT_TEMPLATE_VISIT_REMINDER=RFZQNIC-vGQC_mkDcqAneFF3OluydoAJXHEjh1pY64k
+WECHAT_TEMPLATE_RESCHEDULE_SUCCESS=RLysg1picC6gOuopUswKqA_nKdDrTNlgKI7K8SBN5OQ
+WECHAT_TEMPLATE_CANCEL_SUCCESS=RFZQNIC-vGQC_mkDcqAneBgEbozeik6zHMBrfiNfUgs
 ```
+
+**微信模板字段说明**：
+- **预约成功**（APPOINTMENT_SUCCESS）：就诊人、就诊时间、预约地点、预约医师、预约状态
+- **候补成功**（WAITLIST_SUCCESS）：就诊人、就诊时间、候补地点、候补医师、候补状态
+- **就诊提醒**（VISIT_REMINDER）：就诊人、就诊时间、就诊地点、温馨提示
+- **改约成功**（RESCHEDULE_SUCCESS）：预约人、原预约时间、现预约时间、活动名称、修改原因
+- **取消成功**（CANCEL_SUCCESS）：就诊人、就诊时间、预约医师、取消原因、订单状态
 
 ---
 
@@ -6580,6 +6599,115 @@ Authorization: Bearer <token>
 - 400 当前状态不可转预约 / 号源不足 / 防重入校验失败
 - 403 无权操作该候补记录
 - 500 候补转预约失败
+
+---
+
+## 3.9 微信小程序集成接口（需要登录）
+
+### 3.9.1 绑定微信账号 Post: `/patient/wechat/bind-by-code`
+
+使用微信小程序 `wx.login()` 的 code 为当前用户绑定微信 openid，以便后续接收微信订阅消息通知。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+#### 请求体:
+```json
+{
+    "code": "053XxAG01gHv2B0kVVG01sfl2H0XxAx0"
+}
+```
+
+#### 响应:
+```json
+{
+    "code": 0,
+    "message": {
+        "bound": true,
+        "openid": "oXXXX****XXXX"
+    }
+}
+```
+
+#### 说明:
+- 支持多用户绑定同一微信号（用户可在多个小程序账号上使用同一微信号）
+- 绑定成功后，系统可向该微信号发送订阅消息通知
+- 若 openid 已被其他用户绑定，新用户仍可成功绑定（允许多对多关系）
+
+#### 错误码:
+- 400 code 无效或换取 openid 失败
+- 401 用户未登录
+- 500 绑定失败
+
+---
+
+### 3.9.2 查询订阅授权状态 Get: `/patient/wechat/authorized`
+
+查询当前用户是否已授权指定的微信订阅消息模板。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+#### Query 参数:
+- `templateId` (必填): 微信订阅消息模板ID
+
+#### 响应:
+```json
+{
+    "code": 0,
+    "message": {
+        "authorized": true,
+        "templateId": "RFZQNIC-vGQC_mkDcqAneHMamQUhmWIn82L2FwsiC5A"
+    }
+}
+```
+
+#### 说明:
+- 检查用户是否已在小程序中授权该模板
+- 若未授权，后续通知无法发送，需要提示用户在小程序中启用通知权限
+- 支持的模板类型：
+  - `WECHAT_TEMPLATE_APPOINTMENT_SUCCESS`: 预约成功通知
+  - `WECHAT_TEMPLATE_WAITLIST_SUCCESS`: 候补成功通知
+  - `WECHAT_TEMPLATE_VISIT_REMINDER`: 就诊提醒
+  - `WECHAT_TEMPLATE_RESCHEDULE_SUCCESS`: 改约成功通知
+  - `WECHAT_TEMPLATE_CANCEL_SUCCESS`: 取消预约通知
+
+#### 错误码:
+- 401 用户未登录
+- 500 查询失败
+
+---
+
+### 3.9.3 微信通知说明
+
+当以下事件发生时，系统会自动向用户已绑定的微信号发送订阅消息通知（前提是用户已授权该模板）：
+
+| 事件 | 模板 | 字段说明 | 触发条件 |
+|------|------|---------|---------|
+| 预约成功 | APPOINTMENT_SUCCESS | 就诊人、就诊时间、预约地点、预约医师、预约状态 | 创建预约订单 |
+| 候补成功 | WAITLIST_SUCCESS | 就诊人、就诊时间、候补地点、候补医师、候补状态 | 加入候补队列 |
+| 就诊提醒 | VISIT_REMINDER | 就诊人、就诊时间、就诊地点、温馨提示 | 就诊前 24 小时 |
+| 改约成功 | RESCHEDULE_SUCCESS | 预约人、原预约时间、现预约时间、活动名称、修改原因 | 成功改约 |
+| 取消预约 | CANCEL_SUCCESS | 就诊人、就诊时间、预约医师、取消原因、订单状态 | 取消预约或排班停诊 |
+
+#### 通知特性:
+- **时间精准**：使用北京时间（UTC+8），与用户本地时间一致
+- **自动重试**：如果 Token 失效，系统会自动刷新后重试
+- **无失败中断**：通知发送失败仅记录日志，不影响业务流程
+- **授权检查**：发送前检查用户是否已授权该模板
+- **脱敏显示**：openid 在日志中脱敏显示（仅显示前4后4位）
+
+#### 故障排查:
+如果未收到通知，请检查：
+1. 小程序中是否已启用通知权限（调用 `/patient/wechat/authorized` 检查）
+2. 微信号是否已绑定（需要先调用 `/patient/wechat/bind-by-code`）
+3. 查看 `wechat_message_log` 表中是否有发送记录和错误信息
+4. 确保数据库时区设置正确（应为 UTC+8）
 
 ---
 
