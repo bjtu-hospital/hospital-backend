@@ -6703,6 +6703,20 @@ Authorization: Bearer <token>
 - **授权检查**：发送前检查用户是否已授权该模板
 - **脱敏显示**：openid 在日志中脱敏显示（仅显示前4后4位）
 
+### 3.9.4 小程序订阅授权传参（支付/候补场景）
+
+- **授权触发时机**：必须在前端用户操作时调起 `wx.requestSubscribeMessage`，例如
+    - 候补提交：申请 `WECHAT_TEMPLATE_WAITLIST_SUCCESS`
+    - 下单/支付前：申请 `WECHAT_TEMPLATE_APPOINTMENT_SUCCESS` + `WECHAT_TEMPLATE_VISIT_REMINDER`
+    - 可在一次弹窗中勾选多个模板，减少打扰
+- **支付接口携带授权**：`POST /patient/appointments/{appointmentId}/pay`
+    - 额外字段：`wxCode`（`wx.login()` code）、`subscribeAuthResult`（模板ID->授权状态 accept/reject/ban 字典）、`subscribeScene`（默认 `appointment_paid`）
+    - 后端会记录授权并在支付成功后发送预约成功订阅消息
+- **候补创建携带授权**：`POST /patient/waitlist`
+    - 额外字段：`wxCode`、`subscribeAuthResult`（建议传 `WECHAT_TEMPLATE_WAITLIST_SUCCESS` 授权结果）、`subscribeScene`（建议 `waitlist`）
+    - 后端在候补排队成功时发送候补成功订阅消息
+- **失败兜底**：若未授权或模板次数耗尽，后端仅记录日志，不影响主流程，前端可在后续关键操作再次请求授权。
+
 #### 故障排查:
 如果未收到通知，请检查：
 1. 小程序中是否已启用通知权限（调用 `/patient/wechat/authorized` 检查）
