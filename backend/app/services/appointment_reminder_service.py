@@ -107,7 +107,7 @@ async def send_single_reminder(
             return False
         
         # 检查用户是否授权
-        template_id = settings.WECHAT_TEMPLATE_REMINDER
+        template_id = settings.WECHAT_TEMPLATE_VISIT_REMINDER
         if not template_id:
             logger.warning(f"[就诊提醒] 未配置就诊提醒模板ID，跳过")
             return False

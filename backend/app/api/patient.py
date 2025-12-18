@@ -3150,38 +3150,35 @@ async def join_waitlist(
             logger.warning(f"Redis 队列添加失败: {str(e)}")
             estimated_time = f"{position * 10}分钟" if position else None
 
-        # 微信候补成功通知
+        # 微信订阅授权处理（仅保存授权，不发送消息，留给候补转预约成功时使用）
         try:
-            doctor, clinic, dept = await _load_doctor_and_dept(db, schedule)
-            patient_name = patient.name if patient else ""
-            doctor_name = doctor.name if doctor else ""
-            # 预约地点使用 clinic.address，如果为空则使用 clinic.name 作为fallback
-            location = (clinic.address or clinic.name) if clinic else ""
-            schedule_config = await get_schedule_config(db)
-            datetime_str = _format_wechat_datetime(schedule.date, schedule.time_section, schedule_config)
-            template_id = settings.WECHAT_TEMPLATE_WAITLIST_SUCCESS
-            data_payload = _wechat_payload_waitlist(
-                patient_name,
-                datetime_str,
-                location,
-                doctor_name,
-                status="候补成功",
-            )
-
             target_user_id = patient.user_id if patient and patient.user_id else current_user.user_id
-            await _wechat_prepare_and_send(
-                db,
-                target_user_id,
-                data.wxCode,
-                data.subscribeAuthResult,
-                data.subscribeScene or "waitlist",
-                template_id,
-                data_payload,
-                scene="waitlist",
-                order_id=order.order_id,
-            )
+            wechat = WechatService()
+            
+            # 1. 处理 code 换 openid
+            if data.wxCode:
+                wx_res = await wechat.code_to_openid(data.wxCode)
+                if wx_res and wx_res.get("openid"):
+                    await wechat.save_user_openid(
+                        db,
+                        target_user_id,
+                        wx_res.get("openid"),
+                        wx_res.get("session_key"),
+                        wx_res.get("unionid"),
+                    )
+
+            # 2. 保存订阅授权（关键：这里保存的授权将在候补转预约成功时被消耗）
+            if data.subscribeAuthResult:
+                await wechat.save_subscribe_auth(
+                    db, 
+                    target_user_id, 
+                    data.subscribeAuthResult, 
+                    data.subscribeScene or "waitlist"
+                )
+                logger.info(f"候补加入成功: 已保存订阅授权，不发送即时通知(留给转预约使用). user_id={target_user_id}")
+                
         except Exception as exc:
-            logger.warning(f"候补微信通知失败: {exc}")
+            logger.warning(f"微信订阅授权保存失败: {exc}")
 
         return ResponseModel(code=0, message=WaitlistCreateResponse(
             id=order.order_id,
