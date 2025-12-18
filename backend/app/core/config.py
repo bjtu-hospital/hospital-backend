@@ -54,11 +54,25 @@ class Settings(BaseSettings):
     WECHAT_DRY_RUN: bool = False  # 干跑模式：不调用微信网关，仅落库日志
     
     # 微信订阅消息模板ID配置（由前端在微信小程序后台申请后配置）
-    WECHAT_TEMPLATE_APPOINTMENT_SUCCESS: str = "RFZQNIC-vGQC_mkDcqAneOuUn59azMapQTEkSuNDwR4"  # 预约成功/候补成功
-    WECHAT_TEMPLATE_APPOINTMENT_WITH_LOCATION: str = "RFZQNIC-vGQC_mkDcqAneHMamQUhmWln82L2FwsiC5A"  # 带地点信息
-    WECHAT_TEMPLATE_VISIT_REMINDER: str = "RFZQNIC-vGQC_mkDcqAneFF3OIuydoAJXHEjh1pY64k"  # 就诊提醒
-    WECHAT_TEMPLATE_REMINDER: str = "RFZQNIC-vGQC_mkDcqAneFF3OIuydoAJXHEjh1pY64k"  # 就诊提醒（别名）
-    WECHAT_TEMPLATE_CANCEL_SUCCESS: str = "RFZQNIC-vGQC_mkDcqAneBgEbozeik6zHMBrfiNfUgs"  # 取消通知
+    # 预约成功通知 - 模板编号461（预约通知）
+    # 字段：就诊人、就诊时间、预约地点、预约医师、预约状态
+    WECHAT_TEMPLATE_APPOINTMENT_SUCCESS: str = "RFZQNIC-vGQC_mkDcqAneHMamQUhmWIn82L2FwsiC5A"
+    
+    # 候补成功通知 - 转预约成功通知
+    # 字段：就诊人、就诊时间、预约地点、预约医师、预约状态
+    WECHAT_TEMPLATE_WAITLIST_SUCCESS: str = "Z9do65Ix2ZWmooA-1rfUsatqUyMv99ESnk-spq7ikn4"
+    
+    # 就诊提醒通知 - 模板编号461（预约通知）
+    # 字段：就诊人、就诊时间、体检地点、温馨提示
+    WECHAT_TEMPLATE_VISIT_REMINDER: str = "RFZQNIC-vGQC_mkDcqAneFF3OluydoAJXHEjh1pY64k"
+    
+    # 改约成功通知 - 模板编号6410（预约修改通知）
+    # 字段：预约人、原预约时间、现预约时间、活动名称、修改原因
+    WECHAT_TEMPLATE_RESCHEDULE_SUCCESS: str = "RLysg1picC6gOuopUswKqA_nKdDrTNlgKI7K8SBN5OQ"
+    
+    # 取消预约通知 - 模板编号461（预约通知）
+    # 字段：就诊人、就诊时间、预约医师、取消原因、订单状态
+    WECHAT_TEMPLATE_CANCEL_SUCCESS: str = "RFZQNIC-vGQC_mkDcqAneBgEbozeik6zHMBrfiNfUgs"
 
     class Config:
         env_file = ".env"

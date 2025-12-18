@@ -1302,10 +1302,11 @@ def _format_wechat_datetime(
     time_section: str,
     schedule_config: Optional[dict] = None,
 ) -> str:
-    """格式化微信消息用的就诊时间字符串，优先使用配置的时段开始时间。"""
+    """格式化微信消息用的就诊时间字符串，仅返回日期+时间，不含时段文字（符合微信模板格式要求）。"""
     section = (time_section or "").strip()
     time_str = _get_time_section_start(section, schedule_config or {})
-    return f"{slot_date.strftime('%Y年%m月%d日')} {section}{time_str}"
+    # 仅返回 "YYYY年MM月DD日 HH:MM" 格式，不包含"上午/下午"等文字
+    return f"{slot_date.strftime('%Y年%m月%d日')} {time_str}"
 
 
 async def _load_doctor_and_dept(db: AsyncSession, schedule: Schedule) -> tuple[Optional[Doctor], Optional[Clinic], Optional[MinorDepartment]]:
@@ -1316,10 +1317,10 @@ async def _load_doctor_and_dept(db: AsyncSession, schedule: Schedule) -> tuple[O
 
 
 def _wechat_payload_appointment(patient_name: str, datetime_str: str, location: str, doctor_name: str, status: str) -> dict:
-    """预约/候补成功通用模板 (thing65就诊人, time67就诊时间, thing2预约地点, thing69预约医师, phrase14预约状态)。
+    """预约成功通知模板 (thing65就诊人, time67就诊时间, thing2预约地点, thing69预约医师, phrase14预约状态)。
     
-    模板ID: RFZQNIC-vGQC_mkDcqAneHMamQUhmWln82L2FwsiC5A (模板编号461)
-    适用场景: 预约成功、候补成功、改约成功
+    模板ID: RFZQNIC-vGQC_mkDcqAneHMamQUhmWIn82L2FwsiC5A (模板编号461)
+    适用场景: 预约成功
     """
     return {
         "thing65": {"value": patient_name or ""},
@@ -1327,6 +1328,36 @@ def _wechat_payload_appointment(patient_name: str, datetime_str: str, location: 
         "thing2": {"value": location or ""},
         "thing69": {"value": doctor_name or ""},
         "phrase14": {"value": status},
+    }
+
+
+def _wechat_payload_waitlist(patient_name: str, datetime_str: str, location: str, doctor_name: str, status: str) -> dict:
+    """候补成功通知模板 (thing65就诊人, time67就诊时间, thing2预约地点, thing69预约医师, phrase14预约状态)。
+    
+    模板ID: Z9do65Ix2ZWmooA-1rfUsatqUyMv99ESnk-spq7ikn4
+    适用场景: 候补成功、候补转预约成功
+    """
+    return {
+        "thing65": {"value": patient_name or ""},
+        "time67": {"value": datetime_str},
+        "thing2": {"value": location or ""},
+        "thing69": {"value": doctor_name or ""},
+        "phrase14": {"value": status},
+    }
+
+
+def _wechat_payload_reschedule(patient_name: str, original_datetime_str: str, new_datetime_str: str, clinic_name: str, reason: str) -> dict:
+    """改约成功通知模板 (预约人、原预约时间、现预约时间、活动名称、修改原因)。
+    
+    模板ID: RLysg1picC6gOuopUswKqA_nKdDrTNlgKI7K8SBN5OQ (模板编号6410)
+    适用场景: 改约成功
+    """
+    return {
+        "name2": {"value": patient_name or ""},
+        "time3": {"value": original_datetime_str},
+        "time4": {"value": new_datetime_str},
+        "thing5": {"value": clinic_name or ""},
+        "thing6": {"value": reason or "改约"},
     }
 
 
@@ -2373,17 +2404,17 @@ async def reschedule_appointment(
         try:
             doctor = await db.get(Doctor, target_schedule.doctor_id) if target_schedule and target_schedule.doctor_id else None
             patient_name = patient.name if patient else ""
-            doctor_name = doctor.name if doctor else ""
-            # 预约地点使用 clinic.address，如果为空则使用 clinic.name 作为fallback
-            location = (target_clinic.address or target_clinic.name) if target_clinic else ""
-            datetime_str = _format_wechat_datetime(target_schedule.date, target_schedule.time_section, schedule_config)
-            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
-            data_payload = _wechat_payload_appointment(
+            # 计算原预约和新预约的时间字符串
+            current_datetime_str = _format_wechat_datetime(current_schedule.date, current_schedule.time_section, schedule_config)
+            target_datetime_str = _format_wechat_datetime(target_schedule.date, target_schedule.time_section, schedule_config)
+            clinic_name = (target_clinic.address or target_clinic.name) if target_clinic else ""
+            template_id = settings.WECHAT_TEMPLATE_RESCHEDULE_SUCCESS
+            data_payload = _wechat_payload_reschedule(
                 patient_name,
-                datetime_str,
-                location,
-                doctor_name,
-                status="改约成功",
+                current_datetime_str,
+                target_datetime_str,
+                clinic_name,
+                reason="时间冲突调整",
             )
 
             target_user_id = patient.user_id if patient and patient.user_id else current_user.user_id
@@ -3107,8 +3138,8 @@ async def join_waitlist(
             location = (clinic.address or clinic.name) if clinic else ""
             schedule_config = await get_schedule_config(db)
             datetime_str = _format_wechat_datetime(schedule.date, schedule.time_section, schedule_config)
-            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
-            data_payload = _wechat_payload_appointment(
+            template_id = settings.WECHAT_TEMPLATE_WAITLIST_SUCCESS
+            data_payload = _wechat_payload_waitlist(
                 patient_name,
                 datetime_str,
                 location,
