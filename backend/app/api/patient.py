@@ -2707,9 +2707,9 @@ async def pay_appointment(
             await _wechat_prepare_and_send(
                 db,
                 target_user_id,
-                wx_code=None,  # 支付接口无 code，走已绑定 openid 的路径
-                subscribe_auth=None,  # 不记录授权（授权在前端入口处完成）
-                subscribe_scene=None,
+                wx_code=payload.wxCode,
+                subscribe_auth=payload.subscribeAuthResult,
+                subscribe_scene=payload.subscribeScene or "appointment_paid",
                 template_id=template_id,
                 data=data_payload,
                 scene="appointment_paid",

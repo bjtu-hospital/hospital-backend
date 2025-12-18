@@ -12,11 +12,24 @@ class WaitlistCreate(BaseModel):
     
     # 微信订阅消息相关字段（可选）
     wxCode: Optional[str] = Field(None, description="wx.login() 获取的临时 code")
-    subscribeAuthResult: Optional[dict] = Field(None, description="订阅授权结果")
-    subscribeScene: Optional[str] = Field(None, description="业务场景标识")
+    subscribeAuthResult: Optional[dict[str, str]] = Field(
+        None, description="订阅授权结果，key 为模板ID，value 为授权状态(accept/reject/ban)"
+    )
+    subscribeScene: Optional[str] = Field(None, description="业务场景标识，建议传 waitlist")
 
     class Config:
         extra = "ignore"  # 忽略未声明字段
+        json_schema_extra = {
+            "example": {
+                "scheduleId": 123,
+                "patientId": 456,
+                "wxCode": "071AbcDefG1w3qxyzTuv123456",
+                "subscribeAuthResult": {
+                    "WECHAT_TEMPLATE_WAITLIST_SUCCESS": "accept"
+                },
+                "subscribeScene": "waitlist"
+            }
+        }
 
 
 class WaitlistCreateResponse(BaseModel):
