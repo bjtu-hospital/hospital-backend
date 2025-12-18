@@ -4024,9 +4024,8 @@ async def approve_add_slot_audit(
         )
 
         # 更新审核记录
-        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
         audit.status = 'approved'
-        audit.auditor_admin_id = auditor_admin_id
+        audit.auditor_user_id = current_user.user_id  # 使用 auditor_user_id 而不是 auditor_admin_id
         audit.audit_time = datetime.now()
         audit.audit_remark = data.comment
         db.add(audit)
@@ -4036,7 +4035,7 @@ async def approve_add_slot_audit(
         return ResponseModel(code=0, message=AuditActionResponse(
             audit_id=audit_id,
             status='approved',
-            auditor_id=auditor_admin_id,
+            auditor_id=current_user.user_id,
             audit_time=audit.audit_time
         ))
     except AuthHTTPException:
@@ -4082,9 +4081,8 @@ async def reject_add_slot_audit(
         if audit.status != 'pending':
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {audit.status}，无法重复审核", status_code=400)
 
-        auditor_admin_id = await get_administrator_id(db, current_user.user_id)
         audit.status = 'rejected'
-        audit.auditor_admin_id = auditor_admin_id
+        audit.auditor_user_id = current_user.user_id  # 使用 auditor_user_id 而不是 auditor_admin_id
         audit.audit_time = datetime.now()
         audit.audit_remark = data.comment
         db.add(audit)
@@ -4094,7 +4092,7 @@ async def reject_add_slot_audit(
         return ResponseModel(code=0, message=AuditActionResponse(
             audit_id=audit_id,
             status='rejected',
-            auditor_id=auditor_admin_id,
+            auditor_id=current_user.user_id,
             audit_time=audit.audit_time
         ))
     except AuthHTTPException:
