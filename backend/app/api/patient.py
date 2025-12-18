@@ -1334,32 +1334,40 @@ def _wechat_payload_appointment(patient_name: str, datetime_str: str, location: 
 
 
 def _wechat_payload_waitlist(patient_name: str, datetime_str: str, location: str, doctor_name: str, status: str) -> dict:
-    """候补成功通知模板 (thing65就诊人, time67就诊时间, thing2预约地点, thing69预约医师, phrase14预约状态)。
-    
-    模板ID: Z9do65Ix2ZWmooA-1rfUsatqUyMv99ESnk-spq7ikn4
-    适用场景: 候补成功、候补转预约成功
+    """候补成功通知模板。
+
+    根据微信后台字段：
+    - thing6: 姓名
+    - phrase1: 候补结果
+    - thing4: 活动地点（这里用门诊/诊室名）
+    - time3: 活动时间
+    - thing5: 温馨提示（复用医生/备注）
     """
     return {
-        "thing65": {"value": patient_name or ""},
-        "time67": {"value": datetime_str},
-        "thing2": {"value": location or ""},
-        "thing69": {"value": doctor_name or ""},
-        "phrase14": {"value": status},
+        "thing6": {"value": patient_name or "就诊人"},
+        "phrase1": {"value": status or "候补成功"},
+        "thing4": {"value": location or ""},
+        "time3": {"value": datetime_str},
+        "thing5": {"value": doctor_name or ""},
     }
 
 
 def _wechat_payload_reschedule(patient_name: str, original_datetime_str: str, new_datetime_str: str, clinic_name: str, reason: str) -> dict:
     """改约成功通知模板 (预约人、原预约时间、现预约时间、活动名称、修改原因)。
-    
-    模板ID: RLysg1picC6gOuopUswKqA_nKdDrTNlgKI7K8SBN5OQ (模板编号6410)
-    适用场景: 改约成功
+
+    模板字段对应微信后台展示：
+    - name1: 预约人
+    - time3: 原预约时间
+    - time14: 现预约时间
+    - thing17: 活动名称（这里填门诊/地点）
+    - thing2: 修改原因
     """
     return {
-        "name2": {"value": patient_name or ""},
+        "name1": {"value": patient_name or "就诊人"},
         "time3": {"value": original_datetime_str},
-        "time4": {"value": new_datetime_str},
-        "thing5": {"value": clinic_name or ""},
-        "thing6": {"value": reason or "改约"},
+        "time14": {"value": new_datetime_str},
+        "thing17": {"value": clinic_name or ""},
+        "thing2": {"value": reason or "改约"},
     }
 
 
