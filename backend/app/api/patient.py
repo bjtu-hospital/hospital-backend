@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, update
 from typing import Optional
 from datetime import datetime, timedelta, date as date_type
+
+from app.core.datetime_utils import get_now_naive
 import logging
 import base64
 import os
@@ -2160,7 +2162,8 @@ async def get_reschedule_options(
             )
 
         schedule_config = await get_schedule_config(db)
-        now = datetime.now()
+        # 使用北京时间的无时区时间戳，避免服务器时区为 UTC 时误判“已过就诊时间”
+        now = get_now_naive()
 
         # 确保当前排班仍在开始前
         if _build_schedule_start_datetime(current_schedule, schedule_config or {}) <= now:
@@ -2391,7 +2394,7 @@ async def reschedule_appointment(
         order.slot_type = target_slot_type
         order.doctor_id = target_schedule.doctor_id
         order.price = final_price
-        order.update_time = datetime.now()
+        order.update_time = get_now_naive()
 
         db.add(order)
         db.add(current_schedule)
