@@ -19,6 +19,7 @@ from app.core.cleantask import create_cleanup_task
 from app.services.absence_scheduler_service import start_absence_scheduler, stop_absence_scheduler
 from app.services.waitlist_service import WaitlistService
 from app.services.payment_timeout_service import PaymentTimeoutService
+from app.services.appointment_reminder_service import send_appointment_reminder
 
 # 确保 logs 文件夹存在
 os.makedirs("logs", exist_ok=True)
@@ -61,6 +62,16 @@ async def check_payment_timeout_job():
         logger.error(f"支付超时检查失败: {str(e)}")
 
 
+async def send_appointment_reminder_job():
+    """定时任务：每天晚上20:00发送明天的就诊提醒"""
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await send_appointment_reminder(db)
+            logger.info(f"就诊提醒: 总计{result.get('total', 0)}, 成功{result.get('success', 0)}, 失败{result.get('failed', 0)}")
+    except Exception as e:
+        logger.error(f"就诊提醒失败: {str(e)}")
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -96,10 +107,13 @@ async def lifespan(app: FastAPI):
         scheduler = AsyncIOScheduler()
         scheduler.add_job(persist_waitlist_job, "interval", minutes=5, id="persist_waitlist")
         scheduler.add_job(check_payment_timeout_job, "interval", minutes=1, id="check_payment_timeout")
+        # 添加就诊提醒任务：每天晚上20:00执行
+        scheduler.add_job(send_appointment_reminder_job, "cron", hour=20, minute=0, id="appointment_reminder")
         scheduler.start()
         logger.info("✓ APScheduler 已启动")
         logger.info("  - 候补队列同步任务每 5 分钟执行一次")
         logger.info("  - 支付超时检查任务每 1 分钟执行一次")
+        logger.info("  - 就诊提醒任务每天晚上 20:00 执行")
 
         logger.info(" Application startup complete")
         yield  # 应用正常运行

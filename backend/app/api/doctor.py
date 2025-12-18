@@ -12,7 +12,7 @@ from app.schemas.admin import AddSlotAuditCreate
 from app.models.add_slot_audit import AddSlotAudit
 from app.models.schedule import Schedule
 from app.models.doctor import Doctor
-from app.models.registration_order import RegistrationOrder, OrderStatus
+from app.models.registration_order import RegistrationOrder, OrderStatus, PaymentStatus
 from app.models.minor_department import MinorDepartment
 from app.models.attendance_record import AttendanceRecord, AttendanceStatus
 from app.models.clinic import Clinic
@@ -55,6 +55,8 @@ from app.models.visit_history import VisitHistory
 from app.db.base import redis
 from app.services.add_slot_service import execute_add_slot_and_register
 from app.services.config_service import get_schedule_config
+from app.services.config_service import get_registration_config
+from app.services.wechat_service import WechatService
 from app.services.consultation_service import (
 	get_consultation_queue,
 	call_next_patient,
@@ -68,6 +70,120 @@ import json
 
 router = APIRouter()
 # ===================== 科室长排班模块 =====================
+
+
+# ====== 停诊批量取消 + 微信通知（科室长端复用） ======
+
+
+def _get_time_section_start_from_config(schedule_config: dict, time_section: str) -> str:
+	section = (time_section or "").strip()
+	if section in ["上午", "早上", "morning"]:
+		return schedule_config.get("morningStart", "08:00")
+	if section in ["下午", "中午", "afternoon"]:
+		return schedule_config.get("afternoonStart", "13:30")
+	return schedule_config.get("eveningStart", "18:00")
+
+
+async def _cancel_and_notify_orders_for_closed_schedules(
+	db: AsyncSession,
+	doctor_id: int,
+	start_date: date,
+	end_date: date,
+	reason_text: str = "停诊"
+) -> dict:
+	"""将停诊期间的预约订单批量取消，并尝试发送微信取消通知。"""
+	try:
+		schedule_config = await get_schedule_config(db)
+		wechat = WechatService()
+		template_id = getattr(settings, "WECHAT_TEMPLATE_CANCEL_SUCCESS", None)
+
+		stmt = (
+			select(RegistrationOrder, Schedule, Patient, Clinic, Doctor)
+			.join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+			.join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+			.join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+			.join(Doctor, Doctor.doctor_id == Schedule.doctor_id)
+			.where(
+				and_(
+					Schedule.doctor_id == doctor_id,
+					Schedule.date >= start_date,
+					Schedule.date <= end_date,
+					RegistrationOrder.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED]),
+					RegistrationOrder.is_waitlist == False,
+				)
+			)
+		)
+
+		result = await db.execute(stmt)
+		rows = result.all()
+		if not rows:
+			return {"orders": 0, "notified": 0}
+
+		notified = 0
+		processed = 0
+		now = datetime.now()
+
+		for order, schedule, patient, clinic, doctor in rows:
+			try:
+				processed += 1
+
+				order.status = OrderStatus.CANCELLED
+				order.cancel_time = now
+				order.update_time = now
+				if order.payment_status == PaymentStatus.PAID:
+					order.payment_status = PaymentStatus.REFUNDED
+					order.refund_time = now
+					order.refund_amount = order.price
+				else:
+					order.payment_status = PaymentStatus.CANCELLED
+
+				if schedule:
+					schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
+					db.add(schedule)
+
+				db.add(order)
+
+				if template_id:
+					target_user_id = patient.user_id if patient and patient.user_id else order.initiator_user_id
+					if target_user_id:
+						openid = await wechat.get_user_openid(db, target_user_id)
+						if openid and await wechat.check_user_authorized(db, target_user_id, template_id):
+							time_str = _get_time_section_start_from_config(schedule_config or {}, schedule.time_section)
+							datetime_str = f"{schedule.date.strftime('%Y年%m月%d日')} {schedule.time_section}{time_str}"
+							data_payload = {
+								"thing65": {"value": patient.name if patient else ""},
+								"time67": {"value": datetime_str},
+								"thing69": {"value": doctor.name if doctor else ""},
+								"thing72": {"value": reason_text},
+								"phrase26": {"value": "已取消"},
+							}
+							try:
+								await wechat.send_subscribe_message(
+									db,
+									target_user_id,
+									openid,
+									template_id,
+									data_payload,
+									scene="cancel",
+									order_id=order.order_id,
+									page=f"pages/appointment/detail?orderId={order.order_id}",
+								)
+								notified += 1
+							except Exception as send_exc:
+								logging.getLogger(__name__).warning(
+									f"停诊取消通知发送失败 order_id={order.order_id}: {send_exc}"
+								)
+			except Exception as single_exc:
+				logging.getLogger(__name__).warning(
+					f"处理停诊订单失败 order_id={getattr(order, 'order_id', None)}: {single_exc}"
+				)
+
+		await db.commit()
+		return {"orders": processed, "notified": notified}
+	except Exception as e:
+		await db.rollback()
+		logging.getLogger(__name__).error(f"停诊批量取消订单失败: {e}")
+		return {"orders": 0, "notified": 0}
 
 from typing import List, Dict, Any
 import json as _json
@@ -1117,6 +1233,20 @@ async def department_head_leave_approve(
 		leave.audit_time = datetime.now()
 		leave.audit_remark = action.comment
 		await db.commit()
+
+		# 停诊期间批量取消相关预约并通知患者
+		cancel_result = await _cancel_and_notify_orders_for_closed_schedules(
+			db,
+			doctor_id=leave.doctor_id,
+			start_date=leave.leave_start_date,
+			end_date=leave.leave_end_date,
+			reason_text="预约医生因故排班停诊"
+		)
+		logging.getLogger(__name__).info(
+			f"科室长停诊取消: doctor_id={leave.doctor_id}, orders={cancel_result.get('orders', 0)}, "
+			f"notified={cancel_result.get('notified', 0)}"
+		)
+
 		return ResponseModel(code=0, message=AuditActionResponse(audit_id=leave.audit_id, status=leave.status, auditor_id=current_user.user_id, audit_time=leave.audit_time))
 	except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
 		raise

@@ -55,6 +55,34 @@ class User(Base):
      
     last_login_time = Column(BigInteger, nullable=True) # 最近登录时间（时间戳）
     
+    # 微信小程序相关字段
+    wechat_openid = Column(
+        String(128), 
+        unique=True, 
+        index=True, 
+        nullable=True,
+        comment="微信小程序 openid，用于小程序免密登录"
+    )
+    
+    wechat_session_key = Column(
+        String(256),
+        nullable=True,
+        comment="微信 session_key (加密存储)，用于解密用户敏感数据"
+    )
+    
+    wechat_unionid = Column(
+        String(128),
+        unique=True,
+        nullable=True,
+        comment="微信 UnionID（如果小程序绑定了开放平台）"
+    )
+    
+    wechat_bind_time = Column(
+        DateTime,
+        nullable=True,
+        comment="微信绑定时间"
+    )
+    
     # 创建时间字段
     create_time = Column(DateTime, default=None, comment="创建时间")
     

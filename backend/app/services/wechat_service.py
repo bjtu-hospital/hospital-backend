@@ -1,0 +1,350 @@
+"""微信小程序相关服务：access_token 缓存、code 换 openid、订阅消息发送、授权记录管理。
+
+该服务的设计目标：
+1) 失败不影响主业务流程（异常捕获、记录日志）。
+2) 尽量使用 Redis 缓存 access_token，减少微信 API 调用次数。
+3) 支持可选的 session_key 加密存储（使用 Fernet，未安装则降级为明文并记录告警）。
+"""
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+import httpx
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.exception_handler import BusinessHTTPException
+from app.db.base import redis
+from app.models.user import User
+from app.models.wechat_message_log import WechatMessageLog
+from app.models.wechat_subscribe_auth import WechatSubscribeAuth
+
+logger = logging.getLogger(__name__)
+
+
+class WechatService:
+    """封装微信相关 API 与数据操作"""
+
+    def __init__(self) -> None:
+        self.app_id = settings.WECHAT_APP_ID
+        self.app_secret = settings.WECHAT_APP_SECRET
+        self.access_token_ttl = max(300, settings.WECHAT_ACCESS_TOKEN_EXPIRE - 300)  # 提前 5 分钟过期
+        # 干跑模式：不触达微信，仅记录日志与落库
+        self.dry_run = bool(getattr(settings, "WECHAT_DRY_RUN", False))
+
+    # ========== 基础能力 ========== #
+    async def get_access_token(self) -> Optional[str]:
+        """获取并缓存全局 access_token。失败时返回 None，不抛出异常以保护业务链路。"""
+        if self.dry_run:
+            return "mock_access_token"
+        cache_key = f"wx:access_token:{self.app_id}"
+        cached = await redis.get(cache_key)
+        if cached:
+            return cached
+
+        url = "https://api.weixin.qq.com/cgi-bin/token"
+        params = {
+            "grant_type": "client_credential",
+            "appid": self.app_id,
+            "secret": self.app_secret,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(url, params=params)
+            data = resp.json()
+        except Exception as exc:  # 网络/解析错误
+            logger.error("获取微信 access_token 失败: %s", exc)
+            return None
+
+        if data.get("errcode") not in (None, 0):
+            logger.error("获取微信 access_token 失败: errcode=%s, errmsg=%s", data.get("errcode"), data.get("errmsg"))
+            return None
+
+        access_token = data.get("access_token")
+        expires_in = int(data.get("expires_in", settings.WECHAT_ACCESS_TOKEN_EXPIRE))
+        ttl = max(60, min(expires_in, self.access_token_ttl))
+        if access_token:
+            await redis.set(cache_key, access_token, ex=ttl)
+        return access_token
+
+    async def code_to_openid(self, code: str) -> Optional[Dict[str, Any]]:
+        """使用 wx.login() 的 code 换取 openid/session_key。
+
+        返回字典包含 openid、session_key、unionid（如有）。失败时返回 None。
+        """
+        if self.dry_run:
+            tail = (code or "openid")[-16:]
+            return {"openid": f"mock_{tail}", "session_key": "mock_session_key"}
+        url = "https://api.weixin.qq.com/sns/jscode2session"
+        params = {
+            "appid": self.app_id,
+            "secret": self.app_secret,
+            "js_code": code,
+            "grant_type": "authorization_code",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(url, params=params)
+            data = resp.json()
+        except Exception as exc:
+            logger.error("code 换 openid 失败: %s", exc)
+            return None
+
+        if data.get("errcode") not in (None, 0):
+            logger.warning("code 换 openid 失败: errcode=%s, errmsg=%s", data.get("errcode"), data.get("errmsg"))
+            return None
+
+        return data
+
+    # ========== 数据写入 ========== #
+    async def save_user_openid(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        openid: str,
+        session_key: Optional[str] = None,
+        unionid: Optional[str] = None,
+    ) -> None:
+        """绑定 openid/session_key 到用户。失败抛 BusinessHTTPException。"""
+        result = await db.execute(select(User).where(User.user_id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise BusinessHTTPException(code=settings.USER_GET_FAILED_CODE, msg="用户不存在")
+
+        user.wechat_openid = openid
+        user.wechat_bind_time = datetime.now()
+        if session_key:
+            user.wechat_session_key = self._encrypt_session_key(session_key)
+        if unionid:
+            user.wechat_unionid = unionid
+
+        db.add(user)
+        await db.commit()
+
+    async def save_subscribe_auth(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        auth_result: Dict[str, str],
+        scene: Optional[str] = None,
+    ) -> None:
+        """保存订阅授权结果。key 为模板ID，value 为授权状态。"""
+        if not auth_result:
+            return
+
+        for template_id, status in auth_result.items():
+            stmt = select(WechatSubscribeAuth).where(
+                WechatSubscribeAuth.user_id == user_id,
+                WechatSubscribeAuth.template_id == template_id,
+            )
+            result = await db.execute(stmt)
+            record = result.scalar_one_or_none()
+            if record:
+                await db.execute(
+                    update(WechatSubscribeAuth)
+                    .where(WechatSubscribeAuth.id == record.id)
+                    .values(
+                        auth_status=status,
+                        scene=scene,
+                        updated_at=datetime.now(),
+                    )
+                )
+            else:
+                db.add(
+                    WechatSubscribeAuth(
+                        user_id=user_id,
+                        template_id=template_id,
+                        auth_status=status,
+                        scene=scene,
+                    )
+                )
+        await db.commit()
+
+    async def log_message(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        openid: str,
+        template_id: str,
+        scene: Optional[str],
+        order_id: Optional[int],
+        status: str,
+        request_data: Optional[Dict[str, Any]] = None,
+        response_data: Optional[Dict[str, Any]] = None,
+        error_code: Optional[int] = None,
+        error_message: Optional[str] = None,
+        sent_at: Optional[datetime] = None,
+    ) -> None:
+        """写入消息发送日志。"""
+        log = WechatMessageLog(
+            user_id=user_id,
+            openid=openid,
+            template_id=template_id,
+            scene=scene,
+            order_id=order_id,
+            status=status,
+            error_code=error_code,
+            error_message=error_message,
+            request_data=json.dumps(request_data, ensure_ascii=False) if request_data else None,
+            response_data=json.dumps(response_data, ensure_ascii=False) if response_data else None,
+            sent_at=sent_at,
+        )
+        db.add(log)
+        await db.commit()
+
+    # ========== 查询辅助 ========== #
+    async def get_user_openid(self, db: AsyncSession, user_id: int) -> Optional[str]:
+        result = await db.execute(select(User.wechat_openid).where(User.user_id == user_id))
+        return result.scalar_one_or_none()
+
+    async def check_user_authorized(self, db: AsyncSession, user_id: int, template_id: str) -> bool:
+        stmt = (
+            select(WechatSubscribeAuth)
+            .where(
+                WechatSubscribeAuth.user_id == user_id,
+                WechatSubscribeAuth.template_id == template_id,
+                WechatSubscribeAuth.auth_status == "accept",
+            )
+            .order_by(WechatSubscribeAuth.updated_at.desc())
+        )
+        result = await db.execute(stmt)
+        record = result.scalar_one_or_none()
+        return record is not None
+
+    # ========== 订阅消息发送 ========== #
+    async def send_subscribe_message(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        openid: str,
+        template_id: str,
+        data: Dict[str, Any],
+        scene: Optional[str] = None,
+        order_id: Optional[int] = None,
+        page: Optional[str] = None,
+    ) -> None:
+        """发送订阅消息。
+
+        失败时仅记录日志，不抛异常，以免中断业务流程。
+        """
+        # 干跑模式：跳过真实请求，直接落成功日志
+        if self.dry_run:
+            payload = {
+                "touser": openid,
+                "template_id": template_id,
+                "data": data,
+            }
+            if page:
+                payload["page"] = page
+            await self.log_message(
+                db,
+                user_id,
+                openid,
+                template_id,
+                scene,
+                order_id,
+                status="success",
+                request_data=payload,
+                response_data={"dry_run": True, "note": "skipped real request"},
+                sent_at=datetime.now(),
+            )
+            return
+        access_token = await self.get_access_token()
+        if not access_token:
+            logger.error("发送订阅消息失败：无法获取 access_token")
+            await self.log_message(
+                db,
+                user_id,
+                openid,
+                template_id,
+                scene,
+                order_id,
+                status="failed",
+                request_data=data,
+                response_data={"err": "no_access_token"},
+            )
+            return
+
+        url = f"https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token={access_token}"
+        payload = {
+            "touser": openid,
+            "template_id": template_id,
+            "data": data,
+        }
+        if page:
+            payload["page"] = page
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json=payload)
+            resp_data = resp.json()
+        except Exception as exc:
+            logger.error("订阅消息发送失败（请求错误）: %s", exc)
+            await self.log_message(
+                db,
+                user_id,
+                openid,
+                template_id,
+                scene,
+                order_id,
+                status="failed",
+                request_data=payload,
+                response_data={"exception": str(exc)},
+            )
+            return
+
+        errcode = resp_data.get("errcode", -1)
+        errmsg = resp_data.get("errmsg")
+        status = "success" if errcode == 0 else "failed"
+
+        await self.log_message(
+            db,
+            user_id,
+            openid,
+            template_id,
+            scene,
+            order_id,
+            status=status,
+            request_data=payload,
+            response_data=resp_data,
+            error_code=None if errcode == 0 else errcode,
+            error_message=None if errcode == 0 else errmsg,
+            sent_at=datetime.now(),
+        )
+
+    # ========== 工具方法 ========== #
+    def _encrypt_session_key(self, session_key: str) -> str:
+        """可选的 session_key 加密。
+        若未配置密钥或未安装 cryptography，则返回原文并记录一次警告。
+        """
+        if not session_key:
+            return session_key
+
+        cipher_key = getattr(settings, "WECHAT_SESSION_KEY_CIPHER", None)
+        if not cipher_key:
+            return session_key
+
+        try:
+            from cryptography.fernet import Fernet
+        except Exception:
+            logger.warning("cryptography 未安装，session_key 将以明文存储。建议安装 cryptography 并配置 WECHAT_SESSION_KEY_CIPHER。")
+            return session_key
+
+        try:
+            cipher = Fernet(cipher_key.encode())
+            return cipher.encrypt(session_key.encode()).decode()
+        except Exception as exc:
+            logger.warning("session_key 加密失败，使用明文存储: %s", exc)
+            return session_key
+
+    @staticmethod
+    def mask_openid(openid: Optional[str]) -> str:
+        if not openid:
+            return ""
+        if len(openid) <= 8:
+            return openid
+        return f"{openid[:4]}****{openid[-4:]}"

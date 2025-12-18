@@ -135,6 +135,7 @@ async def get_registration_config(
         "sameDayDeadline": "08:00",  # 当日挂号截止时间
         "noShowLimit": 3,  # 爽约次数限制
         "cancelHoursBefore": 2,  # 取消提前小时数
+        "paymentTimeoutMinutes": 30,  # 支付超时时间（分钟）
         "sameClinicInterval": 7,  # 同科室挂号间隔天数
         "maxAppointmentsPerPeriod": 10,  # 时间段内最大预约数
         "appointmentPeriodDays": 8  # 预约限制时间段(天)

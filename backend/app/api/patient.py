@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, update
 from typing import Optional
@@ -23,6 +23,7 @@ from app.schemas.appointment import (
     AppointmentListResponse,
     AppointmentListItem,
     CancelAppointmentResponse,
+    CancelAppointmentRequest,
     RescheduleOption,
     RescheduleOptionsResponse,
     RescheduleRequest,
@@ -78,6 +79,10 @@ from app.schemas.payment import (
     CancelPaymentResponse
 )
 from app.services.waitlist_service import WaitlistService
+from app.services.wechat_service import WechatService
+from app.schemas.wechat import WechatLoginRequest
+from app.schemas.wechat import WechatCodeToOpenIdResponse
+from app.schemas.wechat import SubscribeAuthResult
 import requests
 import urllib3
 import hashlib
@@ -1292,6 +1297,119 @@ def _build_schedule_start_datetime(schedule: Schedule, schedule_config: dict) ->
     return datetime.combine(schedule.date, datetime.min.time()).replace(hour=hour, minute=minute)
 
 
+def _format_wechat_datetime(
+    slot_date: datetime.date,
+    time_section: str,
+    schedule_config: Optional[dict] = None,
+) -> str:
+    """格式化微信消息用的就诊时间字符串，优先使用配置的时段开始时间。"""
+    section = (time_section or "").strip()
+    time_str = _get_time_section_start(section, schedule_config or {})
+    return f"{slot_date.strftime('%Y年%m月%d日')} {section}{time_str}"
+
+
+async def _load_doctor_and_dept(db: AsyncSession, schedule: Schedule) -> tuple[Optional[Doctor], Optional[Clinic], Optional[MinorDepartment]]:
+    doctor = await db.get(Doctor, schedule.doctor_id) if schedule and schedule.doctor_id else None
+    clinic = await db.get(Clinic, schedule.clinic_id) if schedule and schedule.clinic_id else None
+    dept = await db.get(MinorDepartment, clinic.minor_dept_id) if clinic and clinic.minor_dept_id else None
+    return doctor, clinic, dept
+
+
+def _wechat_payload_appointment(patient_name: str, datetime_str: str, location: str, doctor_name: str, status: str) -> dict:
+    """预约/候补成功通用模板 (thing65就诊人, time67就诊时间, thing2预约地点, thing69预约医师, phrase14预约状态)。
+    
+    模板ID: RFZQNIC-vGQC_mkDcqAneHMamQUhmWln82L2FwsiC5A (模板编号461)
+    适用场景: 预约成功、候补成功、改约成功
+    """
+    return {
+        "thing65": {"value": patient_name or ""},
+        "time67": {"value": datetime_str},
+        "thing2": {"value": location or ""},
+        "thing69": {"value": doctor_name or ""},
+        "phrase14": {"value": status},
+    }
+
+
+def _wechat_payload_reminder(patient_name: str, datetime_str: str, location: str, tip: str) -> dict:
+    """就诊提醒模板 (thing65, time67, thing18, thing8)。"""
+    return {
+        "thing65": {"value": patient_name or ""},
+        "time67": {"value": datetime_str},
+        "thing18": {"value": location or ""},
+        "thing8": {"value": tip or ""},
+    }
+
+
+def _wechat_payload_cancel(patient_name: str, datetime_str: str, doctor_name: str, reason: str, order_status: str) -> dict:
+    """取消通知模板 (thing65, time67, thing69, thing72, phrase26)。"""
+    return {
+        "thing65": {"value": patient_name or ""},
+        "time67": {"value": datetime_str},
+        "thing69": {"value": doctor_name or ""},
+        "thing72": {"value": reason or ""},
+        "phrase26": {"value": order_status or ""},
+    }
+
+
+async def _wechat_prepare_and_send(
+    db: AsyncSession,
+    target_user_id: int,
+    wx_code: Optional[str],
+    subscribe_auth: Optional[dict],
+    subscribe_scene: Optional[str],
+    template_id: str,
+    data: dict,
+    scene: str,
+    order_id: Optional[int],
+    page: Optional[str] = None,
+) -> None:
+    """统一处理 code->openid、授权记录、并发送订阅消息。失败只记录日志不抛错。"""
+    if not template_id:
+        return
+
+    wechat = WechatService()
+    openid = None
+
+    try:
+        if wx_code:
+            wx_res = await wechat.code_to_openid(wx_code)
+            if wx_res and wx_res.get("openid"):
+                openid = wx_res.get("openid")
+                await wechat.save_user_openid(
+                    db,
+                    target_user_id,
+                    openid,
+                    wx_res.get("session_key"),
+                    wx_res.get("unionid"),
+                )
+
+        if not openid:
+            openid = await wechat.get_user_openid(db, target_user_id)
+
+        if subscribe_auth:
+            await wechat.save_subscribe_auth(db, target_user_id, subscribe_auth, subscribe_scene or scene)
+
+        if not openid:
+            return
+
+        authorized = await wechat.check_user_authorized(db, target_user_id, template_id)
+        if not authorized:
+            return
+
+        await wechat.send_subscribe_message(
+            db,
+            target_user_id,
+            openid,
+            template_id,
+            data,
+            scene=scene,
+            order_id=order_id,
+            page=page,
+        )
+    except Exception as exc:
+        logger.warning(f"微信订阅消息处理失败: {exc}")
+
+
 @router.post("/appointments", response_model=ResponseModel[AppointmentResponse])
 async def create_appointment(
     data: AppointmentCreate,
@@ -1475,7 +1593,40 @@ async def create_appointment(
         await db.commit()
         await db.refresh(new_order)
         
-        # 8. 队列号码在就诊时动态分配，创建时不设置
+        # 8. 发送微信订阅消息（预约成功）
+        try:
+            doctor, clinic, dept = await _load_doctor_and_dept(db, schedule)
+            patient_name = patient.name if patient else ""
+            doctor_name = doctor.name if doctor else ""
+            # 预约地点使用 clinic.address，如果为空则使用 clinic.name 作为fallback
+            location = (clinic.address or clinic.name) if clinic else ""
+            schedule_config = await get_schedule_config(db)
+            datetime_str = _format_wechat_datetime(schedule.date, schedule.time_section, schedule_config)
+            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
+            data_payload = _wechat_payload_appointment(
+                patient_name,
+                datetime_str,
+                location,
+                doctor_name,
+                status="预约成功",
+            )
+
+            target_user_id = patient.user_id or current_user.user_id
+            await _wechat_prepare_and_send(
+                db,
+                target_user_id,
+                data.wxCode,
+                data.subscribeAuthResult,
+                data.subscribeScene or "appointment",
+                template_id,
+                data_payload,
+                scene="appointment",
+                order_id=new_order.order_id,
+            )
+        except Exception as exc:
+            logger.warning(f"预约成功微信通知失败: {exc}")
+        
+        # 9. 队列号码在就诊时动态分配，创建时不设置
         logger.info(f"创建预约成功: order_id={new_order.order_id}, order_no={order_no}, patient_id={data.patientId}")
         
         return ResponseModel(code=0, message=AppointmentResponse(
@@ -1648,6 +1799,7 @@ async def get_my_appointments(
 @router.put("/appointments/{appointmentId}/cancel", response_model=ResponseModel[CancelAppointmentResponse])
 async def cancel_appointment(
     appointmentId: int,
+    payload: CancelAppointmentRequest | None = Body(None),
     db: AsyncSession = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
@@ -1710,7 +1862,66 @@ async def cancel_appointment(
                 status_code=400
             )
         
-        # 4. 检查取消时间限制(根据配置动态计算)
+        # 4. 若为待支付订单，先检查是否支付超时并自动取消
+        if order.status == OrderStatus.PENDING and order.payment_status == PaymentStatus.PENDING:
+            reg_config = await get_registration_config(
+                db,
+                scope_type="DOCTOR",
+                scope_id=order.doctor_id
+            )
+            timeout_minutes = int(reg_config.get("paymentTimeoutMinutes", 30))
+            now = datetime.now()
+            create_time = order.create_time or now
+            if now >= (create_time + timedelta(minutes=timeout_minutes)):
+                # 超时自动取消：标记为已超时，支付失败
+                order.status = OrderStatus.TIMEOUT
+                order.payment_status = PaymentStatus.FAILED
+                order.cancel_time = now
+                order.update_time = now
+                db.add(order)
+                # 释放号源
+                if schedule:
+                    schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
+                    db.add(schedule)
+                await db.commit()
+                # 发送微信取消通知（支付超时）
+                try:
+                    patient_obj = await db.get(Patient, order.patient_id) if order.patient_id else None
+                    doctor, clinic, _ = await _load_doctor_and_dept(db, schedule)
+                    patient_name = patient_obj.name if patient_obj else ""
+                    doctor_name = doctor.name if doctor else ""
+                    schedule_config = await get_schedule_config(db)
+                    datetime_str = _format_wechat_datetime(order.slot_date, order.time_section, schedule_config)
+                    reason_text = "支付超时"
+                    status_text = "已超时"
+                    template_id = settings.WECHAT_TEMPLATE_CANCEL_SUCCESS
+                    data_payload = _wechat_payload_cancel(
+                        patient_name,
+                        datetime_str,
+                        doctor_name,
+                        reason_text,
+                        status_text,
+                    )
+                    target_user_id = patient_obj.user_id if patient_obj and patient_obj.user_id else current_user.user_id
+                    wx_code = payload.wxCode if payload else None
+                    subscribe_auth = payload.subscribeAuthResult if payload else None
+                    subscribe_scene = payload.subscribeScene if payload else "cancel"
+                    await _wechat_prepare_and_send(
+                        db,
+                        target_user_id,
+                        wx_code,
+                        subscribe_auth,
+                        subscribe_scene,
+                        template_id,
+                        data_payload,
+                        scene="cancel",
+                        order_id=order.order_id,
+                    )
+                except Exception as exc:
+                    logger.warning(f"取消预约(支付超时)微信通知失败: {exc}")
+                return ResponseModel(code=0, message=CancelAppointmentResponse(success=True, refundAmount=None))
+
+        # 5. 检查取消时间限制(根据配置动态计算)
         # 获取排班配置和挂号配置
         schedule_config = await get_schedule_config(db)
         reg_config = await get_registration_config(
@@ -1748,7 +1959,7 @@ async def cancel_appointment(
                 status_code=400
             )
         
-        # 5. 取消订单
+        # 6. 取消订单
         order.status = OrderStatus.CANCELLED
         order.cancel_time = now
         order.update_time = now
@@ -1770,6 +1981,41 @@ async def cancel_appointment(
         db.add(schedule)
         
         await db.commit()
+
+        # 8. 发送微信取消通知
+        try:
+            patient_obj = await db.get(Patient, order.patient_id) if order.patient_id else None
+            doctor, clinic, _ = await _load_doctor_and_dept(db, schedule)
+            patient_name = patient_obj.name if patient_obj else ""
+            doctor_name = doctor.name if doctor else ""
+            datetime_str = _format_wechat_datetime(order.slot_date, order.time_section, schedule_config)
+            reason_text = "用户取消预约"
+            status_text = "已取消"
+            template_id = settings.WECHAT_TEMPLATE_CANCEL_SUCCESS
+            data_payload = _wechat_payload_cancel(
+                patient_name,
+                datetime_str,
+                doctor_name,
+                reason_text,
+                status_text,
+            )
+            target_user_id = patient_obj.user_id if patient_obj and patient_obj.user_id else current_user.user_id
+            wx_code = payload.wxCode if payload else None
+            subscribe_auth = payload.subscribeAuthResult if payload else None
+            subscribe_scene = payload.subscribeScene if payload else "cancel"
+            await _wechat_prepare_and_send(
+                db,
+                target_user_id,
+                wx_code,
+                subscribe_auth,
+                subscribe_scene,
+                template_id,
+                data_payload,
+                scene="cancel",
+                order_id=order.order_id,
+            )
+        except Exception as exc:
+            logger.warning(f"取消预约微信通知失败: {exc}")
         
         # 8. 检查是否有候补，有的话自动转化第一个候补到预约（触发SMS通知）
         # 核心逻辑：级联转换所有候补，直到没有候补或没有剩余号源为止
@@ -2123,6 +2369,38 @@ async def reschedule_appointment(
         await db.commit()
         await db.refresh(order)
 
+        # 发送微信改约成功通知
+        try:
+            doctor = await db.get(Doctor, target_schedule.doctor_id) if target_schedule and target_schedule.doctor_id else None
+            patient_name = patient.name if patient else ""
+            doctor_name = doctor.name if doctor else ""
+            # 预约地点使用 clinic.address，如果为空则使用 clinic.name 作为fallback
+            location = (target_clinic.address or target_clinic.name) if target_clinic else ""
+            datetime_str = _format_wechat_datetime(target_schedule.date, target_schedule.time_section, schedule_config)
+            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
+            data_payload = _wechat_payload_appointment(
+                patient_name,
+                datetime_str,
+                location,
+                doctor_name,
+                status="改约成功",
+            )
+
+            target_user_id = patient.user_id if patient and patient.user_id else current_user.user_id
+            await _wechat_prepare_and_send(
+                db,
+                target_user_id,
+                payload.wxCode,
+                payload.subscribeAuthResult,
+                payload.subscribeScene or "reschedule",
+                template_id,
+                data_payload,
+                scene="reschedule",
+                order_id=order.order_id,
+            )
+        except Exception as exc:
+            logger.warning(f"改约微信通知失败: {exc}")
+
         # 改约成功后：对原排班进行候补级联转换（释放了一个号源）
         # 与取消预约/取消支付的逻辑保持一致：循环转换直到没有候补或没有可用号源
         try:
@@ -2473,7 +2751,40 @@ async def cancel_payment(
                 status_code=400
             )
         
-        # 4. 如果已支付，检查是否超过取消时间
+        # 4. 处理待支付的超时自动取消
+        if order.payment_status == PaymentStatus.PENDING and order.status == OrderStatus.PENDING:
+            # 读取挂号配置中的支付超时（分钟）
+            reg_config = await get_registration_config(
+                db,
+                scope_type="DOCTOR",
+                scope_id=order.doctor_id
+            )
+            timeout_minutes = int(reg_config.get("paymentTimeoutMinutes", 30))
+            now = datetime.now()
+            create_time = order.create_time or now
+            if now >= (create_time + timedelta(minutes=timeout_minutes)):
+                # 超时自动取消：标记为已超时，支付失败
+                order.status = OrderStatus.TIMEOUT
+                order.payment_status = PaymentStatus.FAILED
+                order.cancel_time = now
+                order.update_time = now
+                # 释放号源
+                if schedule:
+                    schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
+                    db.add(schedule)
+                db.add(order)
+                await db.commit()
+                await db.refresh(order)
+                logger.info(f"订单支付超时自动取消: order_id={appointmentId}, timeout_minutes={timeout_minutes}")
+                return ResponseModel(code=0, message=CancelPaymentResponse(
+                    success=True,
+                    orderId=order.order_id,
+                    status=order.status.value,
+                    cancelTime=order.cancel_time.strftime("%Y-%m-%d %H:%M:%S") if order.cancel_time else "",
+                    reason="支付超时"
+                ))
+
+        # 5. 如果已支付，检查是否超过取消时间
         if order.payment_status == PaymentStatus.PAID:
             # 获取挂号配置
             reg_config = await get_registration_config(
@@ -2507,7 +2818,7 @@ async def cancel_payment(
                     status_code=400
                 )
         
-        # 5. 执行取消逻辑
+        # 6. 执行取消逻辑
         now = datetime.now()
         order.status = OrderStatus.CANCELLED
         
@@ -2524,7 +2835,7 @@ async def cancel_payment(
         
         db.add(order)
         
-        # 6. 如果关联了排班，释放号源
+        # 7. 如果关联了排班，释放号源
         if order.schedule_id and schedule:
             schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
             db.add(schedule)
@@ -2532,7 +2843,7 @@ async def cancel_payment(
         await db.commit()
         await db.refresh(order)
         
-        # 7. 级联转化候补到预约（和 cancel_appointment 保持一致）
+        # 8. 级联转化候补到预约（和 cancel_appointment 保持一致）
         if order.schedule_id and schedule:
             try:
                 converted_count = 0
@@ -2561,7 +2872,8 @@ async def cancel_payment(
             success=True,
             orderId=order.order_id,
             status=order.status.value,
-            cancelTime=order.cancel_time.strftime("%Y-%m-%d %H:%M:%S") if order.cancel_time else ""
+            cancelTime=order.cancel_time.strftime("%Y-%m-%d %H:%M:%S") if order.cancel_time else "",
+            reason=(payload.reason if payload and payload.reason else None)
         ))
         
     except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
@@ -2573,6 +2885,64 @@ async def cancel_payment(
         raise BusinessHTTPException(
             code=settings.REQ_ERROR_CODE,
             msg="取消订单失败",
+            status_code=500
+        )
+
+# ====== 微信绑定与订阅授权查询 ======
+
+@router.post("/wechat/bind-by-code", response_model=ResponseModel[dict])
+async def wechat_bind_by_code(
+    data: WechatLoginRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """使用 wx.login() 的 code 绑定当前用户的微信 openid。"""
+    try:
+        wechat = WechatService()
+        wx_res = await wechat.code_to_openid(data.code)
+        if not wx_res or not wx_res.get("openid"):
+            raise BusinessHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="code 无效或换取 openid 失败",
+                status_code=400
+            )
+        await wechat.save_user_openid(
+            db,
+            current_user.user_id,
+            wx_res.get("openid"),
+            wx_res.get("session_key"),
+            wx_res.get("unionid"),
+        )
+        masked = WechatService.mask_openid(wx_res.get("openid"))
+        return ResponseModel(code=0, message={"bound": True, "openid": masked})
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"微信绑定失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="微信绑定失败",
+            status_code=500
+        )
+
+@router.get("/wechat/authorized", response_model=ResponseModel[dict])
+async def wechat_is_authorized(
+    templateId: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """查询当前用户是否已授权指定订阅消息模板。"""
+    try:
+        wechat = WechatService()
+        authorized = await wechat.check_user_authorized(db, current_user.user_id, templateId)
+        return ResponseModel(code=0, message={"authorized": bool(authorized), "templateId": templateId})
+    except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"查询订阅授权失败: {e}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="查询订阅授权失败",
             status_code=500
         )
 
@@ -2727,6 +3097,39 @@ async def join_waitlist(
         except Exception as e:
             logger.warning(f"Redis 队列添加失败: {str(e)}")
             estimated_time = f"{position * 10}分钟" if position else None
+
+        # 微信候补成功通知
+        try:
+            doctor, clinic, dept = await _load_doctor_and_dept(db, schedule)
+            patient_name = patient.name if patient else ""
+            doctor_name = doctor.name if doctor else ""
+            # 预约地点使用 clinic.address，如果为空则使用 clinic.name 作为fallback
+            location = (clinic.address or clinic.name) if clinic else ""
+            schedule_config = await get_schedule_config(db)
+            datetime_str = _format_wechat_datetime(schedule.date, schedule.time_section, schedule_config)
+            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
+            data_payload = _wechat_payload_appointment(
+                patient_name,
+                datetime_str,
+                location,
+                doctor_name,
+                status="候补成功",
+            )
+
+            target_user_id = patient.user_id if patient and patient.user_id else current_user.user_id
+            await _wechat_prepare_and_send(
+                db,
+                target_user_id,
+                data.wxCode,
+                data.subscribeAuthResult,
+                data.subscribeScene or "waitlist",
+                template_id,
+                data_payload,
+                scene="waitlist",
+                order_id=order.order_id,
+            )
+        except Exception as exc:
+            logger.warning(f"候补微信通知失败: {exc}")
 
         return ResponseModel(code=0, message=WaitlistCreateResponse(
             id=order.order_id,
@@ -4281,4 +4684,145 @@ async def get_appointment_detail(
             code=settings.DATA_GET_FAILED_CODE,
             msg="获取预约详情失败",
             status_code=500
-        )   
+        )
+
+
+@router.post("/appointments/{appointmentId}/send-reminder", response_model=ResponseModel)
+async def send_appointment_reminder(
+    appointmentId: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """手动发送就诊提醒 - 需要登录
+    
+    业务规则:
+    1. 只能对未来日期且距离就诊不超过1天的订单发送提醒
+    2. 只能对已支付已确认的订单发送
+    3. 防止重复发送
+    
+    限制条件: 临近就诊的前一天才能提醒
+    """
+    try:
+        # 1. 查询订单
+        stmt = select(RegistrationOrder).where(RegistrationOrder.order_id == appointmentId)
+        result = await db.execute(stmt)
+        order = result.scalar_one_or_none()
+        
+        if not order:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="订单不存在",
+                status_code=404
+            )
+        
+        # 2. 权限检查：只能查看自己的订单或是当前用户的就诊人
+        patient_res = await db.execute(
+            select(Patient).where(Patient.patient_id == order.patient_id)
+        )
+        patient = patient_res.scalar_one_or_none()
+        
+        user_patient_res = await db.execute(
+            select(Patient).where(Patient.user_id == current_user.user_id)
+        )
+        user_patient = user_patient_res.scalar_one_or_none()
+        
+        is_self = user_patient and patient and patient.patient_id == user_patient.patient_id
+        is_related = False
+        
+        if not is_self and user_patient:
+            relation_res = await db.execute(
+                select(PatientRelation).where(
+                    and_(
+                        PatientRelation.user_patient_id == user_patient.patient_id,
+                        PatientRelation.related_patient_id == order.patient_id
+                    )
+                )
+            )
+            is_related = relation_res.scalar_one_or_none() is not None
+        
+        if not is_self and not is_related:
+            raise AuthHTTPException(
+                code=settings.INSUFFICIENT_AUTHORITY_CODE,
+                msg="无权操作此订单",
+                status_code=403
+            )
+        
+        # 3. 业务规则检查：只能对已支付已确认的订单发送
+        if order.payment_status != PaymentStatus.PAID:
+            raise BusinessHTTPException(
+                code=1001,
+                msg="只能对已支付的订单发送提醒",
+                status_code=400
+            )
+        
+        if order.status != OrderStatus.CONFIRMED:
+            raise BusinessHTTPException(
+                code=1002,
+                msg="只能对已确认的订单发送提醒",
+                status_code=400
+            )
+        
+        # 4. 限制条件：只能在就诊前一天发送（临近就诊）
+        today = datetime.now().date()
+        tomorrow = today + timedelta(days=1)
+        
+        # 允许的发送日期范围：从今天到明天都可以
+        # 但实际检查应该是：订单日期必须是今天或明天
+        if order.slot_date != today and order.slot_date != tomorrow:
+            days_until = (order.slot_date - today).days
+            raise BusinessHTTPException(
+                code=1003,
+                msg=f"只能在就诊前一天发送提醒，该订单距离就诊还有{days_until}天",
+                status_code=400
+            )
+        
+        # 5. 执行提醒发送
+        from app.services.appointment_reminder_service import send_single_reminder
+        
+        stmt = select(Schedule).where(Schedule.schedule_id == order.schedule_id)
+        result = await db.execute(stmt)
+        schedule = result.scalar_one_or_none()
+        
+        if not schedule:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="排班信息不存在",
+                status_code=404
+            )
+        
+        doctor = await db.get(Doctor, schedule.doctor_id) if schedule and schedule.doctor_id else None
+        clinic = await db.get(Clinic, schedule.clinic_id) if schedule and schedule.clinic_id else None
+        
+        if not patient or not doctor or not clinic:
+            raise ResourceHTTPException(
+                code=settings.DATA_GET_FAILED_CODE,
+                msg="患者、医生或诊室信息不完整",
+                status_code=404
+            )
+        
+        # 调用发送提醒函数
+        success = await send_single_reminder(db, order, schedule, patient, doctor, clinic)
+        
+        if success:
+            logger.info(f"[手动提醒] 用户{current_user.user_id}手动发送订单{order.order_no}的提醒")
+            return ResponseModel(code=0, message="提醒已发送")
+        else:
+            raise BusinessHTTPException(
+                code=1004,
+                msg="提醒发送失败，请检查授权情况或稍后重试",
+                status_code=400
+            )
+        
+    except AuthHTTPException:
+        raise
+    except ResourceHTTPException:
+        raise
+    except BusinessHTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"手动发送就诊提醒时发生异常: {str(e)}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="发送提醒失败",
+            status_code=500
+        )

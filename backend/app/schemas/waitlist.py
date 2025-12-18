@@ -9,6 +9,11 @@ class WaitlistCreate(BaseModel):
     """加入候补请求 - 仅需必要参数"""
     scheduleId: int = Field(..., description="排班ID")
     patientId: int = Field(..., description="就诊人ID")
+    
+    # 微信订阅消息相关字段（可选）
+    wxCode: Optional[str] = Field(None, description="wx.login() 获取的临时 code")
+    subscribeAuthResult: Optional[dict] = Field(None, description="订阅授权结果")
+    subscribeScene: Optional[str] = Field(None, description="业务场景标识")
 
     class Config:
         extra = "ignore"  # 忽略未声明字段

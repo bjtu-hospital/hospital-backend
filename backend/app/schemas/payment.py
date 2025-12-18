@@ -69,13 +69,15 @@ class CancelPaymentResponse(BaseModel):
     orderId: int = Field(..., description="订单ID")
     status: str = Field(..., description="订单状态")
     cancelTime: str = Field(..., description="取消时间")
+    reason: Optional[str] = Field(None, description="取消原因/失败原因")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "success": True,
                 "orderId": 123,
-                "status": "cancelled",
-                "cancelTime": "2025-12-07 10:35:00"
+                "status": "timeout",
+                "cancelTime": "2025-12-07 10:35:00",
+                "reason": "支付超时"
             }
         }
