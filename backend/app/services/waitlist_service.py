@@ -17,7 +17,10 @@ from app.models.registration_order import RegistrationOrder, OrderStatus, Paymen
 from app.models.patient import Patient
 from app.models.user import User
 from app.models.doctor import Doctor
+from app.models.schedule import Schedule
 from app.core.security import send_email
+from app.core.config import settings
+from app.core.datetime_utils import get_now_naive
 from app.core.exception_handler import BusinessHTTPException
 
 logger = logging.getLogger(__name__)
@@ -220,12 +223,13 @@ class WaitlistService:
         patient_id = first["patient_id"]
         
         try:
-            # 查询订单、患者、发起人、医生信息
+            # 查询订单、患者、发起人、医生、排班信息
             order_res = await db.execute(
-                select(RegistrationOrder, Patient, User, Doctor).
+                select(RegistrationOrder, Patient, User, Doctor, Schedule).
                 join(Patient, Patient.patient_id == RegistrationOrder.patient_id).
                 join(User, User.user_id == RegistrationOrder.initiator_user_id).
                 join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id).
+                join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id).
                 where(RegistrationOrder.order_id == order_id)
             )
             row = order_res.first()
@@ -235,7 +239,7 @@ class WaitlistService:
                 await cls.remove_from_queue(schedule_id, patient_id)
                 return None
             
-            order, patient, initiator_user, doctor = row
+            order, patient, initiator_user, doctor, schedule = row
             
             # 检查订单状态是否仍为 WAITLIST
             if order.status != OrderStatus.WAITLIST:
@@ -311,6 +315,58 @@ class WaitlistService:
             # 从队列移除
             await cls.remove_from_queue(schedule_id, patient_id)
             
+            # 发送微信订阅消息（候补转预约成功）
+            try:
+                from app.services.wechat_service import WechatService
+                from app.models.clinic import Clinic
+                
+                # 获取clinic信息用于组装通知
+                clinic_res = await db.execute(
+                    select(Clinic).where(Clinic.clinic_id == schedule.clinic_id)
+                )
+                clinic = clinic_res.scalar_one_or_none()
+                clinic_name = clinic.name if clinic else "诊室"
+                
+                # 格式化时间
+                time_str = WaitlistService._get_time_section_start(order.time_section, {})
+                datetime_str = f"{order.slot_date.strftime('%Y年%m月%d日')} {time_str}"
+                
+                # 构建微信通知（复用候补成功模板）
+                wechat_data = {
+                    "thing6": {"value": patient.name or "就诊人"},
+                    "phrase1": {"value": "候补转预约成功"},
+                    "thing4": {"value": clinic_name or ""},
+                    "time3": {"value": datetime_str},
+                    "thing5": {"value": doctor.name or ""},
+                }
+                
+                wechat = WechatService()
+                openid = await wechat.get_user_openid(db, order.initiator_user_id)
+                
+                if openid and settings.WECHAT_TEMPLATE_WAITLIST_SUCCESS:
+                    authorized = await wechat.check_user_authorized(
+                        db,
+                        order.initiator_user_id,
+                        settings.WECHAT_TEMPLATE_WAITLIST_SUCCESS
+                    )
+                    if authorized:
+                        await wechat.send_subscribe_message(
+                            db,
+                            order.initiator_user_id,
+                            openid,
+                            settings.WECHAT_TEMPLATE_WAITLIST_SUCCESS,
+                            wechat_data,
+                            scene="waitlist_to_appointment",
+                            order_id=order_id,
+                        )
+                        logger.info(f"候补转预约微信通知已发送: openid={openid}, order_id={order_id}")
+                    else:
+                        logger.info(f"用户未授权该模板，跳过微信通知: user_id={order.initiator_user_id}, order_id={order_id}")
+                else:
+                    logger.info(f"缺少openid或模板ID，跳过微信通知: openid={openid}, order_id={order_id}")
+            except Exception as e:
+                logger.warning(f"候补转预约微信通知发送失败: {e}")
+            
             logger.info(f"候补自动转预约成功: order_id={order_id}, patient_id={patient_id}, remaining_slots={schedule.remaining_slots}")
             return order_id
             
@@ -318,6 +374,16 @@ class WaitlistService:
             await db.rollback()
             logger.error(f"候补转预约失败: {e}")
             return None
+    
+    @staticmethod
+    def _get_time_section_start(time_section: str, schedule_config: dict) -> str:
+        """根据时间段获取开始时间字符串"""
+        section = (time_section or "").strip()
+        if section in ["上午", "早上", "morning"]:
+            return schedule_config.get("morningStart", "08:00")
+        if section in ["下午", "中午", "afternoon"]:
+            return schedule_config.get("afternoonStart", "13:30")
+        return schedule_config.get("eveningStart", "18:00")
     
     @classmethod
     async def persist_waitlist_to_db(
