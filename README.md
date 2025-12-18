@@ -2156,8 +2156,8 @@ Authorization: Bearer <token>
 ```
 
 - 行为：
-    - 管理员调用：系统直接在事务内为患者创建 `RegistrationOrder`（同时更新 `Schedule` 的 `total_slots` 与 `remaining_slots`），响应包含新订单 `order_id`。
-    - 医生调用：系统在 `add_slot_audit` 表中创建或覆盖申请记录，等待管理员审批，响应包含 `audit_id`。
+    - 管理员调用：系统直接在事务内为患者创建 `RegistrationOrder`（`status=PENDING`、`payment_status=PENDING`），等待患者支付。响应包含新订单 `order_id`。
+    - 医生调用：系统在 `add_slot_audit` 表中创建或覆盖申请记录（`status=pending`），等待管理员审批。响应包含 `audit_id`。
 
 - 约定与限制：
     - `patient_id` 仅接受整数（不再支持 `P123` 之类前缀）。
@@ -2221,7 +2221,7 @@ Authorization: Bearer <token>
 #### 5.12 管理员审批（已有接口）
 - 通过：POST `/admin/audit/add-slot/{audit_id}/approve`（管理员）
 - 拒绝：POST `/admin/audit/add-slot/{audit_id}/reject`（管理员）
-- 说明：审批通过时，系统会在事务内调用加号服务创建 `RegistrationOrder` 并更新对应 `Schedule`；审批结果会写回 `add_slot_audit` 表（status、auditor_admin_id、audit_time、audit_remark）。
+- 说明：审批通过时，系统会在事务内调用加号服务创建 `RegistrationOrder`（`status=PENDING`、`payment_status=PENDING`，等待患者支付）；审批结果会写回 `add_slot_audit` 表（status=approved、auditor_user_id、audit_time、audit_remark）。审批拒绝时更新 status=rejected。
 
 #### 5.13 医生查看自己的加号申请列表 GET: `/doctor/schedules/add-slot`
 - 权限：仅医生。

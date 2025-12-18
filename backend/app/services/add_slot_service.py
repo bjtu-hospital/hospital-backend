@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.registration_order import RegistrationOrder, OrderStatus
+from app.models.registration_order import RegistrationOrder, OrderStatus, PaymentStatus
 from app.models.schedule import Schedule
 from app.models.patient import Patient
 from app.db.base import redis
@@ -64,18 +64,23 @@ async def execute_add_slot_and_register(
     # 计算最终价格，精确到小数点后2位
     final_price = calculate_final_price(base_price, discount_rate)
     
-    # 5. 创建挂号记录，直接设为 CONFIRMED（已支付）
+    # 5. 创建挂号记录，设为 PENDING（待支付）让患者支付
     reg = RegistrationOrder(
         patient_id=patient.patient_id,
         user_id=patient.user_id,
+        initiator_user_id=applicant_user_id,  # 设置发起者 user_id
         doctor_id=schedule.doctor_id,
         schedule_id=schedule.schedule_id,
         slot_type=slot_type,
         slot_date=schedule.date,
         time_section=schedule.time_section,
         price=final_price,  # 应用折扣后的价格
-        status=OrderStatus.CONFIRMED,  # 加号直接进入正式队列
+        payment_status=PaymentStatus.PENDING,  # 加号后患者需要支付
+        status=OrderStatus.PENDING,  # 待支付状态
         priority=-1,  # 加号患者优先级更高，排在队列前面（priority越小越优先）
+        source_type="normal",  # 预约来源
+        pass_count=0,  # 初始过号次数
+        is_calling=False,  # 未就诊
         notes=f"加号申请 (由用户 {applicant_user_id} 发起)",
     )
 
