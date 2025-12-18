@@ -1634,38 +1634,7 @@ async def create_appointment(
         await db.commit()
         await db.refresh(new_order)
         
-        # 8. 发送微信订阅消息（预约成功）
-        try:
-            doctor, clinic, dept = await _load_doctor_and_dept(db, schedule)
-            patient_name = patient.name if patient else ""
-            doctor_name = doctor.name if doctor else ""
-            # 预约地点使用 clinic.address，如果为空则使用 clinic.name 作为fallback
-            location = (clinic.address or clinic.name) if clinic else ""
-            schedule_config = await get_schedule_config(db)
-            datetime_str = _format_wechat_datetime(schedule.date, schedule.time_section, schedule_config)
-            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
-            data_payload = _wechat_payload_appointment(
-                patient_name,
-                datetime_str,
-                location,
-                doctor_name,
-                status="预约成功",
-            )
-
-            target_user_id = patient.user_id or current_user.user_id
-            await _wechat_prepare_and_send(
-                db,
-                target_user_id,
-                data.wxCode,
-                data.subscribeAuthResult,
-                data.subscribeScene or "appointment",
-                template_id,
-                data_payload,
-                scene="appointment",
-                order_id=new_order.order_id,
-            )
-        except Exception as exc:
-            logger.warning(f"预约成功微信通知失败: {exc}")
+        # 8. 预约创建阶段不再发送“预约成功”订阅消息，改为在支付成功后推送
         
         # 9. 队列号码在就诊时动态分配，创建时不设置
         logger.info(f"创建预约成功: order_id={new_order.order_id}, order_no={order_no}, patient_id={data.patientId}")
@@ -2707,6 +2676,47 @@ async def pay_appointment(
         await db.refresh(order)
         
         logger.info(f"支付成功: order_id={appointmentId}, method={payload.method.value}, amount={order.price}")
+
+        # 支付成功后发送“预约成功”微信订阅消息
+        try:
+            # 加载患者、医生、门诊信息
+            patient_obj = await db.get(Patient, order.patient_id) if order.patient_id else None
+            schedule = await db.get(Schedule, order.schedule_id) if order.schedule_id else None
+            doctor, clinic, dept = await _load_doctor_and_dept(db, schedule) if schedule else (None, None, None)
+
+            patient_name = patient_obj.name if patient_obj else ""
+            doctor_name = doctor.name if doctor else ""
+            # 预约地点优先使用 address，其次使用 name
+            location = (clinic.address or clinic.name) if clinic else ""
+
+            schedule_config = await get_schedule_config(db)
+            datetime_str = _format_wechat_datetime(order.slot_date, order.time_section, schedule_config)
+
+            template_id = settings.WECHAT_TEMPLATE_APPOINTMENT_SUCCESS
+            data_payload = _wechat_payload_appointment(
+                patient_name,
+                datetime_str,
+                location,
+                doctor_name,
+                status="预约成功",
+            )
+
+            # 目标用户：患者绑定的 user_id 优先，其次为当前用户
+            target_user_id = (patient_obj.user_id if patient_obj and patient_obj.user_id else current_user.user_id)
+
+            await _wechat_prepare_and_send(
+                db,
+                target_user_id,
+                wx_code=None,  # 支付接口无 code，走已绑定 openid 的路径
+                subscribe_auth=None,  # 不记录授权（授权在前端入口处完成）
+                subscribe_scene=None,
+                template_id=template_id,
+                data=data_payload,
+                scene="appointment_paid",
+                order_id=order.order_id,
+            )
+        except Exception as exc:
+            logger.warning(f"支付成功后预约通知发送失败: {exc}")
         
         return ResponseModel(code=0, message=PaymentResponse(
             success=True,

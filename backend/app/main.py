@@ -8,6 +8,7 @@ import os
 import sys
 from redis.asyncio import Redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from app.core.datetime_utils import BEIJING_TZ
 
 from app.api import auth,statistics
 from app.api import admin,doctor, patient, common
@@ -103,8 +104,8 @@ async def lifespan(app: FastAPI):
         start_absence_scheduler()
         logger.info("✓ 缺勤检测定时任务已启动")
         
-        # 启动 APScheduler 并注册候补队列同步任务
-        scheduler = AsyncIOScheduler()
+        # 启动 APScheduler 并注册候补队列同步任务（强制使用北京时间时区）
+        scheduler = AsyncIOScheduler(timezone=BEIJING_TZ)
         scheduler.add_job(persist_waitlist_job, "interval", minutes=5, id="persist_waitlist")
         scheduler.add_job(check_payment_timeout_job, "interval", minutes=1, id="check_payment_timeout")
         # 添加就诊提醒任务：每天晚上20:00执行
