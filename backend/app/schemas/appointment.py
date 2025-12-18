@@ -13,6 +13,11 @@ class AppointmentCreate(BaseModel):
     departmentId: int = Field(..., description="科室ID")
     patientId: int = Field(..., description="就诊人ID")
     symptoms: Optional[str] = Field(None, description="症状描述")
+    
+    # 微信订阅消息相关字段（可选）
+    wxCode: Optional[str] = Field(None, description="wx.login() 获取的临时 code")
+    subscribeAuthResult: Optional[dict] = Field(None, description="订阅授权结果")
+    subscribeScene: Optional[str] = Field(None, description="业务场景标识")
 
 
 class AppointmentResponse(BaseModel):
@@ -67,6 +72,14 @@ class CancelAppointmentResponse(BaseModel):
     refundAmount: Optional[float] = None
 
 
+class CancelAppointmentRequest(BaseModel):
+    """取消预约请求（可选的微信字段）"""
+    # 微信订阅消息相关字段（可选）
+    wxCode: Optional[str] = Field(None, description="wx.login() 获取的临时 code")
+    subscribeAuthResult: Optional[dict] = Field(None, description="订阅授权结果")
+    subscribeScene: Optional[str] = Field(None, description="业务场景标识")
+
+
 class RescheduleOption(BaseModel):
     """可改约的排班选项"""
     scheduleId: int
@@ -95,6 +108,11 @@ class RescheduleOptionsResponse(BaseModel):
 class RescheduleRequest(BaseModel):
     """改约请求体"""
     scheduleId: int = Field(..., description="目标排班ID")
+    
+    # 微信订阅消息相关字段（可选）
+    wxCode: Optional[str] = Field(None, description="wx.login() 获取的临时 code")
+    subscribeAuthResult: Optional[dict] = Field(None, description="订阅授权结果")
+    subscribeScene: Optional[str] = Field(None, description="业务场景标识")
 
 
 class RescheduleResponse(BaseModel):

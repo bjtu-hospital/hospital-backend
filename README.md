@@ -2041,7 +2041,7 @@ Authorization: Bearer <token>
 
 #### 5.7 通过请假审核
 - POST `/admin/audit/leave/{audit_id}/approve`
-- 说明：管理员审核通过请假申请，系统会**自动将医生在请假期间的所有排班记录调为停诊状态**
+- 说明：管理员审核通过请假申请，系统会**自动将医生在请假期间的所有排班记录调为停诊状态，并批量取消相关预约**
 
 请求体：
 ```json
@@ -2064,10 +2064,11 @@ Authorization: Bearer <token>
 ```
 
 业务逻辑：
-1. 删除医生在请假期间（`leave_start_date` 至 `leave_end_date`）的所有排班记录
-2. 更新审核表状态为 `approved`
-3. 记录审核人和审核时间
-4. 事务提交，确保数据一致性
+1. 将医生在请假期间（`leave_start_date` 至 `leave_end_date`）的排班状态标记为“停诊”
+2. 批量取消请假期间该医生的**非候补**待支付/已确认订单，释放剩余号源：已支付订单标记为 `REFUNDED` 并记录退款时间与金额，未支付/待支付订单标记为 `CANCELLED`
+3. 若患者已授权微信订阅消息模板 `WECHAT_TEMPLATE_CANCEL_SUCCESS`，发送取消通知（包含就诊人、日期+时段开始时间、医生、停诊原因、订单状态“已取消”），无法通知时仅记录日志不影响事务
+4. 更新审核表状态为 `approved`，记录审核人与审核时间
+5. 事务提交，确保数据一致性
 
 
 #### 5.8 拒绝请假审核
@@ -4569,6 +4570,11 @@ GET /doctor/leave/history?status=pending
 ```json
 { "code": 0, "message": { "audit_id": 24, "status": "approved", "auditor_id": 119, "audit_time": "2025-11-27T10:21:21" } }
 ```
+
+处理逻辑：
+- 状态置为 `approved`，记录审核人、审核时间与备注
+- 批量取消请假区间内该医生的**非候补**待支付/已确认订单并释放号源：已支付标记为 `REFUNDED`，其他标记为 `CANCELLED`
+- 若患者已授权模板 `WECHAT_TEMPLATE_CANCEL_SUCCESS`，发送微信取消通知（就诊人、日期+时段开始时间、医生、停诊原因“预约医生因故排班停诊”、状态“已取消”）；发送失败仅记录日志
 
 ### 4.4 驳回请假申请 Post: `/doctor/leave/audit/{audit_id}/reject`
 请求体：
