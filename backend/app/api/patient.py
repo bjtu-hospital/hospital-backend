@@ -1203,7 +1203,7 @@ async def get_schedules(
             end_dt = start_dt
         else:
             # 未传 date,查询从今天开始的未来7天
-            start_dt = datetime.now().date()
+            start_dt = get_now_naive().date()
             end_dt = start_dt + timedelta(days=6)  # 今天 + 未来6天 = 共7天
 
         # 查询该小科室下的所有门诊
@@ -1279,7 +1279,7 @@ async def get_schedules(
 def _generate_order_no() -> str:
     """生成订单号: YYYYMMDD + 8位随机数"""
     import random
-    date_str = datetime.now().strftime("%Y%m%d")
+    date_str = get_now_naive().strftime("%Y%m%d")
     random_num = random.randint(10000000, 99999999)
     return f"{date_str}{random_num}"
 
@@ -1466,9 +1466,11 @@ async def create_appointment(
     4. 检查号源是否充足,不足则返回错误
     """
     try:
-        # 1. 验证排班是否存在
+        # 1. 验证排班是否存在 - 使用悲观锁防止并发超卖
         schedule_res = await db.execute(
-            select(Schedule).where(Schedule.schedule_id == data.scheduleId)
+            select(Schedule)
+            .where(Schedule.schedule_id == data.scheduleId)
+            .with_for_update()  # 悲观锁：锁定该行直到事务结束
         )
         schedule = schedule_res.scalar_one_or_none()
         if not schedule:
@@ -1567,7 +1569,7 @@ async def create_appointment(
         max_appointments = reg_config.get("maxAppointmentsPerPeriod", 10)
         period_days = reg_config.get("appointmentPeriodDays", 8)
         
-        period_start = datetime.now().date() - timedelta(days=period_days)
+        period_start = get_now_naive().date() - timedelta(days=period_days)
         count_res = await db.execute(
             select(func.count()).select_from(RegistrationOrder).where(
                 and_(
@@ -1621,8 +1623,8 @@ async def create_appointment(
             status=OrderStatus.PENDING,  # 待支付
             payment_status=PaymentStatus.PENDING,  # 待支付
             source_type="normal",  # 普通预约
-            create_time=datetime.now(),
-            update_time=datetime.now()
+            create_time=get_now_naive(),
+            update_time=get_now_naive()
         )
         
         db.add(new_order)
@@ -1744,7 +1746,7 @@ async def get_my_appointments(
                 reg_config = doctor_configs.get(order.doctor_id, {})
                 cancel_hours_before = reg_config.get("cancelHoursBefore", 2)
                 
-                now = datetime.now()
+                now = get_now_naive()
                 appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
                 
                 # 根据时间段从配置中获取开始时间
@@ -1762,7 +1764,7 @@ async def get_my_appointments(
             can_reschedule = False
             if order.status in [OrderStatus.PENDING, OrderStatus.CONFIRMED] and schedule:
                 start_dt = _build_schedule_start_datetime(schedule, schedule_config or {})
-                can_reschedule = start_dt > datetime.now()
+                can_reschedule = start_dt > get_now_naive()
             
             appointment_list.append(AppointmentListItem(
                 id=order.order_id,
@@ -1823,11 +1825,14 @@ async def cancel_appointment(
     - 取消后释放号源
     """
     try:
-        # 1. 查询订单
+        # 1. 查询订单 - 使用悲观锁防止并发释放号源
         order_res = await db.execute(
-            select(RegistrationOrder, Schedule).join(
+            select(RegistrationOrder, Schedule)
+            .join(
                 Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id
-            ).where(RegistrationOrder.order_id == appointmentId)
+            )
+            .where(RegistrationOrder.order_id == appointmentId)
+            .with_for_update()  # 悲观锁：锁定订单和排班记录
         )
         row = order_res.first()
         
@@ -1880,7 +1885,7 @@ async def cancel_appointment(
                 scope_id=order.doctor_id
             )
             timeout_minutes = int(reg_config.get("paymentTimeoutMinutes", 30))
-            now = datetime.now()
+            now = get_now_naive()
             create_time = order.create_time or now
             if now >= (create_time + timedelta(minutes=timeout_minutes)):
                 # 超时自动取消：标记为已超时，支付失败
@@ -1948,7 +1953,7 @@ async def cancel_appointment(
         
         cancel_hours_before = reg_config.get("cancelHoursBefore", 2)
         
-        now = datetime.now()
+        now = get_now_naive()
         appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
         
         # 根据时间段从配置中获取开始时间
@@ -2216,12 +2221,14 @@ async def reschedule_appointment(
 ):
     """改约到同医生同诊室的其他排班"""
     try:
+        # 1. 查询订单和原排班 - 使用悲观锁
         order_res = await db.execute(
             select(RegistrationOrder, Schedule, Patient, Clinic)
             .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
             .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
             .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
             .where(RegistrationOrder.order_id == appointmentId)
+            .with_for_update()  # 悲观锁：锁定订单和原排班
         )
         row = order_res.first()
 
@@ -2271,7 +2278,7 @@ async def reschedule_appointment(
             )
 
         schedule_config = await get_schedule_config(db)
-        now = datetime.now()
+        now = get_now_naive()
 
         if _build_schedule_start_datetime(current_schedule, schedule_config or {}) <= now:
             raise BusinessHTTPException(
@@ -2280,10 +2287,12 @@ async def reschedule_appointment(
                 status_code=400
             )
 
+        # 2. 查询目标排班 - 使用悲观锁防止并发改约超卖
         target_res = await db.execute(
             select(Schedule, Clinic)
             .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
             .where(Schedule.schedule_id == payload.scheduleId)
+            .with_for_update()  # 悲观锁：锁定目标排班
         )
         target_row = target_res.first()
 
@@ -2532,7 +2541,7 @@ async def get_my_initiated_appointments(
                 reg_config = doctor_configs.get(order.doctor_id, {})
                 cancel_hours_before = reg_config.get("cancelHoursBefore", 2) if reg_config else 2
                 
-                now = datetime.now()
+                now = get_now_naive()
                 appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
                 
                 if order.time_section == "上午":
@@ -2548,7 +2557,7 @@ async def get_my_initiated_appointments(
             can_reschedule = False
             if order.status in [OrderStatus.PENDING, OrderStatus.CONFIRMED] and schedule:
                 start_dt = _build_schedule_start_datetime(schedule, schedule_config or {})
-                can_reschedule = start_dt > datetime.now()
+                can_reschedule = start_dt > get_now_naive()
             
             # 排队号码由就诊系统动态管理，预约阶段不提供
             queue_number = None
@@ -2664,7 +2673,7 @@ async def pay_appointment(
             )
         
         # 5. 模拟支付流程（开发/测试环境直接标记为已支付）
-        now = datetime.now()
+        now = get_now_naive()
         order.payment_status = PaymentStatus.PAID
         order.payment_time = now
         order.payment_method = payload.method.value
@@ -2755,11 +2764,12 @@ async def cancel_payment(
     - PAID 状态需检查是否超过预约时间
     """
     try:
-        # 1. 查询订单
+        # 1. 查询订单 - 使用悲观锁防止并发释放号源
         order_res = await db.execute(
-            select(RegistrationOrder, Schedule).
-            outerjoin(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id).
-            where(RegistrationOrder.order_id == appointmentId)
+            select(RegistrationOrder, Schedule)
+            .outerjoin(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+            .where(RegistrationOrder.order_id == appointmentId)
+            .with_for_update()  # 悲观锁：锁定订单和排班
         )
         row = order_res.first()
         
@@ -2812,7 +2822,7 @@ async def cancel_payment(
                 scope_id=order.doctor_id
             )
             timeout_minutes = int(reg_config.get("paymentTimeoutMinutes", 30))
-            now = datetime.now()
+            now = get_now_naive()
             create_time = order.create_time or now
             if now >= (create_time + timedelta(minutes=timeout_minutes)):
                 # 超时自动取消：标记为已超时，支付失败
@@ -2849,7 +2859,7 @@ async def cancel_payment(
             # 获取排班配置
             schedule_config = await get_schedule_config(db)
             
-            now = datetime.now()
+            now = get_now_naive()
             appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
             
             # 根据时间段获取开始时间
@@ -2871,7 +2881,7 @@ async def cancel_payment(
                 )
         
         # 6. 执行取消逻辑
-        now = datetime.now()
+        now = get_now_naive()
         order.status = OrderStatus.CANCELLED
         
         # 如果已支付，标记为退款
@@ -3010,7 +3020,12 @@ async def join_waitlist(
 ):
     """加入候补队列 - 号源满时使用"""
     try:
-        schedule_res = await db.execute(select(Schedule).where(Schedule.schedule_id == data.scheduleId))
+        # 1. 查询排班 - 使用悲观锁防止并发检查号源
+        schedule_res = await db.execute(
+            select(Schedule)
+            .where(Schedule.schedule_id == data.scheduleId)
+            .with_for_update()  # 悲观锁：锁定排班记录
+        )
         schedule = schedule_res.scalar_one_or_none()
         if not schedule:
             raise ResourceHTTPException(
@@ -3112,7 +3127,7 @@ async def join_waitlist(
         # 计算最终价格，精确到小数点后2位
         final_price = calculate_final_price(base_price, discount_rate)
 
-        now = datetime.now()
+        now = get_now_naive()
         order_no = _generate_order_no()
 
         order = RegistrationOrder(
@@ -3305,7 +3320,7 @@ async def cancel_waitlist(
                 status_code=403
             )
 
-        now = datetime.now()
+        now = get_now_naive()
         order.status = OrderStatus.CANCELLED
         order.payment_status = PaymentStatus.CANCELLED
         order.is_waitlist = False
@@ -3345,12 +3360,14 @@ async def convert_waitlist(
 ):
     """候补转预约 - 需要号源"""
     try:
+        # 1. 查询候补记录和排班 - 使用悲观锁防止并发转换
         res = await db.execute(
             select(RegistrationOrder, Schedule, Doctor, Patient)
             .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
             .join(Doctor, Doctor.doctor_id == RegistrationOrder.doctor_id)
             .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
             .where(RegistrationOrder.order_id == waitlistId)
+            .with_for_update()  # 悲观锁：锁定订单和排班
         )
         row = res.first()
 
@@ -3406,7 +3423,7 @@ async def convert_waitlist(
         # 计算最终价格，精确到小数点后2位
         final_price = calculate_final_price(base_price, discount_rate)
 
-        now = datetime.now()
+        now = get_now_naive()
         order.status = OrderStatus.PENDING
         order.payment_status = PaymentStatus.PENDING
         order.is_waitlist = False
@@ -4671,7 +4688,7 @@ async def get_appointment_detail(
             
             cancel_hours_before = reg_config.get("cancelHoursBefore", 2)
             
-            now = datetime.now()
+            now = get_now_naive()
             appointment_datetime = datetime.combine(order.slot_date, datetime.min.time())
             
             # 根据时间段从配置中获取开始时间
@@ -4812,7 +4829,7 @@ async def send_appointment_reminder(
             )
         
         # 4. 限制条件：只能在就诊前一天发送（临近就诊）
-        today = datetime.now().date()
+        today = get_now_naive().date()
         tomorrow = today + timedelta(days=1)
         
         # 允许的发送日期范围：从今天到明天都可以
