@@ -18,7 +18,7 @@ from app.models.patient import PatientType
 from app.models.user import UserType
 from app.models.visit_history import VisitHistory
 from app.models.patient_relation import PatientRelation
-from app.schemas.response import ResponseModel
+from app.schemas.response import ResponseModel, DoctorListResponse
 from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentResponse,
@@ -514,6 +514,9 @@ async def get_doctors(
     - doctors: 医生列表,包含价格配置和注册状态
     """
     try:
+        # 查询数据库中所有医生的总数（不受过滤条件影响）
+        all_doctors_count = await db.scalar(select(func.count()).select_from(Doctor))
+        
         # 构建查询条件
         filters = []
         if dept_id:
@@ -521,9 +524,8 @@ async def get_doctors(
         if name:
             filters.append(Doctor.name.like(f"%{name}%"))
         
-        # 查询总数
-        count_query = select(func.count()).select_from(Doctor).where(and_(*filters) if filters else True)
-        total = await db.scalar(count_query)
+        # 查询过滤后的医生总数（用于分页计算）
+        filtered_count = await db.scalar(select(func.count()).select_from(Doctor).where(and_(*filters) if filters else True))
         
         # 分页查询
         offset = (page - 1) * page_size
@@ -571,6 +573,7 @@ async def get_doctors(
                 "introduction": doctor.introduction,
                 "photo_path": doctor.photo_path,
                 "original_photo_url": doctor.original_photo_url,
+                "is_registered": is_registered,
                 "default_price_normal": prices["default_price_normal"],
                 "default_price_expert": prices["default_price_expert"],
                 "default_price_special": prices["default_price_special"]
@@ -578,12 +581,10 @@ async def get_doctors(
         
         return ResponseModel(
             code=0,
-            message={
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-                "doctors": doctor_list
-            }
+            message=DoctorListResponse(
+                total=all_doctors_count,
+                doctors=doctor_list
+            )
         )
         
     except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):

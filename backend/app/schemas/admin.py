@@ -135,6 +135,7 @@ class DoctorTransferDepartment(BaseModel):
 
 # 门诊
 class ClinicCreate(BaseModel):
+    area_id: int = Field(description="院区ID")
     minor_dept_id: int = Field(description="小科室ID")
     name: str = Field(max_length=100, description="门诊名称")
     clinic_type: int = Field(0, description="门诊类型: 0-普通, 1-国疗, 2-特需")

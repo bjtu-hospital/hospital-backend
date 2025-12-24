@@ -169,6 +169,7 @@ class DoctorItem(BaseModel):
 
 
 class DoctorListResponse(BaseModel):
+    total: int = 0  # 医生总数
     doctors: List[DoctorItem]
 
 class DoctorAccountCreateResponse(BaseModel):

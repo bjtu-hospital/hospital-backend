@@ -1415,7 +1415,7 @@ curl -X POST "http://127.0.0.1:8000/crawler/schedules/run?skip_crawl=true" -H "A
 ```
 
 ### 3.2 获取医生列表（支持分页）
-- GET `/doctors?dept_id={dept_id}&name={name}&page={page}&page_size={page_size}`
+- GET `/admin/doctors?dept_id={dept_id}&name={name}&page={page}&page_size={page_size}`
 - 参数：
   - `dept_id` (可选)：按科室 ID 过滤
   - `name` (可选)：按医生姓名模糊搜索
@@ -1424,13 +1424,13 @@ curl -X POST "http://127.0.0.1:8000/crawler/schedules/run?skip_crawl=true" -H "A
 
 请求示例：
 ```
-GET /doctors?name=张
-GET /doctors?dept_id=1&name=王
-GET /doctors?page=1&page_size=20           # 分页查询：第1页，每页20条
-GET /doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
+GET /admin/doctors?name=张
+GET /admin/doctors?dept_id=1&name=王
+GET /admin/doctors?page=1&page_size=20           # 分页查询：第1页，每页20条
+GET /admin/doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
 ```
 
-响应（**包含价格信息和分页信息**）：
+响应（**包含价格信息和分页信息，total表示全部医生总数**）：
 ```json
 {
     "code": 0,
@@ -2448,6 +2448,7 @@ GET /admin/clinics?dept_id=1&page=1&page_size=10  # 过滤+分页
 请求体（**支持价格配置**）：
 ```json
 {
+    "area_id": 1,
     "minor_dept_id": 1,
     "name": "心血管内科普通门诊",
     "clinic_type": 0,
@@ -2459,6 +2460,7 @@ GET /admin/clinics?dept_id=1&page=1&page_size=10  # 过滤+分页
 ```
 
 字段说明：
+- `area_id`：院区ID（必填）
 - `minor_dept_id`：小科室ID（必填）
 - `name`：门诊名称（必填）
 - `clinic_type`：门诊类型，0-普通，1-国疗，2-特需（必填，默认0）
@@ -3301,6 +3303,7 @@ Authorization: Bearer <token>
     "code": 0,
     "message": {
         "area_id": 1,
+        "area_name": "门诊楼",
         "start_date": "2025-11-14",
         "end_date": "2025-11-14",
         "total_registrations": 50,
@@ -3312,11 +3315,13 @@ Authorization: Bearer <token>
         "departments": [
             {
                 "minor_dept_id": 10,
+                "minor_dept_name": "心血管科",
                 "registrations": 30,
                 "revenue": 3000.0
             },
             {
                 "minor_dept_id": 11,
+                "minor_dept_name": "消化科",
                 "registrations": 20,
                 "revenue": 2000.0
             }
@@ -3324,6 +3329,10 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+#### 字段说明:
+- `area_name`: 院区名称，从数据库查询；若院区不存在则显示 "院区{area_id}"
+- `minor_dept_name`: 小科室名称，在 departments 数组中的每个科室对象内；若科室不存在则显示 "科室{minor_dept_id}"
 
 ---
 
@@ -3349,6 +3358,7 @@ Authorization: Bearer <token>
     "code": 0,
     "message": {
         "minor_dept_id": 10,
+        "minor_dept_name": "心血管科",
         "start_date": "2025-11-14",
         "end_date": "2025-11-14",
         "total_registrations": 30,
@@ -3377,6 +3387,9 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+#### 字段说明:
+- `minor_dept_name`: 小科室名称，从数据库查询；若科室不存在则显示 "科室{minor_dept_id}"
 
 ---
 
@@ -5310,6 +5323,7 @@ GET /doctors?dept_id=1&name=王&page=1&page_size=20
                 \"introduction\": \"从事心血管疾病临床工作多年...\",
                 \"photo_path\": null,
                 \"original_photo_url\": null,
+                \"is_registered\": true,
                 \"default_price_normal\": 80.00,
                 \"default_price_expert\": null,
                 \"default_price_special\": 888.00
@@ -5319,7 +5333,8 @@ GET /doctors?dept_id=1&name=王&page=1&page_size=20
 }
 ```
 
----
+#### 字段说明:
+- `is_registered`: 布尔值，表示该医生是否已在系统中有可用的用户账号。若为 true，表示医生有激活且未删除的账号；若为 false，表示医生档案存在但未创建账号或账号被停用/删除
 
 ### 1.6 获取医生详情 Get: `/doctors/{doctor_id}`
 
