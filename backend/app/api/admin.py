@@ -1440,6 +1440,9 @@ async def get_doctors(
                 status_code=403
             )
         
+        # 查询数据库中所有医生的总数（不受过滤条件影响）
+        all_doctors_count = await db.scalar(select(func.count()).select_from(Doctor))
+        
         # 构建查询条件
         filters = []
         if dept_id:
@@ -1447,9 +1450,8 @@ async def get_doctors(
         if name:
             filters.append(Doctor.name.like(f"%{name}%"))
         
-        # 查询总数
-        count_query = select(func.count()).select_from(Doctor).where(and_(*filters) if filters else True)
-        total = await db.scalar(count_query)
+        # 查询过滤后的医生总数（用于分页计算）
+        filtered_count = await db.scalar(select(func.count()).select_from(Doctor).where(and_(*filters) if filters else True))
         
         # 分页查询
         offset = (page - 1) * page_size
@@ -1504,12 +1506,10 @@ async def get_doctors(
         
         return ResponseModel(
             code=0,
-            message={
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-                "doctors": doctor_list
-            }
+            message=DoctorListResponse(
+                total=all_doctors_count,
+                doctors=doctor_list
+            )
         )
     except AuthHTTPException:
         raise
@@ -2703,6 +2703,15 @@ async def create_clinic(
                 status_code=403
             )
 
+        # 校验院区存在
+        area_result = await db.execute(select(HospitalArea).where(HospitalArea.area_id == clinic_data.area_id))
+        if not area_result.scalar_one_or_none():
+            raise ResourceHTTPException(
+                code=settings.REQ_ERROR_CODE,
+                msg="院区不存在",
+                status_code=400
+            )
+
         # 校验小科室存在
         result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == clinic_data.minor_dept_id))
         if not result.scalar_one_or_none():
@@ -2712,9 +2721,9 @@ async def create_clinic(
                 status_code=400
             )
 
-        # 目前未提供院区选择，默认归属院区ID=1（后续支持可扩展）
+        # 使用传入的院区ID
         db_clinic = Clinic(
-            area_id=1,
+            area_id=clinic_data.area_id,
             name=clinic_data.name,
             address=clinic_data.address,
             minor_dept_id=clinic_data.minor_dept_id,

@@ -1415,7 +1415,7 @@ curl -X POST "http://127.0.0.1:8000/crawler/schedules/run?skip_crawl=true" -H "A
 ```
 
 ### 3.2 获取医生列表（支持分页）
-- GET `/doctors?dept_id={dept_id}&name={name}&page={page}&page_size={page_size}`
+- GET `/admin/doctors?dept_id={dept_id}&name={name}&page={page}&page_size={page_size}`
 - 参数：
   - `dept_id` (可选)：按科室 ID 过滤
   - `name` (可选)：按医生姓名模糊搜索
@@ -1424,13 +1424,13 @@ curl -X POST "http://127.0.0.1:8000/crawler/schedules/run?skip_crawl=true" -H "A
 
 请求示例：
 ```
-GET /doctors?name=张
-GET /doctors?dept_id=1&name=王
-GET /doctors?page=1&page_size=20           # 分页查询：第1页，每页20条
-GET /doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
+GET /admin/doctors?name=张
+GET /admin/doctors?dept_id=1&name=王
+GET /admin/doctors?page=1&page_size=20           # 分页查询：第1页，每页20条
+GET /admin/doctors?dept_id=1&page=2&page_size=10  # 科室过滤+分页
 ```
 
-响应（**包含价格信息和分页信息**）：
+响应（**包含价格信息和分页信息，total表示全部医生总数**）：
 ```json
 {
     "code": 0,
@@ -2448,6 +2448,7 @@ GET /admin/clinics?dept_id=1&page=1&page_size=10  # 过滤+分页
 请求体（**支持价格配置**）：
 ```json
 {
+    "area_id": 1,
     "minor_dept_id": 1,
     "name": "心血管内科普通门诊",
     "clinic_type": 0,
@@ -2459,6 +2460,7 @@ GET /admin/clinics?dept_id=1&page=1&page_size=10  # 过滤+分页
 ```
 
 字段说明：
+- `area_id`：院区ID（必填）
 - `minor_dept_id`：小科室ID（必填）
 - `name`：门诊名称（必填）
 - `clinic_type`：门诊类型，0-普通，1-国疗，2-特需（必填，默认0）
