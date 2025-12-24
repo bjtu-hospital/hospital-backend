@@ -24,6 +24,7 @@ class SMSService:
 
     @staticmethod
     def _create_client() -> Dypnsapi20170525Client:
+        """创建阿里云短信客户端，使用正确的凭证初始化方式避免云端 SDK 版本不兼容"""
         ak = settings.ALI_ACCESS_KEY_ID
         sk = settings.ALI_ACCESS_KEY_SECRET
         if not ak or not sk:
@@ -31,7 +32,12 @@ class SMSService:
                 code=settings.DATA_GET_FAILED_CODE,
                 msg="短信服务未配置，缺少 AK/SK"
             )
-        config = open_api_models.Config(access_key_id=ak, access_key_secret=sk)
+        # 显式传递凭证，避免 'CredentialModel' 对象属性缺失的问题
+        config = open_api_models.Config(
+            access_key_id=ak,
+            access_key_secret=sk,
+            region_id='cn-hangzhou'  # 阿里云短信服务默认区域
+        )
         return Dypnsapi20170525Client(config)
 
     @staticmethod
