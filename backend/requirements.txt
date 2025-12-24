@@ -60,4 +60,7 @@ uvicorn==0.35.0
 watchfiles==1.1.0
 websockets==15.0.1
 yarl==1.22.0
-alibabacloud_dypnsapi20170525
+alibabacloud_dypnsapi20170525==2.0.3
+alibabacloud-tea-openapi==0.3.9
+alibabacloud-tea-util==0.3.13
+alibabacloud-openapi-util==0.2.2
