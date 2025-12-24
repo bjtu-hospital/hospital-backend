@@ -3303,6 +3303,7 @@ Authorization: Bearer <token>
     "code": 0,
     "message": {
         "area_id": 1,
+        "area_name": "门诊楼",
         "start_date": "2025-11-14",
         "end_date": "2025-11-14",
         "total_registrations": 50,
@@ -3314,11 +3315,13 @@ Authorization: Bearer <token>
         "departments": [
             {
                 "minor_dept_id": 10,
+                "minor_dept_name": "心血管科",
                 "registrations": 30,
                 "revenue": 3000.0
             },
             {
                 "minor_dept_id": 11,
+                "minor_dept_name": "消化科",
                 "registrations": 20,
                 "revenue": 2000.0
             }
@@ -3326,6 +3329,10 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+#### 字段说明:
+- `area_name`: 院区名称，从数据库查询；若院区不存在则显示 "院区{area_id}"
+- `minor_dept_name`: 小科室名称，在 departments 数组中的每个科室对象内；若科室不存在则显示 "科室{minor_dept_id}"
 
 ---
 
@@ -3351,6 +3358,7 @@ Authorization: Bearer <token>
     "code": 0,
     "message": {
         "minor_dept_id": 10,
+        "minor_dept_name": "心血管科",
         "start_date": "2025-11-14",
         "end_date": "2025-11-14",
         "total_registrations": 30,
@@ -3379,6 +3387,9 @@ Authorization: Bearer <token>
     }
 }
 ```
+
+#### 字段说明:
+- `minor_dept_name`: 小科室名称，从数据库查询；若科室不存在则显示 "科室{minor_dept_id}"
 
 ---
 
@@ -5312,6 +5323,7 @@ GET /doctors?dept_id=1&name=王&page=1&page_size=20
                 \"introduction\": \"从事心血管疾病临床工作多年...\",
                 \"photo_path\": null,
                 \"original_photo_url\": null,
+                \"is_registered\": true,
                 \"default_price_normal\": 80.00,
                 \"default_price_expert\": null,
                 \"default_price_special\": 888.00
@@ -5321,7 +5333,8 @@ GET /doctors?dept_id=1&name=王&page=1&page_size=20
 }
 ```
 
----
+#### 字段说明:
+- `is_registered`: 布尔值，表示该医生是否已在系统中有可用的用户账号。若为 true，表示医生有激活且未删除的账号；若为 false，表示医生档案存在但未创建账号或账号被停用/删除
 
 ### 1.6 获取医生详情 Get: `/doctors/{doctor_id}`
 

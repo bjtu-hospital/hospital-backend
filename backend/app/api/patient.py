@@ -573,6 +573,7 @@ async def get_doctors(
                 "introduction": doctor.introduction,
                 "photo_path": doctor.photo_path,
                 "original_photo_url": doctor.original_photo_url,
+                "is_registered": is_registered,
                 "default_price_normal": prices["default_price_normal"],
                 "default_price_expert": prices["default_price_expert"],
                 "default_price_special": prices["default_price_special"]

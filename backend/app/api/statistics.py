@@ -134,6 +134,11 @@ async def area_registrations(
             raise Exception("仅管理员可访问")
         start_date, end_date = _parse_date_range(date, None)
 
+        # 获取院区名称
+        area_result = await db.execute(select(HospitalArea).where(HospitalArea.area_id == area_id))
+        hospital_area = area_result.scalar_one_or_none()
+        area_name = hospital_area.name if hospital_area else f"院区{area_id}"
+
         # 总数与收入，按关联 clinic.area_id
         total_q = select(func.count()).select_from(RegistrationOrder).join(Schedule, RegistrationOrder.schedule_id == Schedule.schedule_id).join(Clinic, Schedule.clinic_id == Clinic.clinic_id).where(
             and_(Clinic.area_id == area_id, RegistrationOrder.slot_date >= start_date, RegistrationOrder.slot_date <= end_date,
@@ -160,16 +165,28 @@ async def area_registrations(
                  RegistrationOrder.status != "cancelled")
         ).group_by(Clinic.minor_dept_id)
         rows = await db.execute(dept_q)
+        dept_ids = [rid for rid, _, _ in rows.all() if rid]
+        
+        # 批量获取小科室名称
+        dept_map = {}
+        if dept_ids:
+            depts_result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id.in_(dept_ids)))
+            for dept in depts_result.scalars().all():
+                dept_map[dept.minor_dept_id] = dept.name
+        
         departments = []
-        for rid, cnt, rev in rows.all():
+        rows_data = await db.execute(dept_q)
+        for rid, cnt, rev in rows_data.all():
             departments.append({
                 "minor_dept_id": rid,
+                "minor_dept_name": dept_map.get(rid, f"科室{rid}") if rid else None,
                 "registrations": int(cnt or 0),
                 "revenue": float(rev or 0.0)
             })
 
         return ResponseModel(code=0, message={
             "area_id": area_id,
+            "area_name": area_name,
             "start_date": str(start_date),
             "end_date": str(end_date),
             "total_registrations": int(total_registrations or 0),
@@ -194,6 +211,11 @@ async def department_registrations(
         if not getattr(current_user, "is_admin", False):
             raise Exception("仅管理员可访问")
         start_date, end_date = _parse_date_range(date, date_range)
+
+        # 获取科室名称
+        dept_result = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == minor_dept_id))
+        minor_dept = dept_result.scalar_one_or_none()
+        minor_dept_name = minor_dept.name if minor_dept else f"科室{minor_dept_id}"
 
         total_q = select(func.count()).select_from(RegistrationOrder).join(Schedule, RegistrationOrder.schedule_id == Schedule.schedule_id).join(Clinic, Schedule.clinic_id == Clinic.clinic_id).where(
             and_(Clinic.minor_dept_id == minor_dept_id, RegistrationOrder.slot_date >= start_date, RegistrationOrder.slot_date <= end_date,
@@ -249,6 +271,7 @@ async def department_registrations(
 
         return ResponseModel(code=0, message={
             "minor_dept_id": minor_dept_id,
+            "minor_dept_name": minor_dept_name,
             "start_date": str(start_date),
             "end_date": str(end_date),
             "total_registrations": int(total_registrations or 0),
