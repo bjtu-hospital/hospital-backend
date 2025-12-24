@@ -276,6 +276,88 @@ def _ensure_admin(current_user: UserSchema):
         )
 
 
+def _collect_doctor_ids(raw_schedule):
+    """收集排班 JSON 中出现的医生 ID 集合。"""
+    ids = set()
+    if not isinstance(raw_schedule, list):
+        return ids
+    for day in raw_schedule:
+        if not isinstance(day, list):
+            continue
+        for slot in day:
+            if not slot:
+                continue
+            if isinstance(slot, (int, str)):
+                try:
+                    ids.add(int(slot))
+                except Exception:
+                    continue
+            elif isinstance(slot, dict):
+                doctor_id = slot.get("doctor_id") or slot.get("doctorId")
+                try:
+                    if doctor_id is not None:
+                        ids.add(int(doctor_id))
+                except Exception:
+                    continue
+    return ids
+
+
+def _normalize_schedule_data(raw_schedule, doctor_name_map=None):
+    """将存储的排班 JSON 规范化为 List[List[ScheduleDoctorInfo]] 结构。
+
+    - 支持 snake_case(doctor_id/doctor_name) 与 camelCase(doctorId/doctorName)。
+    - 当槽位为空或缺少 doctor_id 时回退为 None，避免校验报错；若缺少 doctor_name 则尝试用 doctor_name_map 回填，否则回退为空串。
+    """
+    if not isinstance(raw_schedule, list):
+        return []
+
+    normalized = []
+    for day in raw_schedule:
+        if not isinstance(day, list):
+            normalized.append([None, None, None])
+            continue
+
+        slots = []
+        for slot in day:
+            if not slot:
+                slots.append(None)
+                continue
+
+            # 支持整数/字符串(仅包含 doctor_id) 或字典对象
+            if isinstance(slot, (int, str)):
+                try:
+                    doctor_id = int(slot)
+                except Exception:
+                    slots.append(None)
+                    continue
+                doctor_name = ""
+                if doctor_name_map and doctor_id in doctor_name_map:
+                    doctor_name = doctor_name_map[doctor_id]
+                slots.append({"doctor_id": doctor_id, "doctor_name": doctor_name})
+                continue
+
+            if isinstance(slot, dict):
+                doctor_id = slot.get("doctor_id") or slot.get("doctorId")
+                doctor_name = slot.get("doctor_name") or slot.get("doctorName") or ""
+                try:
+                    doctor_id = int(doctor_id) if doctor_id is not None else None
+                except Exception:
+                    doctor_id = None
+
+                if doctor_id is None:
+                    slots.append(None)
+                else:
+                    if not doctor_name and doctor_name_map and doctor_id in doctor_name_map:
+                        doctor_name = doctor_name_map[doctor_id]
+                    slots.append({"doctor_id": doctor_id, "doctor_name": doctor_name})
+            else:
+                slots.append(None)
+
+        normalized.append(slots)
+
+    return normalized
+
+
 @router.get("/anti-scalper/users", response_model=ResponseModel[Union[AntiScalperUserListResponse, AuthErrorResponse]])
 async def anti_scalper_users(
     user_type: Optional[str] = "normal",
@@ -3371,9 +3453,20 @@ async def get_schedule_audits(
             .join(Doctor, Doctor.doctor_id == ScheduleAudit.submitter_doctor_id)
             .order_by(ScheduleAudit.submit_time.desc())
         )
-        
+
+        rows = result.all()
+
+        # 一次性批量查出所有涉及的医生姓名，用于补齐缺失的 doctor_name
+        doctor_ids = set()
+        for audit, *_ in rows:
+            doctor_ids |= _collect_doctor_ids(audit.schedule_data_json)
+        doctor_name_map = {}
+        if doctor_ids:
+            doctor_rows = await db.execute(select(Doctor.doctor_id, Doctor.name).where(Doctor.doctor_id.in_(doctor_ids)))
+            doctor_name_map = {doc_id: name for doc_id, name in doctor_rows.all()}
+
         audit_list = []
-        for audit, dept_name, clinic_name, submitter_name in result.all():
+        for audit, dept_name, clinic_name, submitter_name in rows:
             audit_list.append(ScheduleAuditItem(
                 id=audit.audit_id,
                 department_id=audit.minor_dept_id,
@@ -3390,8 +3483,7 @@ async def get_schedule_audits(
                 auditor_id=audit.auditor_user_id,
                 audit_time=audit.audit_time,
                 audit_remark=audit.audit_remark,
-                # 假设 schedule_data_json 结构已符合 ScheduleAuditItem.schedule
-                schedule=audit.schedule_data_json
+                schedule=_normalize_schedule_data(audit.schedule_data_json, doctor_name_map)
             ))
 
         return ResponseModel(code=0, message=ScheduleAuditListResponse(audits=audit_list))
@@ -3490,6 +3582,13 @@ async def get_schedule_audit_detail(
             )
         
         audit, dept_name, clinic_name, submitter_name = row
+
+        # 补齐 doctor_name：单条记录也做映射，避免 doctor_name 为空
+        doctor_ids = _collect_doctor_ids(audit.schedule_data_json)
+        doctor_name_map = {}
+        if doctor_ids:
+            doctor_rows = await db.execute(select(Doctor.doctor_id, Doctor.name).where(Doctor.doctor_id.in_(doctor_ids)))
+            doctor_name_map = {doc_id: name for doc_id, name in doctor_rows.all()}
         
         return ResponseModel(code=0, message=ScheduleAuditItem(
             id=audit.audit_id,
@@ -3507,7 +3606,7 @@ async def get_schedule_audit_detail(
             auditor_id=audit.auditor_user_id,
             audit_time=audit.audit_time,
             audit_remark=audit.audit_remark,
-            schedule=audit.schedule_data_json
+            schedule=_normalize_schedule_data(audit.schedule_data_json, doctor_name_map)
         ))
     except AuthHTTPException:
         raise
