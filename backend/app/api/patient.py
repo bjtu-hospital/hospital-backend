@@ -85,6 +85,8 @@ from app.services.wechat_service import WechatService
 from app.schemas.wechat import WechatLoginRequest
 from app.schemas.wechat import WechatCodeToOpenIdResponse
 from app.schemas.wechat import SubscribeAuthResult
+from app.schemas.wechat import WechatOptionalFields
+from app.models.wechat_subscribe_auth import WechatSubscribeAuth
 import requests
 import urllib3
 import hashlib
@@ -1395,7 +1397,7 @@ def _wechat_payload_cancel(patient_name: str, datetime_str: str, doctor_name: st
 
 async def _wechat_prepare_and_send(
     db: AsyncSession,
-    target_user_id: int,
+    actor_user_id: int,
     wx_code: Optional[str],
     subscribe_auth: Optional[dict],
     subscribe_scene: Optional[str],
@@ -1419,28 +1421,28 @@ async def _wechat_prepare_and_send(
                 openid = wx_res.get("openid")
                 await wechat.save_user_openid(
                     db,
-                    target_user_id,
+                    actor_user_id,
                     openid,
                     wx_res.get("session_key"),
                     wx_res.get("unionid"),
                 )
 
         if not openid:
-            openid = await wechat.get_user_openid(db, target_user_id)
+            openid = await wechat.get_user_openid(db, actor_user_id)
 
         if subscribe_auth:
-            await wechat.save_subscribe_auth(db, target_user_id, subscribe_auth, subscribe_scene or scene)
+            await wechat.save_subscribe_auth(db, actor_user_id, subscribe_auth, subscribe_scene or scene)
 
         if not openid:
             return
 
-        authorized = await wechat.check_user_authorized(db, target_user_id, template_id)
+        authorized = await wechat.check_user_authorized(db, actor_user_id, template_id)
         if not authorized:
             return
 
         await wechat.send_subscribe_message(
             db,
-            target_user_id,
+            actor_user_id,
             openid,
             template_id,
             data,
@@ -1918,13 +1920,12 @@ async def cancel_appointment(
                         reason_text,
                         status_text,
                     )
-                    target_user_id = patient_obj.user_id if patient_obj and patient_obj.user_id else current_user.user_id
                     wx_code = payload.wxCode if payload else None
                     subscribe_auth = payload.subscribeAuthResult if payload else None
                     subscribe_scene = payload.subscribeScene if payload else "cancel"
                     await _wechat_prepare_and_send(
                         db,
-                        target_user_id,
+                        current_user.user_id,
                         wx_code,
                         subscribe_auth,
                         subscribe_scene,
@@ -2015,13 +2016,12 @@ async def cancel_appointment(
                 reason_text,
                 status_text,
             )
-            target_user_id = patient_obj.user_id if patient_obj and patient_obj.user_id else current_user.user_id
             wx_code = payload.wxCode if payload else None
             subscribe_auth = payload.subscribeAuthResult if payload else None
             subscribe_scene = payload.subscribeScene if payload else "cancel"
             await _wechat_prepare_and_send(
                 db,
-                target_user_id,
+                current_user.user_id,
                 wx_code,
                 subscribe_auth,
                 subscribe_scene,
@@ -2407,10 +2407,9 @@ async def reschedule_appointment(
                 reason="时间冲突调整",
             )
 
-            target_user_id = patient.user_id if patient and patient.user_id else current_user.user_id
             await _wechat_prepare_and_send(
                 db,
-                target_user_id,
+                current_user.user_id,
                 payload.wxCode,
                 payload.subscribeAuthResult,
                 payload.subscribeScene or "reschedule",
@@ -2712,11 +2711,9 @@ async def pay_appointment(
             )
 
             # 目标用户：患者绑定的 user_id 优先，其次为当前用户
-            target_user_id = (patient_obj.user_id if patient_obj and patient_obj.user_id else current_user.user_id)
-
             await _wechat_prepare_and_send(
                 db,
-                target_user_id,
+                current_user.user_id,
                 wx_code=payload.wxCode,
                 subscribe_auth=payload.subscribeAuthResult,
                 subscribe_scene=payload.subscribeScene or "appointment_paid",
@@ -3168,7 +3165,6 @@ async def join_waitlist(
 
         # 微信订阅授权处理（仅保存授权，不发送消息，留给候补转预约成功时使用）
         try:
-            target_user_id = patient.user_id if patient and patient.user_id else current_user.user_id
             wechat = WechatService()
             
             # 1. 处理 code 换 openid
@@ -3177,7 +3173,7 @@ async def join_waitlist(
                 if wx_res and wx_res.get("openid"):
                     await wechat.save_user_openid(
                         db,
-                        target_user_id,
+                        current_user.user_id,
                         wx_res.get("openid"),
                         wx_res.get("session_key"),
                         wx_res.get("unionid"),
@@ -3187,11 +3183,11 @@ async def join_waitlist(
             if data.subscribeAuthResult:
                 await wechat.save_subscribe_auth(
                     db, 
-                    target_user_id, 
+                    current_user.user_id, 
                     data.subscribeAuthResult, 
                     data.subscribeScene or "waitlist"
                 )
-                logger.info(f"候补加入成功: 已保存订阅授权，不发送即时通知(留给转预约使用). user_id={target_user_id}")
+                logger.info(f"候补加入成功: 已保存订阅授权，不发送即时通知(留给转预约使用). user_id={current_user.user_id}")
                 
         except Exception as exc:
             logger.warning(f"微信订阅授权保存失败: {exc}")
@@ -3445,18 +3441,18 @@ async def convert_waitlist(
         expires_at = (now + timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
 
         return ResponseModel(code=0, message=WaitlistConvertResponse(
-            id=order.order_id,
-            appointmentDate=str(order.slot_date) if order.slot_date else None,
-            appointmentTime=order.time_section,
-            queueNumber=None,
-            doctorName=doctor.name if doctor else None,
-            price=float(final_price) if final_price else 0.0,
-            status=order.status.value,
-            paymentStatus=order.payment_status.value,
-            sourceType=order.source_type if order.source_type else "waitlist",
-            createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
-            expiresAt=expires_at
-        ))
+                id=order.order_id,
+                appointmentDate=str(order.slot_date) if order.slot_date else None,
+                appointmentTime=order.time_section,
+                queueNumber=None,
+                doctorName=doctor.name if doctor else None,
+                price=float(final_price) if final_price else 0.0,
+                status=order.status.value,
+                paymentStatus=order.payment_status.value,
+                sourceType=order.source_type if order.source_type else "waitlist",
+                createdAt=order.create_time.strftime("%Y-%m-%d %H:%M:%S") if order.create_time else "",
+                expiresAt=expires_at
+            ))
 
     except (AuthHTTPException, ResourceHTTPException, BusinessHTTPException):
         await db.rollback()
@@ -3469,6 +3465,99 @@ async def convert_waitlist(
             msg="候补转预约失败",
             status_code=500
         )
+
+
+# ====== 微信订阅：统一授权与绑定信息 ======
+
+@router.post("/wechat/subscribe-auth", response_model=ResponseModel[dict])
+async def wechat_subscribe_auth(
+    payload: WechatOptionalFields = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """保存操作者的微信 openid 绑定和订阅授权结果。
+
+    - 如提供 `wxCode`，执行 code->openid 并绑定到当前用户
+    - 如提供 `subscribeAuthResult`，保存各模板的授权状态（accept/reject/ban）
+    """
+    wechat = WechatService()
+    try:
+        # 1) 绑定 openid（若提供 code）
+        if payload.wxCode:
+            wx_res = await wechat.code_to_openid(payload.wxCode)
+            if wx_res and wx_res.get("openid"):
+                await wechat.save_user_openid(
+                    db,
+                    current_user.user_id,
+                    wx_res.get("openid"),
+                    wx_res.get("session_key"),
+                    wx_res.get("unionid"),
+                )
+
+        # 2) 保存订阅授权结果（若提供）
+        if payload.subscribeAuthResult:
+            await wechat.save_subscribe_auth(
+                db,
+                current_user.user_id,
+                payload.subscribeAuthResult,
+                payload.subscribeScene or "general",
+            )
+
+        # 汇总返回绑定与授权信息
+        openid = await wechat.get_user_openid(db, current_user.user_id)
+        masked = WechatService.mask_openid(openid)
+        # 查询 accept 的模板列表
+        res = await db.execute(
+            select(WechatSubscribeAuth.template_id).where(
+                and_(
+                    WechatSubscribeAuth.user_id == current_user.user_id,
+                    WechatSubscribeAuth.auth_status == "accept",
+                )
+            )
+        )
+        authorized_templates = [t for t in res.scalars().all()]
+
+        return ResponseModel(code=0, message={
+            "bound": bool(openid),
+            "maskedOpenid": masked,
+            "authorizedTemplates": authorized_templates,
+        })
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.warning(f"保存微信订阅授权失败: {e}")
+        return ResponseModel(code=settings.DATA_GET_FAILED_CODE, message={"ok": False, "error": "subscribe auth failed"})
+
+
+@router.get("/wechat/bindinfo", response_model=ResponseModel[dict])
+async def wechat_bindinfo(
+    db: AsyncSession = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """返回当前用户的 openid 绑定与已授权模板列表。"""
+    wechat = WechatService()
+    try:
+        openid = await wechat.get_user_openid(db, current_user.user_id)
+        masked = WechatService.mask_openid(openid)
+        res = await db.execute(
+            select(WechatSubscribeAuth.template_id, WechatSubscribeAuth.auth_status).where(
+                WechatSubscribeAuth.user_id == current_user.user_id
+            )
+        )
+        records = res.all()
+        authorized_templates = [tpl for tpl, status in records if status == "accept"]
+
+        return ResponseModel(code=0, message={
+            "bound": bool(openid),
+            "maskedOpenid": masked,
+            "authorizedTemplates": authorized_templates,
+            "allTemplateStatuses": [{"templateId": tpl, "status": status} for tpl, status in records],
+        })
+    except (AuthHTTPException, BusinessHTTPException, ResourceHTTPException):
+        raise
+    except Exception as e:
+        logger.warning(f"获取微信绑定信息失败: {e}")
+        return ResponseModel(code=settings.DATA_GET_FAILED_CODE, message={"ok": False, "error": "bindinfo failed"})
 
 
 # ====== 健康档案相关接口 ======
