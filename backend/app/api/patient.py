@@ -261,14 +261,16 @@ def _sanitize_name(s: str, fallback: str = "就诊人", max_len: int = 10) -> st
     return result if result else fallback
 
 
-def _sanitize_thing(s: str, max_len: int = 20) -> str:
+def _sanitize_thing(s: str, fallback: str = "信息", max_len: int = 20) -> str:
     s = _strip_emoji_and_ctrl((s or "").strip())
     # 通用放宽：允许中英文、数字、空格、常见中文/英文标点
     allowed = r"[\u4e00-\u9fa5A-Za-z0-9\s，。,；;：:！!？?（）()\-_/+·•'\"\[\]《》<>]"
     filtered = "".join(ch for ch in s if re.match(allowed, ch))
-    # 确保返回值不为空，至少返回一个空格或默认文本
+    if not filtered or len(filtered.strip()) == 0:
+        filtered = fallback
+    # 确保返回值不为空
     result = filtered[:max_len].strip()
-    return result if result else "信息"
+    return result if result else fallback
 
 
 @router.get("/hospitals", response_model=ResponseModel)
@@ -1417,12 +1419,12 @@ def _wechat_payload_reschedule(patient_name: str, original_datetime_str: str, ne
     
     使用 _safe_text 进行防御性处理，避免字段为空或超长导致微信 47003 错误。
     """
-    # 对各字段进行防御性处理，确保非空且符合长度要求
-    safe_name = _safe_text(patient_name, "就诊人", 20)
+    # 对各字段进行防御性处理，确保非空且符合长度要求。[等同于gem1]
+    safe_name = _sanitize_name(patient_name, "就诊人", 20)
     safe_original = _safe_text(original_datetime_str, "时间待定", 32)
     safe_new = _safe_text(new_datetime_str, "时间待定", 32)
-    safe_clinic = _safe_text(clinic_name, "校医院门诊", 20)
-    safe_reason = _safe_text(reason, "改约", 20)
+    safe_clinic = _sanitize_thing(clinic_name or "校医院门诊", "校医院门诊", 20)
+    safe_reason = _sanitize_thing(reason or "改约", "改约", 20)
 
     return {
         "name1": {"value": safe_name},
