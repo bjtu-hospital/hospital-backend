@@ -253,10 +253,12 @@ def _strip_emoji_and_ctrl(s: str) -> str:
 def _sanitize_name(s: str, fallback: str = "就诊人", max_len: int = 10) -> str:
     s = _strip_emoji_and_ctrl((s or "").strip())
     # 仅保留中英文、数字、空格与常见分隔符
-    filtered = "".join(ch for ch in s if re.match(r"[\u4e00-\u9fa5A-Za-z0-9\s·•·\.\-]", ch))
-    if not filtered:
+    filtered = "".join(ch for ch in s if re.match(r"[\u4e00-\u9fa5A-Za-z0-9\s·•\.\-]", ch))
+    if not filtered or len(filtered.strip()) == 0:
         filtered = fallback
-    return filtered[:max_len]
+    # 再次去除多余空格，确保最终结果不为空
+    result = filtered[:max_len].strip()
+    return result if result else fallback
 
 
 def _sanitize_thing(s: str, max_len: int = 20) -> str:
@@ -264,7 +266,9 @@ def _sanitize_thing(s: str, max_len: int = 20) -> str:
     # 通用放宽：允许中英文、数字、空格、常见中文/英文标点
     allowed = r"[\u4e00-\u9fa5A-Za-z0-9\s，。,；;：:！!？?（）()\-_/+·•'\"\[\]《》<>]"
     filtered = "".join(ch for ch in s if re.match(allowed, ch))
-    return filtered[:max_len]
+    # 确保返回值不为空，至少返回一个空格或默认文本
+    result = filtered[:max_len].strip()
+    return result if result else "信息"
 
 
 @router.get("/hospitals", response_model=ResponseModel)
@@ -1384,28 +1388,48 @@ def _wechat_payload_waitlist(patient_name: str, datetime_str: str, location: str
     }
 
 
+def _safe_text(val: Optional[str], default: str, max_len: int) -> str:
+    """防御性文本处理：确保字段值非空且在长度限制内。
+    
+    参数:
+    - val: 原始字符串值
+    - default: 当原值为空时使用的默认值
+    - max_len: 允许的最大字符长度
+    
+    返回:
+    - 安全的、符合微信模板要求的字符串
+    """
+    text = (val or "").strip()
+    if not text:
+        text = default
+    return text[:max_len]
+
+
 def _wechat_payload_reschedule(patient_name: str, original_datetime_str: str, new_datetime_str: str, clinic_name: str, reason: str) -> dict:
     """改约成功通知模板 (预约人、原预约时间、现预约时间、活动名称、修改原因)。
 
     模板字段对应微信后台展示：
-    - name1: 预约人
-    - time3: 原预约时间
-    - time14: 现预约时间
-    - thing17: 活动名称（这里填门诊/地点）
-    - thing2: 修改原因
+    - name1: 预约人（最长 20 字符）
+    - time3: 原预约时间（最长 32 字符）
+    - time14: 现预约时间（最长 32 字符）
+    - thing17: 活动名称（最长 20 字符）
+    - thing2: 修改原因（最长 20 字符）
+    
+    使用 _safe_text 进行防御性处理，避免字段为空或超长导致微信 47003 错误。
     """
-    # 根据微信订阅消息字段限制进行清洗：
-    # - name1: 名称类型，建议最长10个汉字，过滤表情等非法字符
-    # - thing*: 通用文本，建议最长20个汉字，过滤表情等非法字符
-
-    # 使用模块级通用清洗函数，避免重复实现
+    # 对各字段进行防御性处理，确保非空且符合长度要求
+    safe_name = _safe_text(patient_name, "就诊人", 20)
+    safe_original = _safe_text(original_datetime_str, "时间待定", 32)
+    safe_new = _safe_text(new_datetime_str, "时间待定", 32)
+    safe_clinic = _safe_text(clinic_name, "校医院门诊", 20)
+    safe_reason = _safe_text(reason, "改约", 20)
 
     return {
-        "name1": {"value": _sanitize_name(patient_name)},
-        "time3": {"value": original_datetime_str},
-        "time14": {"value": new_datetime_str},
-        "thing17": {"value": _sanitize_thing(clinic_name)},
-        "thing2": {"value": _sanitize_thing(reason or "改约")},
+        "name1": {"value": safe_name},
+        "time3": {"value": safe_original},
+        "time14": {"value": safe_new},
+        "thing17": {"value": safe_clinic},
+        "thing2": {"value": safe_reason},
     }
 
 
@@ -2456,6 +2480,7 @@ async def reschedule_appointment(
             clinic_name = (target_clinic.address or target_clinic.name) if target_clinic else ""
             template_id = settings.WECHAT_TEMPLATE_RESCHEDULE_SUCCESS
             logger.info(f"[改约] order_id={appointmentId} 消息内容: patient={patient_name}, from={current_datetime_str}, to={target_datetime_str}, clinic={clinic_name}")
+            
             data_payload = _wechat_payload_reschedule(
                 patient_name,
                 current_datetime_str,
@@ -2468,7 +2493,6 @@ async def reschedule_appointment(
             subscribe_auth = payload.subscribeAuthResult if payload else None
             subscribe_scene = payload.subscribeScene if payload else "reschedule"
             logger.info(f"[改约] order_id={appointmentId} wx_code={'有' if wx_code else '无'}, subscribe_auth={'有' if subscribe_auth else '无'}")
-
             await _wechat_prepare_and_send(
                 db,
                 current_user.user_id,
