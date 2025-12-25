@@ -269,6 +269,15 @@ class WechatService:
 
         失败时仅记录日志，不抛异常，以免中断业务流程。
         """
+        # 验证消息数据的有效性
+        for field_name, field_data in data.items():
+            if isinstance(field_data, dict) and "value" in field_data:
+                value = field_data.get("value")
+                # 检查字段值是否为空或仅包含空格
+                if not value or (isinstance(value, str) and len(value.strip()) == 0):
+                    logger.error(f"微信消息数据验证失败: {field_name}.value 为空。data={data}")
+                    return
+        
         # 干跑模式：跳过真实请求，直接落成功日志
         if self.dry_run:
             payload = {

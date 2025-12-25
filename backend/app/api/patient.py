@@ -253,10 +253,12 @@ def _strip_emoji_and_ctrl(s: str) -> str:
 def _sanitize_name(s: str, fallback: str = "就诊人", max_len: int = 10) -> str:
     s = _strip_emoji_and_ctrl((s or "").strip())
     # 仅保留中英文、数字、空格与常见分隔符
-    filtered = "".join(ch for ch in s if re.match(r"[\u4e00-\u9fa5A-Za-z0-9\s·•·\.\-]", ch))
-    if not filtered:
+    filtered = "".join(ch for ch in s if re.match(r"[\u4e00-\u9fa5A-Za-z0-9\s·•\.\-]", ch))
+    if not filtered or len(filtered.strip()) == 0:
         filtered = fallback
-    return filtered[:max_len]
+    # 再次去除多余空格，确保最终结果不为空
+    result = filtered[:max_len].strip()
+    return result if result else fallback
 
 
 def _sanitize_thing(s: str, max_len: int = 20) -> str:
@@ -264,7 +266,9 @@ def _sanitize_thing(s: str, max_len: int = 20) -> str:
     # 通用放宽：允许中英文、数字、空格、常见中文/英文标点
     allowed = r"[\u4e00-\u9fa5A-Za-z0-9\s，。,；;：:！!？?（）()\-_/+·•'\"\[\]《》<>]"
     filtered = "".join(ch for ch in s if re.match(allowed, ch))
-    return filtered[:max_len]
+    # 确保返回值不为空，至少返回一个空格或默认文本
+    result = filtered[:max_len].strip()
+    return result if result else "信息"
 
 
 @router.get("/hospitals", response_model=ResponseModel)
@@ -2456,19 +2460,35 @@ async def reschedule_appointment(
             clinic_name = (target_clinic.address or target_clinic.name) if target_clinic else ""
             template_id = settings.WECHAT_TEMPLATE_RESCHEDULE_SUCCESS
             logger.info(f"[改约] order_id={appointmentId} 消息内容: patient={patient_name}, from={current_datetime_str}, to={target_datetime_str}, clinic={clinic_name}")
+            
+            # 验证并清洗必要字段
+            sanitized_name = _sanitize_name(patient_name) if patient_name else _sanitize_name("") # 确保fallback生效
+            sanitized_clinic = _sanitize_thing(clinic_name) if clinic_name else _sanitize_thing("诊室")
+            
+            # 验证清洗后的值是否有效
+            if not sanitized_name or len(sanitized_name.strip()) == 0:
+                logger.warning(f"[改约] order_id={appointmentId} 患者名字清洗失败，使用默认值")
+                sanitized_name = "就诊人"
+            
+            if not sanitized_clinic or len(sanitized_clinic.strip()) == 0:
+                logger.warning(f"[改约] order_id={appointmentId} 诊室名称清洗失败，使用默认值")
+                sanitized_clinic = "诊室"
+            
             data_payload = _wechat_payload_reschedule(
-                patient_name,
+                sanitized_name,
                 current_datetime_str,
                 target_datetime_str,
-                clinic_name,
+                sanitized_clinic,
                 reason="时间冲突调整",
             )
+            
+            # 最终验证微信消息数据
+            logger.info(f"[改约] order_id={appointmentId} 最终消息数据验证: name1={data_payload.get('name1', {}).get('value')}, clinic={data_payload.get('thing17', {}).get('value')}")
             
             wx_code = payload.wxCode if payload else None
             subscribe_auth = payload.subscribeAuthResult if payload else None
             subscribe_scene = payload.subscribeScene if payload else "reschedule"
             logger.info(f"[改约] order_id={appointmentId} wx_code={'有' if wx_code else '无'}, subscribe_auth={'有' if subscribe_auth else '无'}")
-
             await _wechat_prepare_and_send(
                 db,
                 current_user.user_id,
