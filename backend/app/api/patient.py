@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, update
 from typing import Optional
 from datetime import datetime, timedelta, date as date_type
+import re
 
 from app.core.datetime_utils import get_now_naive
 import logging
@@ -185,33 +186,33 @@ async def _load_image_as_base64(image_path: str) -> Optional[dict]:
     """
     if not image_path:
         return None
-    
+
     try:
         # 解析本地文件系统路径(相对 app 目录)
         base_dir = os.path.dirname(os.path.dirname(__file__))  # .../app
         rel_path = image_path.lstrip("/")  # 移除开头的斜杠
-        
+
         # 如果路径以 app/ 开头,去掉这个前缀
         if rel_path.startswith("app/"):
             rel_path = rel_path[4:]
-        
+
         # 归一化路径并拼接
         fs_path = os.path.normpath(os.path.join(base_dir, rel_path))
-        
+
         # 安全检查:确保路径在基础目录内,防止目录遍历攻击
         if not fs_path.startswith(os.path.normpath(base_dir)):
             logger.warning(f"检测到目录遍历尝试: {fs_path}")
             return None
-        
+
         # 检查文件是否存在
         if not os.path.exists(fs_path) or not os.path.isfile(fs_path):
             logger.warning(f"图片文件不存在: {fs_path}")
             return None
-        
+
         # 读取文件并转换为base64
         async with aiofiles.open(fs_path, 'rb') as f:
             image_data = await f.read()
-        
+
         # 获取文件扩展名以确定MIME类型
         _, ext = os.path.splitext(fs_path)
         mime_types = {
@@ -223,19 +224,47 @@ async def _load_image_as_base64(image_path: str) -> Optional[dict]:
             '.svg': 'image/svg+xml'
         }
         mime_type = mime_types.get(ext.lower(), 'image/jpeg')
-        
+
         # 编码为base64
         base64_data = base64.b64encode(image_data).decode('utf-8')
-        
+
         # 返回分离的格式: type 和 data
         return {
             "type": mime_type,
             "data": base64_data
         }
-        
+
     except Exception as e:
         logger.error(f"加载图片失败 {image_path}: {str(e)}")
         return None
+
+
+# ====== 微信字段清洗通用工具 ======
+
+def _strip_emoji_and_ctrl(s: str) -> str:
+    if not s:
+        return ""
+    # 去除控制字符与表情符号（超出BMP的字符）
+    s = re.sub(r"[\u0000-\u001f\u007f-\u009f]", "", s)
+    s = re.sub(r"[\U00010000-\U0010FFFF]", "", s)
+    return s
+
+
+def _sanitize_name(s: str, fallback: str = "就诊人", max_len: int = 10) -> str:
+    s = _strip_emoji_and_ctrl((s or "").strip())
+    # 仅保留中英文、数字、空格与常见分隔符
+    filtered = "".join(ch for ch in s if re.match(r"[\u4e00-\u9fa5A-Za-z0-9\s·•·\.\-]", ch))
+    if not filtered:
+        filtered = fallback
+    return filtered[:max_len]
+
+
+def _sanitize_thing(s: str, max_len: int = 20) -> str:
+    s = _strip_emoji_and_ctrl((s or "").strip())
+    # 通用放宽：允许中英文、数字、空格、常见中文/英文标点
+    allowed = r"[\u4e00-\u9fa5A-Za-z0-9\s，。,；;：:！!？?（）()\-_/+·•'\"\[\]《》<>]"
+    filtered = "".join(ch for ch in s if re.match(allowed, ch))
+    return filtered[:max_len]
 
 
 @router.get("/hospitals", response_model=ResponseModel)
@@ -1328,11 +1357,11 @@ def _wechat_payload_appointment(patient_name: str, datetime_str: str, location: 
     适用场景: 预约成功
     """
     return {
-        "thing65": {"value": patient_name or ""},
+        "thing65": {"value": _sanitize_name(patient_name or "就诊人")},
         "time67": {"value": datetime_str},
-        "thing2": {"value": location or ""},
-        "thing69": {"value": doctor_name or ""},
-        "phrase14": {"value": status},
+        "thing2": {"value": _sanitize_thing(location or "")},
+        "thing69": {"value": _sanitize_thing(doctor_name or "")},
+        "phrase14": {"value": _sanitize_thing(status or "")},
     }
 
 
@@ -1347,11 +1376,11 @@ def _wechat_payload_waitlist(patient_name: str, datetime_str: str, location: str
     - thing5: 温馨提示（复用医生/备注）
     """
     return {
-        "thing6": {"value": patient_name or "就诊人"},
-        "phrase1": {"value": status or "候补成功"},
-        "thing4": {"value": location or ""},
+        "thing6": {"value": _sanitize_name(patient_name or "就诊人")},
+        "phrase1": {"value": _sanitize_thing(status or "候补成功")},
+        "thing4": {"value": _sanitize_thing(location or "")},
         "time3": {"value": datetime_str},
-        "thing5": {"value": doctor_name or ""},
+        "thing5": {"value": _sanitize_thing(doctor_name or "")},
     }
 
 
@@ -1365,33 +1394,39 @@ def _wechat_payload_reschedule(patient_name: str, original_datetime_str: str, ne
     - thing17: 活动名称（这里填门诊/地点）
     - thing2: 修改原因
     """
+    # 根据微信订阅消息字段限制进行清洗：
+    # - name1: 名称类型，建议最长10个汉字，过滤表情等非法字符
+    # - thing*: 通用文本，建议最长20个汉字，过滤表情等非法字符
+
+    # 使用模块级通用清洗函数，避免重复实现
+
     return {
-        "name1": {"value": patient_name or "就诊人"},
+        "name1": {"value": _sanitize_name(patient_name)},
         "time3": {"value": original_datetime_str},
         "time14": {"value": new_datetime_str},
-        "thing17": {"value": clinic_name or ""},
-        "thing2": {"value": reason or "改约"},
+        "thing17": {"value": _sanitize_thing(clinic_name)},
+        "thing2": {"value": _sanitize_thing(reason or "改约")},
     }
 
 
 def _wechat_payload_reminder(patient_name: str, datetime_str: str, location: str, tip: str) -> dict:
     """就诊提醒模板 (thing65, time67, thing18, thing8)。"""
     return {
-        "thing65": {"value": patient_name or ""},
+        "thing65": {"value": _sanitize_name(patient_name or "就诊人")},
         "time67": {"value": datetime_str},
-        "thing18": {"value": location or ""},
-        "thing8": {"value": tip or ""},
+        "thing18": {"value": _sanitize_thing(location or "")},
+        "thing8": {"value": _sanitize_thing(tip or "")},
     }
 
 
 def _wechat_payload_cancel(patient_name: str, datetime_str: str, doctor_name: str, reason: str, order_status: str) -> dict:
     """取消通知模板 (thing65, time67, thing69, thing72, phrase26)。"""
     return {
-        "thing65": {"value": patient_name or ""},
+        "thing65": {"value": _sanitize_name(patient_name or "就诊人")},
         "time67": {"value": datetime_str},
-        "thing69": {"value": doctor_name or ""},
-        "thing72": {"value": reason or ""},
-        "phrase26": {"value": order_status or ""},
+        "thing69": {"value": _sanitize_thing(doctor_name or "")},
+        "thing72": {"value": _sanitize_thing(reason or "")},
+        "phrase26": {"value": _sanitize_thing(order_status or "")},
     }
 
 
@@ -1409,13 +1444,17 @@ async def _wechat_prepare_and_send(
 ) -> None:
     """统一处理 code->openid、授权记录、并发送订阅消息。失败只记录日志不抛错。"""
     if not template_id:
+        logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 跳过：template_id为空")
         return
 
     wechat = WechatService()
     openid = None
 
     try:
+        logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} template_id={template_id} 开始处理")
+        
         if wx_code:
+            logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 通过wx_code获取openid")
             wx_res = await wechat.code_to_openid(wx_code)
             if wx_res and wx_res.get("openid"):
                 openid = wx_res.get("openid")
@@ -1426,20 +1465,31 @@ async def _wechat_prepare_and_send(
                     wx_res.get("session_key"),
                     wx_res.get("unionid"),
                 )
+                logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 从wx_code获取到openid: {openid[:8]}...")
 
         if not openid:
+            logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 从数据库获取openid")
             openid = await wechat.get_user_openid(db, actor_user_id)
+            if openid:
+                logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 从数据库获取到openid: {openid[:8]}...")
+            else:
+                logger.warning(f"[微信通知] scene={scene} user_id={actor_user_id} 未找到openid，用户可能未绑定微信")
 
         if subscribe_auth:
+            logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 保存订阅授权记录")
             await wechat.save_subscribe_auth(db, actor_user_id, subscribe_auth, subscribe_scene or scene)
 
         if not openid:
+            logger.warning(f"[微信通知] scene={scene} user_id={actor_user_id} 跳过：openid为空")
             return
 
+        logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 检查用户授权状态")
         authorized = await wechat.check_user_authorized(db, actor_user_id, template_id)
         if not authorized:
+            logger.warning(f"[微信通知] scene={scene} user_id={actor_user_id} 跳过：用户未授权模板 {template_id}")
             return
-
+        
+        logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 用户已授权，开始发送订阅消息")
         await wechat.send_subscribe_message(
             db,
             actor_user_id,
@@ -1450,8 +1500,9 @@ async def _wechat_prepare_and_send(
             order_id=order_id,
             page=page,
         )
+        logger.info(f"[微信通知] scene={scene} user_id={actor_user_id} 订阅消息发送成功")
     except Exception as exc:
-        logger.warning(f"微信订阅消息处理失败: {exc}")
+        logger.error(f"[微信通知] scene={scene} user_id={actor_user_id} 处理失败: {exc}", exc_info=True)
 
 
 @router.post("/appointments", response_model=ResponseModel[AppointmentResponse])
@@ -2001,6 +2052,7 @@ async def cancel_appointment(
 
         # 8. 发送微信取消通知
         try:
+            logger.info(f"[取消预约] order_id={appointmentId} user_id={current_user.user_id} 准备发送取消通知")
             patient_obj = await db.get(Patient, order.patient_id) if order.patient_id else None
             doctor, clinic, _ = await _load_doctor_and_dept(db, schedule)
             patient_name = patient_obj.name if patient_obj else ""
@@ -2009,6 +2061,7 @@ async def cancel_appointment(
             reason_text = "用户取消预约"
             status_text = "已取消"
             template_id = settings.WECHAT_TEMPLATE_CANCEL_SUCCESS
+            logger.info(f"[取消预约] order_id={appointmentId} 消息内容: patient={patient_name}, datetime={datetime_str}, doctor={doctor_name}")
             data_payload = _wechat_payload_cancel(
                 patient_name,
                 datetime_str,
@@ -2019,6 +2072,7 @@ async def cancel_appointment(
             wx_code = payload.wxCode if payload else None
             subscribe_auth = payload.subscribeAuthResult if payload else None
             subscribe_scene = payload.subscribeScene if payload else "cancel"
+            logger.info(f"[取消预约] order_id={appointmentId} wx_code={'有' if wx_code else '无'}, subscribe_auth={'有' if subscribe_auth else '无'}")
             await _wechat_prepare_and_send(
                 db,
                 current_user.user_id,
@@ -2030,8 +2084,9 @@ async def cancel_appointment(
                 scene="cancel",
                 order_id=order.order_id,
             )
+            logger.info(f"[取消预约] order_id={appointmentId} 取消通知处理完成")
         except Exception as exc:
-            logger.warning(f"取消预约微信通知失败: {exc}")
+            logger.error(f"[取消预约] order_id={appointmentId} 微信通知失败: {exc}", exc_info=True)
         
         # 8. 检查是否有候补，有的话自动转化第一个候补到预约（触发SMS通知）
         # 核心逻辑：级联转换所有候补，直到没有候补或没有剩余号源为止
@@ -2392,6 +2447,7 @@ async def reschedule_appointment(
 
         # 发送微信改约成功通知
         try:
+            logger.info(f"[改约] order_id={appointmentId} user_id={current_user.user_id} 准备发送改约通知")
             doctor = await db.get(Doctor, target_schedule.doctor_id) if target_schedule and target_schedule.doctor_id else None
             patient_name = patient.name if patient else ""
             # 计算原预约和新预约的时间字符串
@@ -2399,6 +2455,7 @@ async def reschedule_appointment(
             target_datetime_str = _format_wechat_datetime(target_schedule.date, target_schedule.time_section, schedule_config)
             clinic_name = (target_clinic.address or target_clinic.name) if target_clinic else ""
             template_id = settings.WECHAT_TEMPLATE_RESCHEDULE_SUCCESS
+            logger.info(f"[改约] order_id={appointmentId} 消息内容: patient={patient_name}, from={current_datetime_str}, to={target_datetime_str}, clinic={clinic_name}")
             data_payload = _wechat_payload_reschedule(
                 patient_name,
                 current_datetime_str,
@@ -2406,20 +2463,26 @@ async def reschedule_appointment(
                 clinic_name,
                 reason="时间冲突调整",
             )
+            
+            wx_code = payload.wxCode if payload else None
+            subscribe_auth = payload.subscribeAuthResult if payload else None
+            subscribe_scene = payload.subscribeScene if payload else "reschedule"
+            logger.info(f"[改约] order_id={appointmentId} wx_code={'有' if wx_code else '无'}, subscribe_auth={'有' if subscribe_auth else '无'}")
 
             await _wechat_prepare_and_send(
                 db,
                 current_user.user_id,
-                payload.wxCode,
-                payload.subscribeAuthResult,
-                payload.subscribeScene or "reschedule",
+                wx_code,
+                subscribe_auth,
+                subscribe_scene,
                 template_id,
                 data_payload,
                 scene="reschedule",
                 order_id=order.order_id,
             )
+            logger.info(f"[改约] order_id={appointmentId} 改约通知处理完成")
         except Exception as exc:
-            logger.warning(f"改约微信通知失败: {exc}")
+            logger.error(f"[改约] order_id={appointmentId} 微信通知失败: {exc}", exc_info=True)
 
         # 改约成功后：对原排班进行候补级联转换（释放了一个号源）
         # 与取消预约/取消支付的逻辑保持一致：循环转换直到没有候补或没有可用号源
