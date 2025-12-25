@@ -1388,28 +1388,48 @@ def _wechat_payload_waitlist(patient_name: str, datetime_str: str, location: str
     }
 
 
+def _safe_text(val: Optional[str], default: str, max_len: int) -> str:
+    """防御性文本处理：确保字段值非空且在长度限制内。
+    
+    参数:
+    - val: 原始字符串值
+    - default: 当原值为空时使用的默认值
+    - max_len: 允许的最大字符长度
+    
+    返回:
+    - 安全的、符合微信模板要求的字符串
+    """
+    text = (val or "").strip()
+    if not text:
+        text = default
+    return text[:max_len]
+
+
 def _wechat_payload_reschedule(patient_name: str, original_datetime_str: str, new_datetime_str: str, clinic_name: str, reason: str) -> dict:
     """改约成功通知模板 (预约人、原预约时间、现预约时间、活动名称、修改原因)。
 
     模板字段对应微信后台展示：
-    - name1: 预约人
-    - time3: 原预约时间
-    - time14: 现预约时间
-    - thing17: 活动名称（这里填门诊/地点）
-    - thing2: 修改原因
+    - name1: 预约人（最长 20 字符）
+    - time3: 原预约时间（最长 32 字符）
+    - time14: 现预约时间（最长 32 字符）
+    - thing17: 活动名称（最长 20 字符）
+    - thing2: 修改原因（最长 20 字符）
+    
+    使用 _safe_text 进行防御性处理，避免字段为空或超长导致微信 47003 错误。
     """
-    # 根据微信订阅消息字段限制进行清洗：
-    # - name1: 名称类型，建议最长10个汉字，过滤表情等非法字符
-    # - thing*: 通用文本，建议最长20个汉字，过滤表情等非法字符
-
-    # 使用模块级通用清洗函数，避免重复实现
+    # 对各字段进行防御性处理，确保非空且符合长度要求
+    safe_name = _safe_text(patient_name, "就诊人", 20)
+    safe_original = _safe_text(original_datetime_str, "时间待定", 32)
+    safe_new = _safe_text(new_datetime_str, "时间待定", 32)
+    safe_clinic = _safe_text(clinic_name, "校医院门诊", 20)
+    safe_reason = _safe_text(reason, "改约", 20)
 
     return {
-        "name1": {"value": _sanitize_name(patient_name)},
-        "time3": {"value": original_datetime_str},
-        "time14": {"value": new_datetime_str},
-        "thing17": {"value": _sanitize_thing(clinic_name)},
-        "thing2": {"value": _sanitize_thing(reason or "改约")},
+        "name1": {"value": safe_name},
+        "time3": {"value": safe_original},
+        "time14": {"value": safe_new},
+        "thing17": {"value": safe_clinic},
+        "thing2": {"value": safe_reason},
     }
 
 
@@ -2461,29 +2481,13 @@ async def reschedule_appointment(
             template_id = settings.WECHAT_TEMPLATE_RESCHEDULE_SUCCESS
             logger.info(f"[改约] order_id={appointmentId} 消息内容: patient={patient_name}, from={current_datetime_str}, to={target_datetime_str}, clinic={clinic_name}")
             
-            # 验证并清洗必要字段
-            sanitized_name = _sanitize_name(patient_name) if patient_name else _sanitize_name("") # 确保fallback生效
-            sanitized_clinic = _sanitize_thing(clinic_name) if clinic_name else _sanitize_thing("诊室")
-            
-            # 验证清洗后的值是否有效
-            if not sanitized_name or len(sanitized_name.strip()) == 0:
-                logger.warning(f"[改约] order_id={appointmentId} 患者名字清洗失败，使用默认值")
-                sanitized_name = "就诊人"
-            
-            if not sanitized_clinic or len(sanitized_clinic.strip()) == 0:
-                logger.warning(f"[改约] order_id={appointmentId} 诊室名称清洗失败，使用默认值")
-                sanitized_clinic = "诊室"
-            
             data_payload = _wechat_payload_reschedule(
-                sanitized_name,
+                patient_name,
                 current_datetime_str,
                 target_datetime_str,
-                sanitized_clinic,
+                clinic_name,
                 reason="时间冲突调整",
             )
-            
-            # 最终验证微信消息数据
-            logger.info(f"[改约] order_id={appointmentId} 最终消息数据验证: name1={data_payload.get('name1', {}).get('value')}, clinic={data_payload.get('thing17', {}).get('value')}")
             
             wx_code = payload.wxCode if payload else None
             subscribe_auth = payload.subscribeAuthResult if payload else None
