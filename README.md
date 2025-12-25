@@ -6741,6 +6741,71 @@ Authorization: Bearer <token>
 
 ---
 
+### 3.9.5 统一授权与绑定 Post: `/patient/wechat/subscribe-auth`
+
+一次性保存操作者（当前登录用户）的 openid 绑定与订阅模板授权结果。前端建议在登录后或首页弹窗统一调用一次。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+#### 请求体（全部可选）:
+```json
+{
+    "wxCode": "071AbcDefG1w3qxyzTuv123456",
+    "subscribeAuthResult": {
+        "WECHAT_TEMPLATE_APPOINTMENT_SUCCESS": "accept",
+        "WECHAT_TEMPLATE_CANCEL_SUCCESS": "accept"
+    },
+    "subscribeScene": "general"
+}
+```
+
+#### 响应:
+```json
+{
+    "code": 0,
+    "message": {
+        "bound": true,
+        "maskedOpenid": "oAbc****1234",
+        "authorizedTemplates": ["WECHAT_TEMPLATE_APPOINTMENT_SUCCESS"]
+    }
+}
+```
+
+#### 说明:
+- 若提供 `wxCode`，后端将自动执行 code->openid 并绑定到操作者账户。
+- 若提供 `subscribeAuthResult`，后端将保存模板授权结果（`accept/reject/ban`）。
+- 后端所有订阅消息统一以“操作者”为接收人，消息体展示就诊人信息，避免就诊人授权与绑定错位。
+
+---
+
+### 3.9.6 绑定信息查询 Get: `/patient/wechat/bindinfo`
+
+查询当前操作者的绑定与授权状态，便于前端展示与二次授权。
+
+#### 请求头:
+```
+Authorization: Bearer <token>
+```
+
+#### 响应:
+```json
+{
+    "code": 0,
+    "message": {
+        "bound": true,
+        "maskedOpenid": "oAbc****1234",
+        "authorizedTemplates": ["WECHAT_TEMPLATE_APPOINTMENT_SUCCESS"],
+        "allTemplateStatuses": [{"templateId":"WECHAT_TEMPLATE_APPOINTMENT_SUCCESS","status":"accept"}]
+    }
+}
+```
+
+---
+
 ## 4. 健康档案相关接口（需要登录）
 
 ### 4.1 获取我的健康档案 Get: `/patient/health-record`
