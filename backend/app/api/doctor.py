@@ -739,8 +739,8 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 		dept_res = await db.execute(select(MinorDepartment).where(MinorDepartment.minor_dept_id == doctor.dept_id))
 		dept = dept_res.scalar_one_or_none()
 
-		# 获取医生今天的排班信息
-		today = datetime.now(timezone.utc).date()
+		# 获取医生今天的排班信息（北京时间）
+		today = get_today()
 		stmt = (
 			select(Schedule)
 			.options(selectinload(Schedule.clinic))
@@ -2260,7 +2260,7 @@ async def pass_current_patient(
 	
 	- **order_id**: 需要过号的挂号订单ID（必须是正在叫号的订单）
 	- **max_pass_count**: 可选，覆盖系统配置的过号次数上限
-	  - 不传：从配置读取（优先级：医生配置 > 全局配置 > 默认3次）
+	  - 不传：从配置读取（优先级：医生配置 > 全局配置 > 默认2次）
 	  - 传入：使用指定值（临时覆盖，不影响配置）
 	
 	流程：

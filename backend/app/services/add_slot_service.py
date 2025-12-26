@@ -8,6 +8,7 @@ from app.db.base import redis
 from app.core.exception_handler import BusinessHTTPException, ResourceHTTPException
 from app.core.config import settings
 from datetime import datetime
+from app.core.datetime_utils import get_now_naive
 from app.services.config_service import get_patient_identity_discounts, calculate_final_price
 from app.models.patient import PatientType
 
@@ -91,6 +92,8 @@ async def execute_add_slot_and_register(
         pass_count=0,  # 初始过号次数
         is_calling=False,  # 未就诊
         notes=f"加号申请 (由用户 {applicant_user_id} 发起)",
+        create_time=get_now_naive(),
+        update_time=get_now_naive(),
     )
 
     # 记录价格信息于 notes

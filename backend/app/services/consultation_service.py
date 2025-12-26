@@ -296,7 +296,7 @@ async def get_max_pass_count(db: AsyncSession, doctor_id: int = None) -> int:
     """
     获取过号次数上限配置
     
-    优先级：医生配置 > 全局配置 > 默认值(3)
+    优先级：医生配置 > 全局配置 > 默认值(2)
     """
     from app.models.system_config import SystemConfig
     
@@ -329,7 +329,7 @@ async def get_max_pass_count(db: AsyncSession, doctor_id: int = None) -> int:
         return int(global_config.config_value)
     
     # 3. 返回默认值
-    return 3
+    return 2
 
 
 async def pass_patient(
@@ -348,7 +348,7 @@ async def pass_patient(
     5. 自动呼叫下一位
     
     Args:
-        max_pass_count: 最大过号次数上限，None 时从配置读取（优先级：医生配置 > 全局配置 > 默认3次）
+        max_pass_count: 最大过号次数上限，None 时从配置读取（优先级：医生配置 > 全局配置 > 默认2次）
     
     使用事务确保原子性
     """
