@@ -209,7 +209,7 @@ async def schedule_clinics(
 		sched_res = await db.execute(
 			select(Schedule.clinic_id, Clinic.name)
 			.join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
-			.where(Schedule.doctor_id == doctor.doctor_id)
+			.where(and_(Schedule.doctor_id == doctor.doctor_id, Schedule.is_latest == True))
 			.group_by(Schedule.clinic_id, Clinic.name)
 		)
 		rows = sched_res.all()
@@ -263,7 +263,7 @@ async def schedule_list(
 		res = await db.execute(
 			select(Schedule)
 			.options(selectinload(Schedule.doctor))
-			.where(and_(Schedule.clinic_id == clinicId, Schedule.date.in_(week_dates)))
+			.where(and_(Schedule.clinic_id == clinicId, Schedule.date.in_(week_dates), Schedule.is_latest == True))
 		)
 		schedules = res.scalars().all()
 
@@ -330,8 +330,8 @@ async def schedule_available_doctors(
 		dres = await db.execute(select(Doctor).where(Doctor.dept_id == doctor.dept_id))
 		doctors = dres.scalars().all()
 
-		# 查询该日期该门诊的已排班
-		sres = await db.execute(select(Schedule).where(and_(Schedule.clinic_id == clinicId, Schedule.date == target_date)))
+		# 查询该日期该门诊的已排班（仅最新记录）
+		sres = await db.execute(select(Schedule).where(and_(Schedule.clinic_id == clinicId, Schedule.date == target_date, Schedule.is_latest == True)))
 		day_scheds = sres.scalars().all()
 
 		# 查询该日期的请假申请（已批准或待审核都视为不可用）
@@ -420,20 +420,41 @@ async def schedule_submit_change(
 			else:
 				matrix[day_idx][slot_idx] = {"doctor_id": int(doctor_id)}
 
-		# 写入 ScheduleAudit
+		# 写入 ScheduleAudit；若同一诊室同一周已有记录则改为覆盖更新，避免唯一约束冲突
 		from app.models.schedule_audit import ScheduleAudit
-		audit = ScheduleAudit(
-			minor_dept_id=doctor.dept_id,
-			clinic_id=clinic_id,
-			submitter_doctor_id=doctor.doctor_id,
-			submit_time=get_now_naive(),
-			week_start_date=week_start,
-			week_end_date=week_start + timedelta(days=6),
-			remark="科室长提交排班调整",
-			status="pending",
-			schedule_data_json=matrix,
+		existing_res = await db.execute(
+			select(ScheduleAudit).where(
+				ScheduleAudit.clinic_id == clinic_id,
+				ScheduleAudit.week_start_date == week_start
+			)
 		)
-		db.add(audit)
+		existing_audit = existing_res.scalar_one_or_none()
+		if existing_audit:
+			existing_audit.minor_dept_id = doctor.dept_id
+			existing_audit.submitter_doctor_id = doctor.doctor_id
+			existing_audit.submit_time = get_now_naive()
+			existing_audit.week_end_date = week_start + timedelta(days=6)
+			existing_audit.remark = "科室长提交排班调整"
+			existing_audit.status = "pending"
+			existing_audit.schedule_data_json = matrix
+			existing_audit.auditor_user_id = None
+			existing_audit.audit_time = None
+			existing_audit.audit_remark = None
+			audit = existing_audit
+		else:
+			audit = ScheduleAudit(
+				minor_dept_id=doctor.dept_id,
+				clinic_id=clinic_id,
+				submitter_doctor_id=doctor.doctor_id,
+				submit_time=get_now_naive(),
+				week_start_date=week_start,
+				week_end_date=week_start + timedelta(days=6),
+				remark="科室长提交排班调整",
+				status="pending",
+				schedule_data_json=matrix,
+			)
+			db.add(audit)
+
 		await db.commit()
 		await db.refresh(audit)
 
@@ -670,7 +691,7 @@ async def _get_doctor(db: AsyncSession, current_user: UserSchema) -> Doctor:
 
 
 async def _get_today_schedules(db: AsyncSession, doctor_id: int) -> list[Schedule]:
-	res = await db.execute(select(Schedule).where(and_(Schedule.doctor_id == doctor_id, Schedule.date == get_today())))
+	res = await db.execute(select(Schedule).where(and_(Schedule.doctor_id == doctor_id, Schedule.date == get_today(), Schedule.is_latest == True)))
 	return res.scalars().all()
 
 

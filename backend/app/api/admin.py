@@ -28,7 +28,7 @@ from app.models.user_ban import UserBan
 from app.models.risk_log import RiskLog
 from app.models.user_risk_summary import UserRiskSummary
 from app.models.registration_order import RegistrationOrder, OrderStatus, PaymentStatus
-from sqlalchemy import select, and_, delete, func, or_
+from sqlalchemy import select, and_, delete, func, or_, update
 from app.models.system_config import SystemConfig
 from app.schemas.user import user as UserSchema
 from app.schemas.audit import (
@@ -357,6 +357,107 @@ def _normalize_schedule_data(raw_schedule, doctor_name_map=None):
         normalized.append(slots)
 
     return normalized
+
+
+async def _cancel_orders_for_schedules(
+    db: AsyncSession,
+    schedules: list[Schedule],
+    reason_text: str = "排班调整取消"
+) -> dict:
+    """取消指定排班的预约，并尝试发送订阅通知。
+
+    - 仅处理 PENDING/CONFIRMED 且非候补单。
+    - 已支付则标记退款，未支付标记取消。
+    - 使用与科室长端一致的取消通知模板。
+    """
+    if not schedules:
+        return {"orders": 0, "notified": 0}
+
+    schedule_ids = [s.schedule_id for s in schedules if s]
+    if not schedule_ids:
+        return {"orders": 0, "notified": 0}
+
+    schedule_config = await get_schedule_config(db)
+    wechat = WechatService()
+    template_id = getattr(settings, "WECHAT_TEMPLATE_CANCEL_SUCCESS", None)
+
+    stmt = (
+        select(RegistrationOrder, Schedule, Patient, Clinic, Doctor)
+        .join(Schedule, Schedule.schedule_id == RegistrationOrder.schedule_id)
+        .join(Patient, Patient.patient_id == RegistrationOrder.patient_id)
+        .join(Clinic, Clinic.clinic_id == Schedule.clinic_id)
+        .join(Doctor, Doctor.doctor_id == Schedule.doctor_id)
+        .where(
+            and_(
+                RegistrationOrder.schedule_id.in_(schedule_ids),
+                RegistrationOrder.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED]),
+                RegistrationOrder.is_waitlist == False,
+            )
+        )
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+    if not rows:
+        return {"orders": 0, "notified": 0}
+
+    notified = 0
+    processed = 0
+    now = get_now_naive()
+
+    for order, schedule, patient, clinic, doctor in rows:
+        processed += 1
+
+        order.status = OrderStatus.CANCELLED
+        order.cancel_time = now
+        order.update_time = now
+        if order.payment_status == PaymentStatus.PAID:
+            order.payment_status = PaymentStatus.REFUNDED
+            order.refund_time = now
+            order.refund_amount = order.price
+        else:
+            order.payment_status = PaymentStatus.CANCELLED
+
+        # 若排班仍在（尚未删除），释放号源
+        if schedule:
+            schedule.remaining_slots = (schedule.remaining_slots or 0) + 1
+            db.add(schedule)
+
+        db.add(order)
+
+        if template_id:
+            target_user_id = patient.user_id if patient and patient.user_id else order.initiator_user_id
+            if target_user_id:
+                try:
+                    openid = await wechat.get_user_openid(db, target_user_id)
+                    if openid and await wechat.check_user_authorized(db, target_user_id, template_id):
+                        time_str = _get_time_section_start_from_config(schedule_config or {}, schedule.time_section)
+                        datetime_str = f"{schedule.date.strftime('%Y年%m月%d日')} {schedule.time_section}{time_str}"
+                        data_payload = {
+                            "thing65": {"value": patient.name if patient else ""},
+                            "time67": {"value": datetime_str},
+                            "thing69": {"value": doctor.name if doctor else ""},
+                            "thing72": {"value": reason_text},
+                            "phrase26": {"value": "已取消"},
+                        }
+                        await wechat.send_subscribe_message(
+                            db,
+                            target_user_id,
+                            openid,
+                            template_id,
+                            data_payload,
+                            scene="cancel",
+                            order_id=order.order_id,
+                            page=f"pages/appointment/detail?orderId={order.order_id}",
+                        )
+                        notified += 1
+                # 若通知失败不影响主流程
+                except Exception as send_exc:
+                        logging.getLogger(__name__).warning(
+                            f"排班取消通知发送失败 order_id={order.order_id}: {send_exc}"
+                        )
+
+    return {"orders": processed, "notified": notified}
 
 
 @router.get("/anti-scalper/users", response_model=ResponseModel[Union[AntiScalperUserListResponse, AuthErrorResponse]])
@@ -2910,6 +3011,7 @@ async def get_department_schedules(
                     Schedule.clinic_id.in_(clinic_ids),
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
         )
@@ -2987,6 +3089,7 @@ async def get_doctor_schedules(
                     Schedule.doctor_id == doctor_id,
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
         )
@@ -3065,6 +3168,7 @@ async def get_clinic_schedules(
                     Schedule.clinic_id == clinic_id,
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
         )
@@ -3142,7 +3246,8 @@ async def get_doctor_schedules_today(
         ).where(
             and_(
                 Schedule.doctor_id == doctor_id,
-                Schedule.date == today
+                Schedule.date == today,
+                Schedule.is_latest == True,
             )
         ).order_by(Schedule.time_section)
 
@@ -3224,7 +3329,8 @@ async def create_schedule(
                 and_(
                     Schedule.doctor_id == schedule_data.doctor_id,
                     Schedule.date == schedule_data.schedule_date,
-                    Schedule.time_section == schedule_data.time_section
+                    Schedule.time_section == schedule_data.time_section,
+                    Schedule.is_latest == True,
                 )
             )
         )
@@ -3235,6 +3341,17 @@ async def create_schedule(
                 msg=f"该医生在 {schedule_data.schedule_date} {schedule_data.time_section} 已有排班(ID: {existing_schedule.schedule_id})",
                 status_code=400
             )
+
+        # 将同一诊室/日期/时段的旧排班标记为非最新，确保前端只展示最新记录
+        await db.execute(
+            update(Schedule).where(
+                and_(
+                    Schedule.clinic_id == schedule_data.clinic_id,
+                    Schedule.date == schedule_data.schedule_date,
+                    Schedule.time_section == schedule_data.time_section,
+                )
+            ).values(is_latest=False)
+        )
 
         # 处理价格：如果 price <= 0，则使用分级价格查询
         final_price = schedule_data.price
@@ -3268,7 +3385,8 @@ async def create_schedule(
             total_slots=schedule_data.total_slots,
             remaining_slots=schedule_data.total_slots,
             status=schedule_data.status,
-            price=final_price
+            price=final_price,
+            is_latest=True,
         )
         db.add(db_schedule)
         await db.commit()
@@ -3323,12 +3441,28 @@ async def update_schedule(
                 raise ResourceHTTPException(code=settings.REQ_ERROR_CODE, msg="门诊不存在", status_code=400)
             db_schedule.clinic_id = schedule_data.clinic_id
 
+        original_key = (db_schedule.clinic_id, db_schedule.date, db_schedule.time_section)
+
         if schedule_data.schedule_date is not None:
             db_schedule.date = schedule_data.schedule_date
             db_schedule.week_day = schedule_data.schedule_date.isoweekday()
 
         if schedule_data.time_section is not None:
             db_schedule.time_section = schedule_data.time_section
+
+        # 如果诊室/日期/时段发生变化，需要将新组合下的旧排班标记为非最新，并保证当前记录为最新
+        new_key = (db_schedule.clinic_id, db_schedule.date, db_schedule.time_section)
+        if new_key != original_key:
+            await db.execute(
+                update(Schedule).where(
+                    and_(
+                        Schedule.clinic_id == db_schedule.clinic_id,
+                        Schedule.date == db_schedule.date,
+                        Schedule.time_section == db_schedule.time_section,
+                    )
+                ).values(is_latest=False)
+            )
+        db_schedule.is_latest = True
 
         if schedule_data.slot_type is not None:
             db_schedule.slot_type = _str_to_slot_type(schedule_data.slot_type)
@@ -3411,7 +3545,36 @@ async def delete_schedule(
         if not db_schedule:
             raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在", status_code=404)
 
+        # 先取消该排班上的未完成订单（含退款与通知），再删除排班
+        await _cancel_orders_for_schedules(db, [db_schedule], reason_text="排班被删除，预约取消")
+
+        # 记录删除前的键和是否为最新，用于必要的补位
+        was_latest = bool(db_schedule.is_latest)
+        key_clinic = db_schedule.clinic_id
+        key_date = db_schedule.date
+        key_time = db_schedule.time_section
+
         await db.delete(db_schedule)
+
+        # 如果删除的是最新记录，尝试将同诊室同日同时间段的上一条记录置为最新，避免前端看不到任何排班
+        if was_latest:
+            replacement_res = await db.execute(
+                select(Schedule)
+                .where(
+                    and_(
+                        Schedule.clinic_id == key_clinic,
+                        Schedule.date == key_date,
+                        Schedule.time_section == key_time,
+                    )
+                )
+                .order_by(Schedule.schedule_id.desc())
+                .limit(1)
+            )
+            replacement = replacement_res.scalar_one_or_none()
+            if replacement:
+                replacement.is_latest = True
+                db.add(replacement)
+
         await db.commit()
 
         logger.info(f"删除排班成功: {schedule_id}")
@@ -3671,6 +3834,8 @@ async def approve_schedule_audit(
         clinic_id = db_audit.clinic_id
         
         schedule_records = []
+        processed_slots = set()  # (clinic_id, date, time_section) 标记已处理的诊室/时间段
+        old_schedules_to_cancel: list[Schedule] = []
         # 假设 time_section 依次为 '上午', '下午', '晚上'
         time_sections = ['上午', '下午', '晚上']
         # 假设排班 JSON 数据中的 DoctorInfo 包含其他必要信息如 slot_type, total_slots, price，或者使用默认值
@@ -3680,61 +3845,99 @@ async def approve_schedule_audit(
             current_date = start_date + timedelta(days=day_index)
             week_day = current_date.isoweekday() # 1=Mon, 7=Sun
             for slot_index, slot_data in enumerate(day_schedule):
-                if slot_data:
-                    # 假设 slot_data 是 ScheduleDoctorInfo: {"doctorId": 1, "doctorName": "李医生"}
-                    # 实际生产中，JSON 应该包含完整的排班信息（号源类型、数量、价格等）
-                    
-                    # 假设默认值，实际应从更详细的 JSON 结构中提取
-                    doctor_id = slot_data.get('doctor_id')
-                    
-                    # 检查医生是否存在 (可选，但推荐)
-                    if not (await db.get(Doctor, doctor_id)):
-                        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"排班数据中医生ID {doctor_id} 不存在", status_code=400)
-                    
-                    # 先尝试查找是否已有同一医生在该日期/时段的排班，避免重复插入导致约束冲突
-                    existing_res = await db.execute(
+                time_section = time_sections[slot_index]
+                slot_key = (clinic_id, current_date, time_section)
+
+                # 找出旧的最新排班，供后续取消订单
+                if slot_key not in processed_slots:
+                    old_res = await db.execute(
                         select(Schedule).where(
                             and_(
-                                Schedule.doctor_id == doctor_id,
+                                Schedule.clinic_id == clinic_id,
                                 Schedule.date == current_date,
-                                Schedule.time_section == time_sections[slot_index]
+                                Schedule.time_section == time_section,
+                                Schedule.is_latest == True,
                             )
                         )
                     )
-                    existing_schedule = existing_res.scalar_one_or_none()
+                    old_scheds = old_res.scalars().all()
+                    old_schedules_to_cancel.extend(old_scheds)
 
-                    if existing_schedule:
-                        # 更新已有排班（保持剩余号源不为负）
-                        existing_schedule.clinic_id = clinic_id
-                        existing_schedule.week_day = week_day
-                        existing_schedule.slot_type = _str_to_slot_type('普通')
-                        # 默认号源设置，可根据后续需求改为来自 JSON
-                        new_total = 50
-                        delta = new_total - (existing_schedule.total_slots or 0)
-                        existing_schedule.total_slots = new_total
-                        existing_schedule.remaining_slots = max(0, (existing_schedule.remaining_slots or 0) + delta)
-                        existing_schedule.price = 10.00
-                        # 统一使用中文状态以兼容其他查询逻辑
-                        existing_schedule.status = '正常'
-                        db.add(existing_schedule)
-                    else:
-                        # 新建排班
-                        new_schedule = Schedule(
-                            doctor_id=doctor_id,
-                            clinic_id=clinic_id,
-                            date=current_date,
-                            week_day=week_day,
-                            time_section=time_sections[slot_index],
-                            slot_type=_str_to_slot_type('普通'),
-                            total_slots=50,
-                            remaining_slots=50,
-                            price=10.00,
-                            status='正常'
+                    await db.execute(
+                        update(Schedule).where(
+                            and_(
+                                Schedule.clinic_id == clinic_id,
+                                Schedule.date == current_date,
+                                Schedule.time_section == time_section,
+                            )
+                        ).values(is_latest=False)
+                    )
+                    processed_slots.add(slot_key)
+
+                # 空格子表示删除/清空该时段的排班，跳过新增
+                if not slot_data:
+                    continue
+
+                # 假设 slot_data 是 ScheduleDoctorInfo: {"doctorId": 1, "doctorName": "李医生"}
+                # 实际生产中，JSON 应该包含完整的排班信息（号源类型、数量、价格等）
+                # 假设默认值，实际应从更详细的 JSON 结构中提取
+                doctor_id = slot_data.get('doctor_id')
+
+                # 检查医生是否存在 (可选，但推荐)
+                if not (await db.get(Doctor, doctor_id)):
+                    raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"排班数据中医生ID {doctor_id} 不存在", status_code=400)
+
+                # 先尝试查找是否已有同一医生在该日期/时段的排班，避免重复插入导致约束冲突
+                existing_res = await db.execute(
+                    select(Schedule).where(
+                        and_(
+                            Schedule.doctor_id == doctor_id,
+                            Schedule.date == current_date,
+                            Schedule.time_section == time_section
                         )
-                        schedule_records.append(new_schedule)
+                    )
+                )
+                existing_schedule = existing_res.scalar_one_or_none()
+
+                if existing_schedule:
+                    # 更新已有排班（保持剩余号源不为负）
+                    existing_schedule.clinic_id = clinic_id
+                    existing_schedule.week_day = week_day
+                    existing_schedule.slot_type = _str_to_slot_type('普通')
+                    # 默认号源设置，可根据后续需求改为来自 JSON
+                    new_total = 50
+                    delta = new_total - (existing_schedule.total_slots or 0)
+                    existing_schedule.total_slots = new_total
+                    existing_schedule.remaining_slots = max(0, (existing_schedule.remaining_slots or 0) + delta)
+                    existing_schedule.price = 10.00
+                    # 统一使用中文状态以兼容其他查询逻辑
+                    existing_schedule.status = '正常'
+                    existing_schedule.is_latest = True
+                    db.add(existing_schedule)
+                else:
+                    # 新建排班
+                    new_schedule = Schedule(
+                        doctor_id=doctor_id,
+                        clinic_id=clinic_id,
+                        date=current_date,
+                        week_day=week_day,
+                        time_section=time_section,
+                        slot_type=_str_to_slot_type('普通'),
+                        total_slots=50,
+                        remaining_slots=50,
+                        price=10.00,
+                        status='正常',
+                        is_latest=True
+                    )
+                    schedule_records.append(new_schedule)
 
         if schedule_records:
             db.add_all(schedule_records)
+
+        # 取消被替换掉的排班订单（含退款与通知）
+        if old_schedules_to_cancel:
+            await _cancel_orders_for_schedules(db, old_schedules_to_cancel, reason_text="排班调整，原预约已取消")
+
         await db.commit()
         await db.refresh(db_audit)
 

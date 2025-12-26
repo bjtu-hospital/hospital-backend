@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Integer, String, Date, Enum, DateTime, ForeignKey, Numeric
+from sqlalchemy import Column, BigInteger, Integer, String, Date, Enum, DateTime, ForeignKey, Numeric, Boolean
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 import enum
@@ -27,6 +27,7 @@ class Schedule(Base):
     status = Column(String(20), nullable=True, default="正常", comment="排班状态 (如：正常、停诊)")
     create_time = Column(DateTime, default=None, comment="创建时间")
     price = Column(Numeric(10, 2), nullable=False, default=0.00, comment="挂号原价 (单位: 元)")
+    is_latest = Column(Boolean, nullable=False, default=True, server_default='1', comment="是否为该诊室/时段的最新排班")
     
     # 关系字段
     doctor = relationship("Doctor", back_populates="schedules")
