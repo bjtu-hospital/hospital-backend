@@ -3691,22 +3691,50 @@ async def approve_schedule_audit(
                     if not (await db.get(Doctor, doctor_id)):
                         raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"排班数据中医生ID {doctor_id} 不存在", status_code=400)
                     
-                    # 假设 Schedule 模型中需要这些字段 (您未提供 Schedule 模型，此处按常见结构填充)
-                    new_schedule = Schedule(
-                        doctor_id=doctor_id,
-                        clinic_id=clinic_id,
-                        date=current_date,
-                        week_day=week_day,
-                        time_section=time_sections[slot_index],
-                        slot_type='普通', # 需根据实际业务逻辑确定
-                        total_slots=50,  # 需根据实际业务逻辑确定
-                        remaining_slots=50, # 需根据实际业务逻辑确定
-                        price=10.00, # 需根据实际业务逻辑确定
-                        status='normal'
+                    # 先尝试查找是否已有同一医生在该日期/时段的排班，避免重复插入导致约束冲突
+                    existing_res = await db.execute(
+                        select(Schedule).where(
+                            and_(
+                                Schedule.doctor_id == doctor_id,
+                                Schedule.date == current_date,
+                                Schedule.time_section == time_sections[slot_index]
+                            )
+                        )
                     )
-                    schedule_records.append(new_schedule)
+                    existing_schedule = existing_res.scalar_one_or_none()
 
-        db.add_all(schedule_records)
+                    if existing_schedule:
+                        # 更新已有排班（保持剩余号源不为负）
+                        existing_schedule.clinic_id = clinic_id
+                        existing_schedule.week_day = week_day
+                        existing_schedule.slot_type = _str_to_slot_type('普通')
+                        # 默认号源设置，可根据后续需求改为来自 JSON
+                        new_total = 50
+                        delta = new_total - (existing_schedule.total_slots or 0)
+                        existing_schedule.total_slots = new_total
+                        existing_schedule.remaining_slots = max(0, (existing_schedule.remaining_slots or 0) + delta)
+                        existing_schedule.price = 10.00
+                        # 统一使用中文状态以兼容其他查询逻辑
+                        existing_schedule.status = '正常'
+                        db.add(existing_schedule)
+                    else:
+                        # 新建排班
+                        new_schedule = Schedule(
+                            doctor_id=doctor_id,
+                            clinic_id=clinic_id,
+                            date=current_date,
+                            week_day=week_day,
+                            time_section=time_sections[slot_index],
+                            slot_type=_str_to_slot_type('普通'),
+                            total_slots=50,
+                            remaining_slots=50,
+                            price=10.00,
+                            status='正常'
+                        )
+                        schedule_records.append(new_schedule)
+
+        if schedule_records:
+            db.add_all(schedule_records)
         await db.commit()
         await db.refresh(db_audit)
 

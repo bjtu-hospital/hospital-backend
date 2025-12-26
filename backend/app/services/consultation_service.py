@@ -216,11 +216,13 @@ async def call_next_patient(
     """
     async with db.begin_nested():  # 嵌套事务
         # 1. 安全检查：确保当前没有患者正在就诊
+        # 仅把"已确认且正在就诊"视为占用，排除已取消/超时/候补等非活跃订单
         current_calling_query = await db.execute(
             select(RegistrationOrder.order_id, RegistrationOrder.patient_id)
             .where(
                 and_(
                     RegistrationOrder.schedule_id == schedule_id,
+                    RegistrationOrder.status == OrderStatus.CONFIRMED,
                     RegistrationOrder.is_calling == True
                 )
             )

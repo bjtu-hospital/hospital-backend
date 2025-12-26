@@ -35,16 +35,25 @@ async def execute_add_slot_and_register(
     if not patient:
         raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="患者不存在或未注册为患者", status_code=404)
 
-    # 3. 检查是否已有重复挂号（同一 schedule_id 且未取消）
+    # 3. 检查是否已有重复挂号（同一 schedule_id 且处于“有效”状态）
+    # 有效订单的定义：pending/confirmed/completed（候补与超时/取消不算有效）
     res = await db.execute(
         select(RegistrationOrder).where(
             RegistrationOrder.schedule_id == schedule_id,
             RegistrationOrder.patient_id == patient.patient_id,
-            RegistrationOrder.status != OrderStatus.CANCELLED
+            RegistrationOrder.status.in_([
+                OrderStatus.PENDING,
+                OrderStatus.CONFIRMED,
+                OrderStatus.COMPLETED,
+            ])
         )
     )
     if res.scalar_one_or_none():
-        raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="患者在该排班已有有效挂号", status_code=400)
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="患者在该排班已有有效挂号",
+            status_code=400
+        )
 
     # 4. 获取身份折扣配置并计算最终价格
     discounts = await get_patient_identity_discounts(db)
