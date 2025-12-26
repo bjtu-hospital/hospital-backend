@@ -238,7 +238,22 @@ async def call_next_patient(
             )
         
         # 2. 选取下一位（正式队列中第一个未叫号的）
-        next_query = await db.execute(
+        bind = db.get_bind()
+        supports_skip_locked = False
+
+        # MariaDB 10.6 之前不支持 SKIP LOCKED，这里根据数据库版本做降级以避免语法错误
+        try:
+            dialect = bind.dialect if bind else None
+            version_info = getattr(dialect, "server_version_info", None)
+            if dialect and dialect.name == "mysql" and version_info:
+                if getattr(dialect, "is_mariadb", False):
+                    supports_skip_locked = version_info >= (10, 6)
+                else:
+                    supports_skip_locked = version_info >= (8, 0, 1)
+        except Exception:
+            supports_skip_locked = False
+
+        next_stmt = (
             select(RegistrationOrder)
             .options(selectinload(RegistrationOrder.patient))
             .where(
@@ -254,8 +269,14 @@ async def call_next_patient(
                 RegistrationOrder.create_time.asc()
             )
             .limit(1)
-            .with_for_update(skip_locked=True)  # 跳过已锁定的行（并发安全）
         )
+
+        if supports_skip_locked:
+            next_stmt = next_stmt.with_for_update(skip_locked=True)
+        else:
+            next_stmt = next_stmt.with_for_update()
+
+        next_query = await db.execute(next_stmt)
         next_patient = next_query.scalar_one_or_none()
         
         # 3. 标记为正在就诊

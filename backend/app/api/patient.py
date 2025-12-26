@@ -1000,6 +1000,7 @@ async def get_department_schedules(
                     Schedule.clinic_id.in_(clinic_ids),
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
             .order_by(Schedule.date, Schedule.time_section)
@@ -1079,6 +1080,7 @@ async def get_doctor_schedules(
                     Schedule.doctor_id == doctor_id,
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
             .order_by(Schedule.date, Schedule.time_section)
@@ -1158,6 +1160,7 @@ async def get_clinic_schedules(
                     Schedule.clinic_id == clinic_id,
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
             .order_by(Schedule.date, Schedule.time_section)
@@ -1268,6 +1271,7 @@ async def get_schedules(
                     Schedule.clinic_id.in_(clinic_ids),
                     Schedule.date >= start_dt,
                     Schedule.date <= end_dt,
+                    Schedule.is_latest == True,
                 )
             )
             .order_by(Schedule.date, Schedule.time_section)
