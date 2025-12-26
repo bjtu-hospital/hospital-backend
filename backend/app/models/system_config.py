@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 from app.db.base import Base
 
 
@@ -32,9 +32,9 @@ class SystemConfig(Base):
     is_active = Column(Boolean, nullable=False, default=True, comment='是否启用 (1: 启用, 0: 禁用)')
 
     # 审计字段 (时间戳)
-    create_time = Column(DateTime, nullable=False, default=datetime.utcnow, comment='创建时间')
-    # onupdate=datetime.utcnow 实现自动更新时间
-    update_time = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow, comment='更新时间')
+    create_time = Column(DateTime, nullable=False, default=beijing_now_for_model, comment='创建时间')
+    # onupdate=beijing_now_for_model 实现自动更新时间
+    update_time = Column(DateTime, nullable=False, default=beijing_now_for_model, onupdate=beijing_now_for_model, comment='更新时间')
 
     # 确保在同一 Scope 内，键名是唯一的 (实现配置分层的关键)
     __table_args__ = (

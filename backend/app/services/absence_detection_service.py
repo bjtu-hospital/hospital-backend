@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict
+from app.core.datetime_utils import get_now_naive, get_today
 import logging
 
 from app.models.schedule import Schedule
@@ -84,8 +85,8 @@ async def mark_absent_for_date(
             checkout_lng=None,
             work_duration_minutes=None,
             status=AttendanceStatus.ABSENT,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=get_now_naive(),
+            updated_at=get_now_naive()
         )
         db.add(absent_record)
         absent_marked += 1
@@ -146,7 +147,7 @@ async def auto_mark_yesterday_absent(db: AsyncSession) -> Dict:
     Returns:
         统计信息
     """
-    yesterday = date.today() - timedelta(days=1)
+    yesterday = get_today() - timedelta(days=1)
     logger.info(f"定时任务：开始标记 {yesterday} 的缺勤记录")
     
     stats = await mark_absent_for_date(db, yesterday)

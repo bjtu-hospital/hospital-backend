@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, update
 from typing import Optional
 from datetime import datetime, timedelta, date as date_type
+from app.core.datetime_utils import get_now_naive, get_today
 import re
 
 from app.core.datetime_utils import get_now_naive

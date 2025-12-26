@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.datetime_utils import get_now_naive
 
 from app.models.registration_order import RegistrationOrder
 from app.models.user_access_log import UserAccessLog
@@ -16,7 +17,7 @@ class RiskDetectionService:
 
     async def detect_registration_risk(self, db: AsyncSession, user_id: int) -> int:
         """检测挂号行为风险: 短时间批量 & 跨科室批量"""
-        now = datetime.utcnow()
+        now = get_now_naive()
         score_added = 0
 
         # 10 分钟内挂号次数
@@ -39,7 +40,7 @@ class RiskDetectionService:
 
     async def detect_login_risk(self, db: AsyncSession, user_id: int, ip: str) -> int:
         """检测登录风险: 高频登录 (其他复杂如IP地理位置暂未实现)"""
-        now = datetime.utcnow()
+        now = get_now_naive()
         one_hour_ago = now - timedelta(hours=1)
         result = await db.execute(select(func.count(UserAccessLog.log_id)).where(and_(UserAccessLog.user_id == user_id, UserAccessLog.access_time >= one_hour_ago)))
         login_count = result.scalar() or 0

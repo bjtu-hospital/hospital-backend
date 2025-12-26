@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 
 from app.db.base import Base
 
@@ -21,6 +21,6 @@ class RiskLog(Base):
     risk_level = Column(String(20), nullable=False, comment="操作后的风险等级")
     behavior_type = Column(String(50), nullable=True, comment="行为类型标识")
     description = Column(String(500), nullable=True, comment="行为描述")
-    alert_time = Column(DateTime, default=datetime.utcnow, nullable=False, comment="记录时间")
+    alert_time = Column(DateTime, default=beijing_now_for_model, nullable=False, comment="记录时间")
 
     user = relationship("User")

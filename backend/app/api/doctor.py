@@ -66,6 +66,7 @@ from app.services.consultation_service import (
 from app.schemas.response import ResponseModel
 from typing import Optional
 from datetime import datetime, date, timezone, timedelta
+from app.core.datetime_utils import get_now_naive, get_today
 import json
 
 router = APIRouter()
@@ -121,7 +122,7 @@ async def _cancel_and_notify_orders_for_closed_schedules(
 
 		notified = 0
 		processed = 0
-		now = datetime.now()
+		now = get_now_naive()
 
 		for order, schedule, patient, clinic, doctor in rows:
 			try:
@@ -425,7 +426,7 @@ async def schedule_submit_change(
 			minor_dept_id=doctor.dept_id,
 			clinic_id=clinic_id,
 			submitter_doctor_id=doctor.doctor_id,
-			submit_time=datetime.now(),
+			submit_time=get_now_naive(),
 			week_start_date=week_start,
 			week_end_date=week_start + timedelta(days=6),
 			remark="科室长提交排班调整",
@@ -669,7 +670,7 @@ async def _get_doctor(db: AsyncSession, current_user: UserSchema) -> Doctor:
 
 
 async def _get_today_schedules(db: AsyncSession, doctor_id: int) -> list[Schedule]:
-	res = await db.execute(select(Schedule).where(and_(Schedule.doctor_id == doctor_id, Schedule.date == date.today())))
+	res = await db.execute(select(Schedule).where(and_(Schedule.doctor_id == doctor_id, Schedule.date == get_today())))
 	return res.scalars().all()
 
 
@@ -728,7 +729,7 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 		schedules = result.scalars().all()
 
 		schedule_details = []
-		now = datetime.now()  # 使用本地时间而非UTC
+		now = get_now_naive()  # 使用本地时间而非UTC
 		current_shift_obj = None
 		shift_status_value = "checked_out"
 		checkin_time = None
@@ -769,11 +770,11 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 				checkout_time = state.get("checkout_time")
 				if state.get("checkin_time"):
 					ct_parsed = datetime.strptime(state["checkin_time"], "%H:%M")
-					work_duration = _human_duration(datetime.combine(date.today(), ct_parsed.time()), datetime.combine(date.today(), datetime.strptime(checkout_time, "%H:%M").time()))
+					work_duration = _human_duration(datetime.combine(get_today(), ct_parsed.time()), datetime.combine(get_today(), datetime.strptime(checkout_time, "%H:%M").time()))
 			elif state.get("checkin_time"):
 				checkin_time = state.get("checkin_time")
 				shift_status_value = "checked_in"
-				work_duration = _human_duration(datetime.combine(date.today(), datetime.strptime(checkin_time, "%H:%M").time()), now)
+				work_duration = _human_duration(datetime.combine(get_today(), datetime.strptime(checkin_time, "%H:%M").time()), now)
 				time_to_checkout = _human_duration(now, end_dt) if now <= end_dt else "已超时"
 			elif now < earliest_checkin:
 				shift_status_value = "not_started"
@@ -800,7 +801,7 @@ async def workbench_dashboard(db: AsyncSession = Depends(get_db), current_user: 
 			shift_status_value = "checked_out"
 
 		# 接诊统计（今日）
-		stats_res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == date.today())))
+		stats_res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == get_today())))
 		orders = stats_res.scalars().all()
 		pending_cnt = sum(1 for o in orders if o.status in (OrderStatus.PENDING, OrderStatus.WAITLIST))
 		ongoing_cnt = sum(1 for o in orders if o.status in (OrderStatus.CONFIRMED,))
@@ -980,7 +981,7 @@ async def get_approval_stats(
 			)
 		
 		# 计算本月的起始和结束日期
-		now = datetime.now()
+		now = get_now_naive()
 		month_start = datetime(now.year, now.month, 1)
 		if now.month == 12:
 			month_end = datetime(now.year + 1, 1, 1)
@@ -1230,7 +1231,7 @@ async def department_head_leave_approve(
 			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="仅可审批待审核申请", status_code=400)
 		leave.status = "approved"
 		leave.auditor_user_id = current_user.user_id
-		leave.audit_time = datetime.now()
+		leave.audit_time = get_now_naive()
 		leave.audit_remark = action.comment
 		await db.commit()
 
@@ -1283,7 +1284,7 @@ async def department_head_leave_reject(
 			raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg="仅可驳回待审核申请", status_code=400)
 		leave.status = "rejected"
 		leave.auditor_user_id = current_user.user_id
-		leave.audit_time = datetime.now()
+		leave.audit_time = get_now_naive()
 		leave.audit_remark = action.comment
 		await db.commit()
 		return ResponseModel(code=0, message=AuditActionResponse(audit_id=leave.audit_id, status=leave.status, auditor_id=current_user.user_id, audit_time=leave.audit_time))
@@ -1311,7 +1312,7 @@ async def workbench_checkin(
 			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在或不属于当前医生", status_code=404)
 		
 		# 仅允许当天排班签到
-		today = date.today()
+		today = get_today()
 		if schedule.date != today:
 			raise BusinessHTTPException(
 				code=settings.REQ_ERROR_CODE,
@@ -1326,7 +1327,7 @@ async def workbench_checkin(
 		
 		# 时间窗口检查:提前30分钟可签到，班次结束前必须签到
 		start_str, end_str = await _get_time_section_config(db, schedule.time_section, schedule.clinic_id)
-		now = datetime.now()  # 使用本地时间而非UTC
+		now = get_now_naive()  # 使用本地时间而非UTC
 		start_dt = datetime.combine(today, datetime.strptime(start_str, "%H:%M").time())
 		end_dt = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
 		
@@ -1394,7 +1395,7 @@ async def workbench_checkout(
 			raise ResourceHTTPException(code=settings.DATA_GET_FAILED_CODE, msg="排班不存在或不属于当前医生", status_code=404)
 		
 		# 仅允许当天排班签退
-		today = date.today()
+		today = get_today()
 		if schedule.date != today:
 			raise BusinessHTTPException(
 				code=settings.REQ_ERROR_CODE,
@@ -1411,7 +1412,7 @@ async def workbench_checkout(
 		
 		# 时间窗口检查：班次结束后2小时内可签退
 		start_str, end_str = await _get_time_section_config(db, schedule.time_section, schedule.clinic_id)
-		now = datetime.now()  # 使用本地时间而非UTC
+		now = get_now_naive()  # 使用本地时间而非UTC
 		end_dt = datetime.combine(today, datetime.strptime(end_str, "%H:%M").time())
 		latest_checkout = end_dt + timedelta(hours=2)
 		
@@ -1473,7 +1474,7 @@ async def workbench_shifts(doctorId: Optional[int] = None, date_str: Optional[st
 		doctor = await _get_doctor(db, current_user)
 		if doctorId and doctorId != doctor.doctor_id:
 			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的排班", status_code=403)
-		target_date = date.today()
+		target_date = get_today()
 		if date_str:
 			try:
 				target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -1485,7 +1486,7 @@ async def workbench_shifts(doctorId: Optional[int] = None, date_str: Optional[st
 			.where(and_(Schedule.doctor_id == doctor.doctor_id, Schedule.date == target_date))
 		)
 		schedules = res.scalars().all()
-		now = datetime.now()  # 使用本地时间而非UTC
+		now = get_now_naive()  # 使用本地时间而非UTC
 		items = []
 		for s in schedules:
 			start_str, end_str = await _get_time_section_config(db, s.time_section, s.clinic_id)
@@ -1531,7 +1532,7 @@ async def workbench_consultation_stats(doctorId: int, db: AsyncSession = Depends
 		doctor = await _get_doctor(db, current_user)
 		if doctorId != doctor.doctor_id:
 			raise AuthHTTPException(code=settings.INSUFFICIENT_AUTHORITY_CODE, msg="不能查询其他医生的数据", status_code=403)
-		res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == date.today())))
+		res = await db.execute(select(RegistrationOrder).where(and_(RegistrationOrder.doctor_id == doctor.doctor_id, RegistrationOrder.slot_date == get_today())))
 		orders = res.scalars().all()
 		pending_cnt = sum(1 for o in orders if o.status in (OrderStatus.PENDING, OrderStatus.WAITLIST))
 		ongoing_cnt = sum(1 for o in orders if o.status in (OrderStatus.CONFIRMED,))
@@ -1563,7 +1564,7 @@ async def workbench_recent_consultations(doctorId: int, limit: int = 3, db: Asyn
 			.where(
 				and_(
 					RegistrationOrder.doctor_id == doctor.doctor_id,
-					RegistrationOrder.slot_date == date.today(),
+					RegistrationOrder.slot_date == get_today(),
 					RegistrationOrder.status.in_([OrderStatus.COMPLETED, OrderStatus.CONFIRMED]),
 					RegistrationOrder.visit_times.isnot(None)  # 必须有就诊时间
 				)
@@ -2358,7 +2359,7 @@ async def exact_search_patient(
 			patient, user = phone_row
 			age = 0
 			if patient.birth_date:
-				today = date.today()
+				today = get_today()
 				age = today.year - patient.birth_date.year
 				if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
 					age -= 1
@@ -2396,7 +2397,7 @@ async def exact_search_patient(
 			for patient, user in name_rows:
 				age = 0
 				if patient.birth_date:
-					today = date.today()
+					today = get_today()
 					age = today.year - patient.birth_date.year
 					if (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day):
 						age -= 1
@@ -2540,7 +2541,7 @@ async def get_leave_schedule(
 				current_date += timedelta(days=1)
 
 		# 构建响应数据
-		today = date.today()
+		today = get_today()
 		result = []
 		from app.schemas.leave import ShiftLeaveStatus
 		for day in range(1, last_day + 1):
@@ -2618,8 +2619,8 @@ async def apply_leave(
 
 		# 业务日期校验（不同请假类型的提交时限）
 		leave_date = datetime.strptime(data.date, "%Y-%m-%d").date()
-		now = datetime.now()
-		today = date.today()
+		now = get_now_naive()
+		today = get_today()
 		if data.shift == ShiftEnum.FULL:
 			# 全天需至少提前一天
 			if leave_date <= today:
@@ -2702,7 +2703,7 @@ async def apply_leave(
 			reason=data.reason,
 			attachment_data_json=attachments_data if attachments_data else None,
 			status="pending",
-			submit_time=datetime.now()
+			submit_time=get_now_naive()
 		)
 		db.add(new_leave)
 		await db.commit()
@@ -2881,7 +2882,7 @@ async def get_patient_detail(
 		# 计算年龄
 		age = None
 		if patient.birth_date:
-			today = date.today()
+			today = get_today()
 			age = today.year - patient.birth_date.year
 			if today.month < patient.birth_date.month or (
 				today.month == patient.birth_date.month and today.day < patient.birth_date.day

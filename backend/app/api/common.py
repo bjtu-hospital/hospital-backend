@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from datetime import date as date_type, timedelta
+from app.core.datetime_utils import get_now_naive, get_today
 import logging
 import mimetypes
 import aiofiles
@@ -51,7 +52,7 @@ def is_allowed_file(filename: str) -> bool:
 def generate_unique_filename(original_filename: str) -> str:
 	"""生成唯一文件名: 时间戳_UUID_原始名"""
 	ext = get_file_extension(original_filename)
-	timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+	timestamp = get_now_naive().strftime("%Y%m%d%H%M%S")
 	unique_id = str(uuid.uuid4())[:8]
 	# 保留原始文件名(去除扩展名)
 	original_name = Path(original_filename).stem
@@ -76,7 +77,7 @@ async def submit_feedback(
 ):
 	try:
 		# 生成唯一ID
-		now = datetime.now()
+		now = get_now_naive()
 		submit_date = now.strftime("%Y-%m-%d")
 		feedback = Feedback(
 			user_id=current_user.user_id,
@@ -233,7 +234,7 @@ async def upload_image(file: UploadFile = File(...)):
 		
 		# 3. 生成保存路径
 		# 按日期分类: static/images/audit/2025/11/26/
-		now = datetime.now()
+		now = get_now_naive()
 		date_path = now.strftime("%Y/%m/%d")
 		upload_dir = Path("app/static/images/audit") / date_path
 		
@@ -471,7 +472,7 @@ async def generate_medical_record_pdf(
 			"gender": patient.gender.value if patient and patient.gender else "未知",
 			"age": age if age else 0,
 			"outpatientNo": f"{visit_id:06d}",
-			"visitDate": visit.visit_date.strftime("%Y-%m-%d") if visit.visit_date else datetime.now().strftime("%Y-%m-%d")
+			"visitDate": visit.visit_date.strftime("%Y-%m-%d") if visit.visit_date else get_now_naive().strftime("%Y-%m-%d")
 		}
 		
 		visit_datetime = visit.visit_date.strftime("%Y-%m-%d") if visit.visit_date else ""
@@ -493,7 +494,7 @@ async def generate_medical_record_pdf(
 		pdf_dir = ensure_pdf_directory()
 		
 		# 生成PDF文件名
-		filename = f"medical_record_{visit_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+		filename = f"medical_record_{visit_id}_{get_now_naive().strftime('%Y%m%d%H%M%S')}.pdf"
 		pdf_path = pdf_dir / filename
 		
 		# 生成PDF
@@ -506,7 +507,7 @@ async def generate_medical_record_pdf(
 		pdf_url = f"/static/{relative_path}"
 		
 		# 计算过期时间（7天后 - 需配合定时清理任务）
-		expire_time = datetime.now() + timedelta(days=7)
+		expire_time = get_now_naive() + timedelta(days=7)
 		
 		# 返回结果
 		return ResponseModel(code=0, message={
@@ -608,7 +609,7 @@ async def download_medical_record_pdf(
 		latest_pdf = max(pdf_files, key=lambda p: p.stat().st_mtime)
 		
 		# 检查文件是否过期（7天）
-		file_age = datetime.now().timestamp() - latest_pdf.stat().st_mtime
+		file_age = get_now_naive().timestamp() - latest_pdf.stat().st_mtime
 		if file_age > 7 * 24 * 3600:
 			raise ResourceHTTPException(
 				code=410,
@@ -618,7 +619,7 @@ async def download_medical_record_pdf(
 		
 		# 生成友好的文件名
 		patient = visit.patient
-		visit_date = visit.visit_date.strftime("%Y-%m-%d") if visit.visit_date else datetime.now().strftime("%Y-%m-%d")
+		visit_date = visit.visit_date.strftime("%Y-%m-%d") if visit.visit_date else get_now_naive().strftime("%Y-%m-%d")
 		filename = f"病历单_{patient.name if patient else '未知'}_{visit_date}.pdf"
 		
 		# URL编码中文文件名（避免编码问题）

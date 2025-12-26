@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime, timedelta
+from datetime import timedelta
+from app.core.datetime_utils import beijing_now_for_model, get_now_naive
 
 from app.db.base import Base
 
@@ -23,8 +24,8 @@ class UserBan(Base):
     ban_until = Column(DateTime, nullable=True, comment="封禁截止时间, NULL 表示永久")
     is_active = Column(Boolean, default=True, nullable=False, comment="是否仍在封禁中")
     reason = Column(String(500), nullable=True, comment="封禁原因和备注")
-    create_time = Column(DateTime, default=datetime.utcnow, nullable=False, comment="创建时间")
-    update_time = Column(DateTime, default=datetime.utcnow, nullable=False, comment="最近更新时间")
+    create_time = Column(DateTime, default=beijing_now_for_model, nullable=False, comment="创建时间")
+    update_time = Column(DateTime, default=beijing_now_for_model, nullable=False, comment="最近更新时间")
     unban_time = Column(DateTime, nullable=True, comment="解除封禁时间")
 
     user = relationship("User")
@@ -34,13 +35,13 @@ class UserBan(Base):
         if duration_days <= 0:
             self.ban_until = None
         else:
-            self.ban_until = datetime.utcnow() + timedelta(days=duration_days)
-        self.update_time = datetime.utcnow()
+            self.ban_until = get_now_naive() + timedelta(days=duration_days)
+        self.update_time = get_now_naive()
 
     def deactivate(self, extra_reason: str = ""):
         self.is_active = False
-        self.unban_time = datetime.utcnow()
-        self.update_time = datetime.utcnow()
+        self.unban_time = get_now_naive()
+        self.update_time = get_now_naive()
         if extra_reason:
             # 追加备注
             if self.reason:

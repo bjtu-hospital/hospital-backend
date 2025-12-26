@@ -8,6 +8,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
 from datetime import datetime, timedelta
+from app.core.datetime_utils import get_now_naive
 import logging
 
 from app.db.base import redis
@@ -43,7 +44,7 @@ class PaymentTimeoutService:
         """
         try:
             # 计算超时时间点（30分钟前）
-            timeout_threshold = datetime.now() - timedelta(minutes=cls.PAYMENT_TIMEOUT_MINUTES)
+            timeout_threshold = get_now_naive() - timedelta(minutes=cls.PAYMENT_TIMEOUT_MINUTES)
             
             # 查询所有超时未支付的订单（PENDING 状态，创建时间超过 30 分钟）
             result = await db.execute(
@@ -67,7 +68,7 @@ class PaymentTimeoutService:
                     # 1. 标记订单为超时
                     order.status = OrderStatus.TIMEOUT
                     order.payment_status = PaymentStatus.FAILED
-                    order.update_time = datetime.now()
+                    order.update_time = get_now_naive()
                     db.add(order)
                     
                     # 2. 释放号源（如果关联了排班）
@@ -125,7 +126,7 @@ class PaymentTimeoutService:
     async def get_timeout_pending_orders_count(cls, db: AsyncSession) -> int:
         """获取当前超时未支付的订单数（用于监控）"""
         try:
-            timeout_threshold = datetime.now() - timedelta(minutes=cls.PAYMENT_TIMEOUT_MINUTES)
+            timeout_threshold = get_now_naive() - timedelta(minutes=cls.PAYMENT_TIMEOUT_MINUTES)
             
             result = await db.execute(
                 select(RegistrationOrder).where(

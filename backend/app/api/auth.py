@@ -5,6 +5,7 @@ from sqlalchemy import select, and_
 from typing import Union, Optional
 from jose import jwt, JWTError
 from datetime import timedelta, date
+from app.core.datetime_utils import get_now_naive, get_today
 import logging
 import time
 
@@ -744,7 +745,7 @@ async def register_patient(
                     patient_type=PatientType.EXTERNAL.value,  # 默认为校外人员
                     identifier=None,  # 注册时不设置，由认证模块处理
                     is_verified=True,
-                    create_time=date.today()
+                    create_time=get_today()
                 )
                 db.add(patient)
                 await db.commit()
@@ -799,7 +800,7 @@ async def register_patient(
                     patient_type=PatientType.EXTERNAL.value,  # 默认为校外人员
                     identifier=None,  # 注册时不设置，由认证模块处理
                     is_verified=True,
-                    create_time=date.today()
+                    create_time=get_today()
                 )
                 db.add(ensured_patient)
                 await db.commit()

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 from app.db.base import Base
 import enum
 
@@ -28,6 +28,6 @@ class Feedback(Base):
     contact_email = Column(String(100), nullable=True, comment="联系邮箱")
     status = Column(Enum(FeedbackStatus, values_callable=lambda e: [v.value for v in e], name="feedbackstatus", native_enum=False), default=FeedbackStatus.PENDING, nullable=False, comment="处理状态")
     submit_date = Column(String(10), nullable=False, comment="提交日期YYYY-MM-DD")
-    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
+    created_at = Column(DateTime, default=beijing_now_for_model, comment="创建时间")
 
     user = relationship("User", back_populates="feedbacks")

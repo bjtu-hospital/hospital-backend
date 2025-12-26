@@ -1,10 +1,10 @@
-import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import UniqueConstraint # 导入 UniqueConstraint
 from app.db.base import Base
+from app.core.datetime_utils import beijing_now_for_model
 
 # 排班申请表模型 (ScheduleAudit)
 class ScheduleAudit(Base):
@@ -27,7 +27,7 @@ class ScheduleAudit(Base):
     schedule_data_json = Column(JSON, nullable=False, comment='排班计划详情的JSON数据') 
     
     # 提交和备注
-    submit_time = Column(DateTime, default=datetime.datetime.now, nullable=False, comment='提交申请时间')
+    submit_time = Column(DateTime, default=beijing_now_for_model, nullable=False, comment='提交申请时间')
     remark = Column(String(255), comment='提交备注')
     
     # 审核信息

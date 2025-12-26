@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 
 from app.db.base import Base
 
@@ -21,7 +21,7 @@ class UserRiskSummary(Base):
     last_decay_time = Column(DateTime, nullable=True, comment="最近一次衰减时间")
     total_positive_count = Column(Integer, default=0, nullable=False, comment="累计正向行为次数")
     total_negative_count = Column(Integer, default=0, nullable=False, comment="累计负向行为次数")
-    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False, comment="最近更新时间")
+    updated_at = Column(DateTime, default=beijing_now_for_model, nullable=False, comment="最近更新时间")
 
     def touch(self):
-        self.updated_at = datetime.utcnow()
+        self.updated_at = beijing_now_for_model()

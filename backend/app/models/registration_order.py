@@ -2,7 +2,7 @@ from sqlalchemy import Column, BigInteger, Integer, String, Date, DateTime, Bool
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 import enum
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 
 
 class OrderStatus(enum.Enum):
@@ -95,8 +95,8 @@ class RegistrationOrder(Base):
 
     notes = Column(Text, nullable=True, comment="订单备注/特殊说明")
 
-    create_time = Column(DateTime, default=datetime.utcnow, comment="创建时间")
-    update_time = Column(DateTime, default=datetime.utcnow, comment="最后更新时间")
+    create_time = Column(DateTime, default=beijing_now_for_model, comment="创建时间")
+    update_time = Column(DateTime, default=beijing_now_for_model, comment="最后更新时间")
 
     # 关系（便于 ORM 查询）
     patient = relationship("Patient")

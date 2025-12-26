@@ -6,6 +6,7 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
+from app.core.datetime_utils import get_now_naive
 import logging
 
 from app.db.base import get_db
@@ -21,7 +22,7 @@ async def scheduled_absence_check():
     """
     定时任务：检查并标记昨天的缺勤记录
     """
-    logger.info(f"[定时任务] 缺勤检测任务开始执行 - {datetime.now()}")
+    logger.info(f"[定时任务] 缺勤检测任务开始执行 - {get_now_naive()}")
     
     try:
         async for db in get_db():
