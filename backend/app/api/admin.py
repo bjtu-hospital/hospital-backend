@@ -11,6 +11,7 @@ import mimetypes
 import aiofiles
 from app.core.security import get_hash_pwd
 from datetime import datetime, date, timedelta
+from app.core.datetime_utils import get_now_naive, get_today
 from app.api.auth import get_current_user
 from app.models.user_access_log import UserAccessLog
 from app.schemas.admin import MajorDepartmentCreate, MajorDepartmentUpdate, MinorDepartmentCreate, MinorDepartmentUpdate, DoctorCreate, DoctorUpdate, DoctorAccountCreate, DoctorTransferDepartment, ClinicCreate, ClinicUpdate, ClinicListResponse, ScheduleCreate, ScheduleUpdate, ScheduleListResponse
@@ -138,7 +139,7 @@ async def _cancel_and_notify_orders_for_closed_schedules(
 
         notified = 0
         processed = 0
-        now = datetime.now()
+        now = get_now_naive()
 
         for order, schedule, patient, clinic, doctor in rows:
             try:
@@ -3131,7 +3132,7 @@ async def get_doctor_schedules_today(
             )
 
         # 获取当天日期
-        today = datetime.now().date()
+        today = get_today()
 
         # 查询当天排班
         stmt = select(Schedule, Clinic, MinorDepartment).join(
@@ -3654,7 +3655,7 @@ async def approve_schedule_audit(
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
         # 使用当前用户 User ID 作为审核人
-        current_time = datetime.now()
+        current_time = get_now_naive()
         
         # 1. 更新审核表状态
         db_audit.status = 'approved'
@@ -3760,7 +3761,7 @@ async def reject_schedule_audit(
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
         auditor_admin_id = await get_administrator_id(db, current_user.user_id)
-        current_time = datetime.now()
+        current_time = get_now_naive()
 
         # 更新审核表状态
         db_audit.status = 'rejected'
@@ -3967,7 +3968,7 @@ async def approve_leave_audit(
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
         # 使用当前用户 User ID 作为审核人
-        current_time = datetime.now()
+        current_time = get_now_naive()
 
         # 1. 将医生在请假期间的排班状态标记为"请假"（保留历史记录，便于追溯）
         from sqlalchemy import update
@@ -4062,7 +4063,7 @@ async def reject_leave_audit(
         if db_audit.status != 'pending':
             raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"当前申请状态为 {db_audit.status}，无法重复审核", status_code=400)
         
-        current_time = datetime.now()
+        current_time = get_now_naive()
 
         # 更新审核表状态
         db_audit.status = 'rejected'
@@ -4134,7 +4135,7 @@ async def approve_add_slot_audit(
         # 更新审核记录
         audit.status = 'approved'
         audit.auditor_user_id = current_user.user_id  # 使用 auditor_user_id 而不是 auditor_admin_id
-        audit.audit_time = datetime.now()
+        audit.audit_time = get_now_naive()
         audit.audit_remark = data.comment
         db.add(audit)
         await db.commit()
@@ -4191,7 +4192,7 @@ async def reject_add_slot_audit(
 
         audit.status = 'rejected'
         audit.auditor_user_id = current_user.user_id  # 使用 auditor_user_id 而不是 auditor_admin_id
-        audit.audit_time = datetime.now()
+        audit.audit_time = get_now_naive()
         audit.audit_remark = data.comment
         db.add(audit)
         await db.commit()
@@ -4389,7 +4390,7 @@ async def update_system_config(
                 current_value = registration_config.config_value or {}
                 current_value.update(reg_dict)
                 registration_config.config_value = current_value
-                registration_config.update_time = datetime.now()
+                registration_config.update_time = get_now_naive()
                 # 关键：标记 JSON 字段已修改，确保 SQLAlchemy 追踪到变更
                 flag_modified(registration_config, "config_value")
                 db.add(registration_config)
@@ -4456,7 +4457,7 @@ async def update_system_config(
                 current_value = schedule_config.config_value or {}
                 current_value.update(sch_dict)
                 schedule_config.config_value = current_value
-                schedule_config.update_time = datetime.now()
+                schedule_config.update_time = get_now_naive()
                 # 关键：标记 JSON 字段已修改，确保 SQLAlchemy 追踪到变更
                 flag_modified(schedule_config, "config_value")
                 db.add(schedule_config)
@@ -4498,7 +4499,7 @@ async def update_system_config(
             if discount_cfg:
                 # 更新现有配置
                 discount_cfg.config_value = discount_config
-                discount_cfg.update_time = datetime.now()
+                discount_cfg.update_time = get_now_naive()
                 flag_modified(discount_cfg, "config_value")
                 db.add(discount_cfg)
             else:
@@ -4709,7 +4710,7 @@ async def update_patient_identity_discounts_config(
         if config:
             # 更新现有配置
             config.config_value = discount_config
-            config.update_time = datetime.utcnow()
+            config.update_time = get_now_naive()
             db.add(config)
         else:
             # 创建新配置
@@ -4721,8 +4722,8 @@ async def update_patient_identity_discounts_config(
                 data_type="JSON",
                 description="患者身份折扣配置 (学生/教师/职工/校外)",
                 is_active=True,
-                create_time=datetime.utcnow(),
-                update_time=datetime.utcnow()
+                create_time=get_now_naive(),
+                update_time=get_now_naive()
             )
             db.add(new_config)
 
@@ -4777,7 +4778,7 @@ async def mark_single_date_absent(
             )
         
         # 不能标记今天及未来的日期
-        if target_date >= date.today():
+        if target_date >= get_today():
             raise BusinessHTTPException(
                 code=settings.REQ_ERROR_CODE,
                 msg="只能标记历史日期的缺勤记录",
@@ -4833,7 +4834,7 @@ async def mark_range_absent(
             )
         
         # 不能标记今天及未来的日期
-        if end_date >= date.today():
+        if end_date >= get_today():
             raise BusinessHTTPException(
                 code=settings.REQ_ERROR_CODE,
                 msg="结束日期不能包含今天或未来日期",
@@ -5089,7 +5090,7 @@ async def update_consultation_config(
         if config:
             # 更新现有配置
             config.config_value = str(max_pass_count)
-            config.update_time = datetime.utcnow()
+            config.update_time = get_now_naive()
         else:
             # 创建新配置
             config = SystemConfig(

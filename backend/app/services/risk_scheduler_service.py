@@ -1,6 +1,7 @@
 from datetime import datetime
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.datetime_utils import get_now_naive
 
 from app.models.user_risk_summary import UserRiskSummary
 from app.models.user_ban import UserBan
@@ -17,7 +18,7 @@ class RiskSchedulerService:
 
     async def check_stable_users_task(self, db: AsyncSession):
         # 连续30天无 incident 的用户奖励
-        cutoff = datetime.utcnow()
+        cutoff = get_now_naive()
         result = await db.execute(select(UserRiskSummary).where(and_(UserRiskSummary.last_incident_time != None)))  # noqa: E711
         summaries = result.scalars().all()
         for summary in summaries:
@@ -25,7 +26,7 @@ class RiskSchedulerService:
                 await risk_score_service.update_risk_score(db, summary.user_id, -15, "monthly_stable", "连续30天无异常")
 
     async def check_expired_bans_task(self, db: AsyncSession):
-        now = datetime.utcnow()
+        now = get_now_naive()
         result = await db.execute(select(UserBan).where(and_(UserBan.is_active == True, UserBan.ban_until != None, UserBan.ban_until < now)))  # noqa: E712,E711
         bans = result.scalars().all()
         for ban in bans:

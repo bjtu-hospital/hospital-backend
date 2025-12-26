@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-import datetime
+from app.core.datetime_utils import beijing_now_for_model
 
 
 from app.db.base import Base
@@ -18,7 +18,7 @@ class UserAccessLog(Base):
     method = Column(String(10), nullable=False, comment="请求方法")
     status_code = Column(Integer, nullable=False, comment="HTTP响应状态码")
     response_code = Column(Integer, nullable=True, comment="业务返回码")
-    access_time = Column(DateTime, default=datetime.datetime.utcnow, comment="访问时间")
+    access_time = Column(DateTime, default=beijing_now_for_model, comment="访问时间")
     duration_ms = Column(Integer, nullable=False, comment="请求耗时（毫秒）")
     
     #与user表为多对一的关系

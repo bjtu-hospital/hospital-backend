@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from sqlalchemy.orm import selectinload
+from app.core.datetime_utils import get_now_naive
 
 from app.models.registration_order import RegistrationOrder, OrderStatus
 from app.models.patient import Patient
@@ -185,7 +186,7 @@ async def complete_current_patient(
         patient.status = OrderStatus.COMPLETED
         patient.is_calling = False
         if not patient.visit_times:
-            patient.visit_times = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            patient.visit_times = get_now_naive().strftime('%Y-%m-%d %H:%M:%S')
         
         await db.flush()
         
@@ -258,7 +259,7 @@ async def call_next_patient(
         # 3. 标记为正在就诊
         if next_patient:
             next_patient.is_calling = True
-            next_patient.call_time = datetime.now()
+            next_patient.call_time = get_now_naive()
         
         await db.flush()
         
@@ -467,7 +468,8 @@ def _calculate_age(date_of_birth: date) -> int:
     """计算年龄"""
     if not date_of_birth:
         return None
-    today = date.today()
+    from app.core.datetime_utils import get_today
+    today = get_today()
     age = today.year - date_of_birth.year
     if (today.month, today.day) < (date_of_birth.month, date_of_birth.day):
         age -= 1

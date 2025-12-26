@@ -5,6 +5,7 @@ from fastapi import Request
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
+from app.core.datetime_utils import get_now_naive
     
 from app.core.config import settings
 from app.db.base import redis
@@ -27,7 +28,7 @@ def verify_pwd(plain_pwd: str, hashed_pwd: str):
 def create_access_token(data: dict, expires_delta: timedelta = None):
     
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.TOKEN_EXPIRE_TIME))
+    expire = get_now_naive() + (expires_delta or timedelta(minutes=settings.TOKEN_EXPIRE_TIME))
     
     to_encode.update({"exp": expire})  
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.TOKEN_ALGORITHM)
@@ -35,7 +36,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 
 #生成邮箱验证码
 def generate_email_verify_token(email: str):
-    expire = datetime.utcnow() + timedelta(minutes=settings.EMAIL_VERIFY_EXPIRE_MINUTES)
+    expire = get_now_naive() + timedelta(minutes=settings.EMAIL_VERIFY_EXPIRE_MINUTES)
     to_encode = {"sub": email, "exp": expire}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.TOKEN_ALGORITHM)
 

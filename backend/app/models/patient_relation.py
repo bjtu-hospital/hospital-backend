@@ -16,7 +16,7 @@
 from sqlalchemy import Column, BigInteger, Integer, String, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 
 
 class PatientRelation(Base):
@@ -63,8 +63,8 @@ class PatientRelation(Base):
     remark = Column(String(200), nullable=True, comment="备注信息")
     
     # 时间戳
-    create_time = Column(DateTime, default=datetime.now, nullable=False, comment="创建时间")
-    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False, comment="更新时间")
+    create_time = Column(DateTime, default=beijing_now_for_model, nullable=False, comment="创建时间")
+    update_time = Column(DateTime, default=beijing_now_for_model, onupdate=beijing_now_for_model, nullable=False, comment="更新时间")
     
     # 关系字段
     user_patient = relationship(

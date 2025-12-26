@@ -91,7 +91,7 @@ class WaitlistService:
         queue_data = json.dumps({
             "order_id": order_id,
             "patient_id": patient_id,
-            "create_time": datetime.now().isoformat()
+            "create_time": get_now_naive().isoformat()
         })
         await redis.rpush(queue_key, queue_data)
         
@@ -296,7 +296,7 @@ class WaitlistService:
                     # 不中断流程，继续转预约
             
             # 更新订单状态: WAITLIST → PENDING
-            now = datetime.now()
+            now = get_now_naive()
             order.status = OrderStatus.PENDING
             order.payment_status = PaymentStatus.PENDING
             order.is_waitlist = False
@@ -423,7 +423,7 @@ class WaitlistService:
                             await db.execute(
                                 update(RegistrationOrder).
                                 where(RegistrationOrder.order_id == order_id).
-                                values(waitlist_position=idx, update_time=datetime.now())
+                                values(waitlist_position=idx, update_time=get_now_naive())
                             )
                             updated_count += 1
                         except Exception as e:

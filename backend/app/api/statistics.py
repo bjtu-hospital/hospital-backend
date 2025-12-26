@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from datetime import datetime, timedelta
+from app.core.datetime_utils import get_now_naive
 from typing import Union
 
 from app.db.base import get_db, User, UserAccessLog
@@ -552,7 +553,7 @@ async def get_user_statistics(
     - 返回总用户数
     """
     try:
-        now = datetime.utcnow()
+        now = get_now_naive()
         total_users = await db.scalar(select(func.count()).select_from(User).where(User.is_deleted == 0))
         return ResponseModel(code=0, message=UserStatisticsResponse(total_users=total_users))
     except Exception as e:
@@ -574,7 +575,7 @@ async def get_visit_statistics(
     - 返回较 compare_days 天前的增长比例
     """
     try:
-        now = datetime.utcnow()
+        now = get_now_naive()
         compare_time = now - timedelta(days=compare_days)
         total_visits = await db.scalar(select(func.count()).select_from(UserAccessLog))
         old_visits = await db.scalar(select(func.count()).select_from(UserAccessLog).where(UserAccessLog.access_time < compare_time))

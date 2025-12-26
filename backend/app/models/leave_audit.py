@@ -1,10 +1,10 @@
-import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Text
 from sqlalchemy.orm import relationship
 # 引入 JSON 类型，用于存储复杂的排班和附件数据
 from sqlalchemy.types import JSON
 from sqlalchemy.ext.declarative import declarative_base
 from app.db.base import Base
+from app.core.datetime_utils import beijing_now_for_model
 
 # 请假申请表模型
 class LeaveAudit(Base):
@@ -29,7 +29,7 @@ class LeaveAudit(Base):
     attachment_data_json = Column(JSON, comment='附件信息列表的JSON数据') 
     
     # 提交和审核信息
-    submit_time = Column(DateTime, default=datetime.datetime.now, nullable=False, comment='提交申请时间')
+    submit_time = Column(DateTime, default=beijing_now_for_model, nullable=False, comment='提交申请时间')
     
     status = Column(String(20), default='pending', nullable=False, comment='审核状态: pending, approved, rejected')
     auditor_user_id = Column(Integer, ForeignKey('user.user_id'), comment='审核人User ID(可以是管理员或科室长)')

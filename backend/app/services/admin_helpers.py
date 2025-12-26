@@ -6,6 +6,7 @@ from app.db.base import Administrator
 from app.core.exception_handler import AuthHTTPException, BusinessHTTPException, ResourceHTTPException
 from app.core.config import settings
 from datetime import datetime, date, timedelta
+from app.core.datetime_utils import get_now_naive
 
 
 async def get_hierarchical_price(
@@ -134,7 +135,7 @@ async def update_entity_prices(
 
     if config:
         config.config_value = new_config_value
-        config.update_time = datetime.now()
+        config.update_time = get_now_naive()
         flag_modified(config, "config_value")
         # caller should add/commit
     else:

@@ -200,7 +200,8 @@ __all__ = ["import_all_json", "crawl_and_import_schedules"]
 
 def _get_current_week_info() -> str:
     """返回当前周信息，格式: 年份i周(开始-结束)"""
-    today = datetime.date.today()
+    from app.core.datetime_utils import get_today
+    today = get_today()
     week_number = today.isocalendar()[1]
     year = today.isocalendar()[0]
     start_of_week = today - datetime.timedelta(days=today.weekday())

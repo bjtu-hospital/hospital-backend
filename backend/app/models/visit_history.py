@@ -1,7 +1,7 @@
 from sqlalchemy import Column, BigInteger, Integer, String, Date, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from app.db.base import Base
-from datetime import datetime
+from app.core.datetime_utils import beijing_now_for_model
 
 
 class VisitHistory(Base):
@@ -35,8 +35,8 @@ class VisitHistory(Base):
     followup_required = Column(Boolean, default=False, comment="是否需要复诊")
     followup_date = Column(Date, nullable=True, comment="建议复诊日期")
 
-    create_time = Column(DateTime, default=datetime.utcnow, comment="创建时间")
-    update_time = Column(DateTime, default=datetime.utcnow, comment="最后更新时间")
+    create_time = Column(DateTime, default=beijing_now_for_model, comment="创建时间")
+    update_time = Column(DateTime, default=beijing_now_for_model, comment="最后更新时间")
 
     # 关系
     patient = relationship("Patient")

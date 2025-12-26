@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.datetime_utils import get_now_naive
 
 from app.models.user_risk_summary import UserRiskSummary
 from app.models.user_ban import UserBan
@@ -36,7 +37,7 @@ class RiskScoreService:
         """根据距离 last_incident_time 时间执行自然衰减; 每7天 10%"""
         if not summary.last_incident_time:
             return None
-        days_passed = (datetime.utcnow() - summary.last_incident_time).days
+        days_passed = (get_now_naive() - summary.last_incident_time).days
         if days_passed < 7:
             return None
         # 计算衰减次数(每7天一次)
@@ -50,7 +51,7 @@ class RiskScoreService:
             return None
         summary.current_score = decayed_score
         summary.current_level = self.calculate_level(summary.current_score)
-        summary.last_decay_time = datetime.utcnow()
+        summary.last_decay_time = get_now_naive()
         summary.touch()
         # 写入风险日志(负分)
         db.add(RiskLog(user_id=summary.user_id, risk_score=-decay_amount, risk_level=summary.current_level, behavior_type="natural_decay", description=f"自然衰减 {decay_amount}"))
@@ -61,7 +62,7 @@ class RiskScoreService:
         summary = await self.get_or_create_summary(db, user_id)
         if delta > 0:
             summary.total_negative_count += 1
-            summary.last_incident_time = datetime.utcnow()
+            summary.last_incident_time = get_now_naive()
         else:
             summary.total_positive_count += 1
         summary.current_score = max(0, summary.current_score + delta)
@@ -89,7 +90,7 @@ class RiskScoreService:
             duration = 7
         else:
             return
-        ban_until = datetime.utcnow() + timedelta(days=duration)
+        ban_until = get_now_naive() + timedelta(days=duration)
         ban = UserBan(user_id=summary.user_id, ban_type=ban_type, ban_until=ban_until, reason=f"风险分数达到 {summary.current_score}")
         db.add(ban)
 

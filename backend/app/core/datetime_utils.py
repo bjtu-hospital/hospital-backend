@@ -3,7 +3,7 @@
 该模块提供统一的时间处理函数，确保所有时间戳都使用北京时间（UTC+8）
 而不是 UTC 时间，以保证前后端显示一致。
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date as date_type
 from typing import Optional
 
 
@@ -83,3 +83,34 @@ def utc_to_beijing(utc_dt: Optional[datetime]) -> Optional[datetime]:
         datetime: 北京时间的 datetime 对象（不带时区信息）
     """
     return convert_to_beijing_time(utc_dt)
+
+
+def get_today() -> date_type:
+    """获取当前北京时间的日期（无时区信息）。
+    
+    返回值：
+        date: 北京时间的日期对象
+    
+    示例：
+        >>> today = get_today()
+        >>> print(today)  # 2025-12-26
+    """
+    return get_now_naive().date()
+
+
+def beijing_now_for_model():
+    """用于 SQLAlchemy Model 的默认值函数。
+    
+    返回当前北京时间（不带时区信息），专门用于 Model 的 default 参数。
+    
+    注意：在 SQLAlchemy Column 的 default 参数中使用时，应传递函数引用
+    而不是函数调用结果，即：default=beijing_now_for_model（不带括号）
+    
+    返回值：
+        datetime: 北京时间的 datetime 对象（不带时区信息）
+    
+    示例：
+        >>> from sqlalchemy import Column, DateTime
+        >>> create_time = Column(DateTime, default=beijing_now_for_model, comment="创建时间")
+    """
+    return get_now_naive()
