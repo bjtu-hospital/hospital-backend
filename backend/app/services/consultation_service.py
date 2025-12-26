@@ -395,9 +395,13 @@ async def pass_patient(
             doctor_id = schedule.doctor_id if schedule else None
             max_pass_count = await get_max_pass_count(db, doctor_id)
         
-        # 2. 增加过号次数
+        # 2. 增加过号次数，并将优先级降到队尾
+        if patient.pass_count is None:
+            patient.pass_count = 0
         patient.pass_count += 1
         patient.is_calling = False
+        # 将优先级调高（数字越大排序越靠后），避免再次叫号仍排在队首
+        patient.priority = (patient.priority or 0) + 1000
         
         # 3. 检查是否达到过号上限
         is_no_show = False
