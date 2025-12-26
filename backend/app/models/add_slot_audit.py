@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, BigInteger, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import JSON
 from app.db.base import Base
+from app.core.datetime_utils import get_now_naive
 
 
 class AddSlotAudit(Base):
@@ -20,7 +21,7 @@ class AddSlotAudit(Base):
     reason = Column(Text, nullable=True, comment='申请理由（医生填写）')
     applicant_id = Column(Integer, ForeignKey('user.user_id'), nullable=False, comment='发起申请的用户ID')
 
-    submit_time = Column(DateTime, default=datetime.datetime.now, nullable=False, comment='提交时间')
+    submit_time = Column(DateTime, default=get_now_naive, nullable=False, comment='提交时间')
     status = Column(String(20), default='pending', nullable=False, comment='审核状态: pending, approved, rejected')
     auditor_user_id = Column(Integer, ForeignKey('user.user_id'), comment='审核人User ID(可以是管理员或科室长)')
     audit_time = Column(DateTime, comment='审核时间')
