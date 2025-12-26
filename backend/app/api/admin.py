@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends,UploadFile, File, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.attributes import flag_modified
 from typing import Optional, Union, List
 import logging
@@ -3835,6 +3836,7 @@ async def approve_schedule_audit(
         
         schedule_records = []
         processed_slots = set()  # (clinic_id, date, time_section) 标记已处理的诊室/时间段
+        doctor_time_seen = set()  # (doctor_id, date, time_section) 防止同一医生同时间段重复写入
         old_schedules_to_cancel: list[Schedule] = []
         # 假设 time_section 依次为 '上午', '下午', '晚上'
         time_sections = ['上午', '下午', '晚上']
@@ -3882,6 +3884,17 @@ async def approve_schedule_audit(
                 # 实际生产中，JSON 应该包含完整的排班信息（号源类型、数量、价格等）
                 # 假设默认值，实际应从更详细的 JSON 结构中提取
                 doctor_id = slot_data.get('doctor_id')
+                slot_type = _str_to_slot_type('普通')
+
+                # 同一医生同日同时间段在当前审核数据内重复，直接报错给前端
+                dup_key = (doctor_id, current_date, time_section)
+                if dup_key in doctor_time_seen:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg=f"排班数据重复：医生ID {doctor_id} 在 {current_date} {time_section} 出现多次",
+                        status_code=400,
+                    )
+                doctor_time_seen.add(dup_key)
 
                 # 检查医生是否存在 (可选，但推荐)
                 if not (await db.get(Doctor, doctor_id)):
@@ -3907,8 +3920,7 @@ async def approve_schedule_audit(
                         status_code=400,
                     )
 
-                # 先尝试查找是否已有同一医生在该诊室/日期/时段的排班，避免重复插入导致约束冲突
-                # 仅检查当前诊室/时段且标记为最新的排班，避免跨诊室或历史记录造成多行返回
+                # upsert：先查任意同医生/诊室/日期/时间段/号源类型的排班（无论是否最新），避免唯一键冲突
                 existing_res = await db.execute(
                     select(Schedule).where(
                         and_(
@@ -3916,43 +3928,40 @@ async def approve_schedule_audit(
                             Schedule.clinic_id == clinic_id,
                             Schedule.date == current_date,
                             Schedule.time_section == time_section,
-                            Schedule.is_latest == True,
+                            Schedule.slot_type == slot_type,
                         )
                     )
                 )
                 existing_schedule = existing_res.scalars().first()
 
+                # 更新或新建排班
+                target = existing_schedule or Schedule(
+                    doctor_id=doctor_id,
+                    clinic_id=clinic_id,
+                    date=current_date,
+                    week_day=week_day,
+                    time_section=time_section,
+                    slot_type=slot_type,
+                )
+
+                target.week_day = week_day
+                target.slot_type = slot_type
+                new_total = 50
                 if existing_schedule:
-                    # 更新已有排班（保持剩余号源不为负）
-                    existing_schedule.clinic_id = clinic_id
-                    existing_schedule.week_day = week_day
-                    existing_schedule.slot_type = _str_to_slot_type('普通')
-                    # 默认号源设置，可根据后续需求改为来自 JSON
-                    new_total = 50
-                    delta = new_total - (existing_schedule.total_slots or 0)
-                    existing_schedule.total_slots = new_total
-                    existing_schedule.remaining_slots = max(0, (existing_schedule.remaining_slots or 0) + delta)
-                    existing_schedule.price = 10.00
-                    # 统一使用中文状态以兼容其他查询逻辑
-                    existing_schedule.status = '正常'
-                    existing_schedule.is_latest = True
-                    db.add(existing_schedule)
+                    delta = new_total - (target.total_slots or 0)
+                    target.remaining_slots = max(0, (target.remaining_slots or 0) + delta)
                 else:
-                    # 新建排班
-                    new_schedule = Schedule(
-                        doctor_id=doctor_id,
-                        clinic_id=clinic_id,
-                        date=current_date,
-                        week_day=week_day,
-                        time_section=time_section,
-                        slot_type=_str_to_slot_type('普通'),
-                        total_slots=50,
-                        remaining_slots=50,
-                        price=10.00,
-                        status='正常',
-                        is_latest=True
-                    )
-                    schedule_records.append(new_schedule)
+                    target.total_slots = new_total
+                    target.remaining_slots = new_total
+                target.total_slots = new_total
+                target.price = 10.00
+                target.status = '正常'
+                target.is_latest = True
+
+                if not existing_schedule:
+                    schedule_records.append(target)
+                else:
+                    db.add(target)
 
         if schedule_records:
             db.add_all(schedule_records)
@@ -3981,6 +3990,14 @@ async def approve_schedule_audit(
     except ResourceHTTPException:
         await db.rollback()
         raise
+    except IntegrityError as e:
+        await db.rollback()
+        logger.error(f"通过排班审核时数据库约束冲突: {e}")
+        raise BusinessHTTPException(
+            code=settings.REQ_ERROR_CODE,
+            msg="排班数据存在重复（同医生/诊室/日期/时间段/号源类型）",
+            status_code=400,
+        )
     except Exception as e:
         logger.error(f"通过排班审核时发生异常: {str(e)}")
         await db.rollback()
