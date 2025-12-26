@@ -3887,17 +3887,40 @@ async def approve_schedule_audit(
                 if not (await db.get(Doctor, doctor_id)):
                     raise BusinessHTTPException(code=settings.REQ_ERROR_CODE, msg=f"排班数据中医生ID {doctor_id} 不存在", status_code=400)
 
-                # 先尝试查找是否已有同一医生在该日期/时段的排班，避免重复插入导致约束冲突
-                existing_res = await db.execute(
+                # 防止同一医生同日同时间段在其他诊室已有最新排班
+                conflict_res = await db.execute(
                     select(Schedule).where(
                         and_(
                             Schedule.doctor_id == doctor_id,
                             Schedule.date == current_date,
-                            Schedule.time_section == time_section
+                            Schedule.time_section == time_section,
+                            Schedule.is_latest == True,
+                            Schedule.clinic_id != clinic_id,
                         )
                     )
                 )
-                existing_schedule = existing_res.scalar_one_or_none()
+                conflict = conflict_res.scalars().first()
+                if conflict:
+                    raise BusinessHTTPException(
+                        code=settings.REQ_ERROR_CODE,
+                        msg=f"医生ID {doctor_id} 在 {current_date} {time_section} 已在其他诊室有排班",
+                        status_code=400,
+                    )
+
+                # 先尝试查找是否已有同一医生在该诊室/日期/时段的排班，避免重复插入导致约束冲突
+                # 仅检查当前诊室/时段且标记为最新的排班，避免跨诊室或历史记录造成多行返回
+                existing_res = await db.execute(
+                    select(Schedule).where(
+                        and_(
+                            Schedule.doctor_id == doctor_id,
+                            Schedule.clinic_id == clinic_id,
+                            Schedule.date == current_date,
+                            Schedule.time_section == time_section,
+                            Schedule.is_latest == True,
+                        )
+                    )
+                )
+                existing_schedule = existing_res.scalars().first()
 
                 if existing_schedule:
                     # 更新已有排班（保持剩余号源不为负）
